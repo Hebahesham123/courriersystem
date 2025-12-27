@@ -36,7 +36,6 @@ import {
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
 import { useAuth } from "../../contexts/AuthContext"
-import { useModalScrollPreserve } from "../../lib/useModalScrollPreserve"
 
 
 interface OrderProof {
@@ -73,6 +72,7 @@ interface Order {
   internal_comment: string | null
   collected_by: string | null
   assigned_courier_id: string | null
+  assigned_at?: string | null
   notes?: string | null
   created_at: string
   updated_at: string
@@ -298,17 +298,6 @@ const OrdersList: React.FC = () => {
     hasSavedPosition: () => false,
     containerRef: { current: null } as any,
   }), [])
-
-  // Compute a top padding for the modal so it appears close to the clicked card
-  const modalTopOffset = useMemo(() => {
-    if (!cardPosition || typeof window === 'undefined') return 24
-    const viewportTop = cardPosition.top - window.scrollY
-    const viewportHeight = window.innerHeight || 0
-    // Keep the modal within viewport while staying near the card
-    const minOffset = 16
-    const maxOffset = Math.max(viewportHeight - 360, 24)
-    return Math.min(Math.max(viewportTop - 12, minOffset), maxOffset)
-  }, [cardPosition])
 
   // Close image modal on ESC key
   useEffect(() => {
@@ -662,6 +651,8 @@ const OrdersList: React.FC = () => {
     return match ? Number.parseInt(match[0], 10) : 0
   }
 
+  const courierVisibleStatuses = ["assigned", "partial", "delivered", "canceled", "return", "hand_to_hand", "receiving_part", "pending"]
+
   const fetchOrders = useCallback(async (showRefreshing = false, showFullLoading = true) => {
     if (!user?.id) {
       console.error("User not authenticated")
@@ -682,55 +673,28 @@ const OrdersList: React.FC = () => {
       const endDate = new Date(selectedDate)
       endDate.setHours(23, 59, 59, 999)
 
-      // Get orders assigned to this courier on the selected date
-      // Primary filter: assigned_at (when order was assigned to courier)
-      // Fallback: updated_at (for legacy orders without assigned_at)
-      
-      // Try assigned_at first (accurate assignment date)
-      const { data: assignedAtOrders, error: assignedAtError } = await supabase
+      // Get orders assigned to this courier within the date window
+      const { data: assignedOrders, error: assignedError } = await supabase
         .from("orders")
         .select("*")
         .eq("assigned_courier_id", user.id)
-        .gte("assigned_at", startDate.toISOString())
-        .lte("assigned_at", endDate.toISOString())
+        .in("status", courierVisibleStatuses)
         .order("assigned_at", { ascending: false })
-      
-      // Also get by updated_at for orders without assigned_at (legacy)
-      const { data: updatedAtOrders, error: updatedAtError } = await supabase
-        .from("orders")
-        .select("*")
-        .eq("assigned_courier_id", user.id)
-        .is("assigned_at", null)  // Only get orders WITHOUT assigned_at
-        .gte("updated_at", startDate.toISOString())
-        .lte("updated_at", endDate.toISOString())
         .order("updated_at", { ascending: false })
-      
-      // Merge both results
-      const orderMap = new Map<string, any>()
-      for (const order of (assignedAtOrders || [])) {
-        orderMap.set(order.id, order)
-      }
-      for (const order of (updatedAtOrders || [])) {
-        if (!orderMap.has(order.id)) {
-          orderMap.set(order.id, order)
-        }
-      }
-      const mergedAssignedOrders = Array.from(orderMap.values())
-      
-      const assignedError = assignedAtError || updatedAtError
+        .order("created_at", { ascending: false })
 
       if (assignedError) {
         console.error("Error fetching assigned orders:", assignedError)
         throw new Error(`خطأ في جلب الطلبات المخصصة: ${assignedError.message}`)
       }
 
-      // Then, get unassigned orders with specific payment methods
+      // Then, get unassigned orders with specific payment methods (cashless) that are assignable
       const { data: unassignedOrders, error: unassignedError } = await supabase
         .from("orders")
         .select("*")
         .is("assigned_courier_id", null)
         .in("payment_method", ["paymob", "valu"])
-        .eq("status", "assigned")
+        .eq("status", "assigned") // only assigned and not yet claimed
         .gte("created_at", startDate.toISOString())
         .lte("created_at", endDate.toISOString())
 
@@ -740,8 +704,8 @@ const OrdersList: React.FC = () => {
         console.warn("Could not fetch unassigned orders, continuing with assigned orders only")
       }
 
-      // Combine both results (using merged orders from assigned_at and updated_at queries)
-      const allOrders = [...mergedAssignedOrders, ...(unassignedOrders || [])]
+      // Combine both results
+      const allOrders = [...(assignedOrders || []), ...(unassignedOrders || [])]
 
       // Fetch order_proofs and order_items separately for all order IDs
       if (allOrders.length > 0) {
@@ -805,16 +769,24 @@ const OrdersList: React.FC = () => {
         }
       }
 
+      // Filter to date window using assigned_at OR updated_at OR created_at
+      const withinDay = (d: Date) => d >= startDate && d <= endDate
+      const assignedOnly = allOrders.filter((o: Order) => {
+        const a = o.assigned_at ? new Date(o.assigned_at) : null
+        const u = o.updated_at ? new Date(o.updated_at) : null
+        const c = o.created_at ? new Date(o.created_at) : null
+        return (
+          courierVisibleStatuses.includes(o.status) &&
+          (
+            (a && withinDay(a)) ||
+            (u && withinDay(u)) ||
+            (c && withinDay(c))
+          )
+        )
+      })
+
       // Sort by order number (numeric part of order_id)
-      const sortedData = allOrders.sort((a: Order, b: Order) => {
-        const isAAssigned = a.status === "assigned"
-        const isBAssigned = b.status === "assigned"
-
-        // First priority: assigned orders go to top
-        if (isAAssigned && !isBAssigned) return -1
-        if (!isAAssigned && isBAssigned) return 1
-
-        // Second priority: sort by order number (ascending - lowest numbers first)
+      const sortedData = assignedOnly.sort((a: Order, b: Order) => {
         const orderNumA = getOrderNumber(a.order_id)
         const orderNumB = getOrderNumber(b.order_id)
         return orderNumA - orderNumB
@@ -1090,19 +1062,22 @@ const OrdersList: React.FC = () => {
   }
 
   const calculateTotalAmount = (order: Order, deliveryFee: number, partialAmount: number, currentStatus: string) => {
+    const safePartial = Math.abs(partialAmount)
+    const safeDelivery = deliveryFee
+
     if (currentStatus === "hand_to_hand" && deliveryFee === 0 && partialAmount === 0) {
       return 0
     }
 
     if (["canceled", "return", "hand_to_hand", "receiving_part"].includes(currentStatus)) {
-      if (deliveryFee === 0 && partialAmount === 0) {
+      if (safeDelivery === 0 && safePartial === 0) {
         return 0
       }
-      return deliveryFee + partialAmount
+      return safeDelivery + safePartial
     }
 
     if (currentStatus === "partial") {
-      return partialAmount > 0 ? partialAmount : 0
+      return safePartial
     }
 
     return order.total_order_fees
@@ -1128,7 +1103,7 @@ const OrdersList: React.FC = () => {
       }
 
       let fee = Number.parseFloat(updateData.delivery_fee) || 0
-      let partial = Number.parseFloat(updateData.partial_paid_amount) || 0
+      let partial = Math.abs(Number.parseFloat(updateData.partial_paid_amount) || 0)
 
       const isReturnStatus = updateData.status === "return"
       const isReceivingPartWithNoFees = updateData.status === "receiving_part" && fee === 0 && partial === 0
@@ -2280,9 +2255,8 @@ const deleteDuplicatedOrder = async (order: Order) => {
         {modalOpen && selectedOrder && typeof document !== 'undefined' && createPortal(
           (
           <div 
-            className="fixed inset-0 z-50 flex items-start justify-center p-2 sm:p-6"
+            className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-6"
             style={{ 
-              overflowY: 'auto',
               position: 'fixed',
               top: '0',
               left: '0',
@@ -2291,8 +2265,6 @@ const deleteDuplicatedOrder = async (order: Order) => {
               pointerEvents: 'auto',
               backgroundColor: 'rgba(0, 0, 0, 0.5)',
               backdropFilter: 'blur(4px)',
-              paddingTop: modalTopOffset,
-              paddingBottom: 24,
             }}
             onClick={(e) => {
               if (e.target === e.currentTarget) {
@@ -2968,17 +2940,20 @@ const deleteDuplicatedOrder = async (order: Order) => {
                     </label>
                     <div className="relative">
                       <input
-                        type="number"
-                        step="0.01"
+                        type="text"
+                        inputMode="decimal"
                         value={updateData.delivery_fee}
                         onChange={(e) => {
-                          setUpdateData({ ...updateData, delivery_fee: e.target.value })
+                          const val = e.target.value
+                          if (val === "" || /^[0-9]*\.?[0-9]*$/.test(val)) {
+                            setUpdateData({ ...updateData, delivery_fee: val })
+                          }
                         }}
-                        className="w-full rounded-xl border-2 border-gray-300 px-4 py-3.5 pr-14 text-base font-medium focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 bg-white hover:border-amber-400 transition-colors shadow-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
+                        className="w-full rounded-xl border-2 border-gray-300 px-4 py-3.5 pl-14 text-right text-base font-medium focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 bg-white hover:border-amber-400 transition-colors shadow-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
                         disabled={updateData.status === "return"}
                         placeholder="0.00"
                       />
-                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600 text-sm font-bold">ج.م</span>
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600 text-sm font-bold pointer-events-none">ج.م</span>
                     </div>
                     <p className="text-xs text-gray-500 mt-2 flex items-center gap-1.5">
                       <AlertCircle className="w-3.5 h-3.5" />
@@ -3215,17 +3190,20 @@ const deleteDuplicatedOrder = async (order: Order) => {
                           </label>
                           <div className="relative">
                             <input
-                              type="number"
-                              step="0.01"
+                              type="text"
+                              inputMode="decimal"
                               value={updateData.partial_paid_amount}
                               onChange={(e) => {
-                                setUpdateData({ ...updateData, partial_paid_amount: e.target.value })
+                                const val = e.target.value
+                                if (val === "" || /^[0-9]*\.?[0-9]*$/.test(val)) {
+                                  setUpdateData({ ...updateData, partial_paid_amount: val })
+                                }
                               }}
-                              className="w-full rounded-xl border-2 border-gray-300 px-4 py-3.5 pr-14 text-base font-medium focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white hover:border-purple-400 transition-colors shadow-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
+                              className="w-full rounded-xl border-2 border-gray-300 px-4 py-3.5 pl-14 text-right text-base font-medium focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white hover:border-purple-400 transition-colors shadow-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
                               disabled={updateData.status === "return"}
                               placeholder="0.00"
                             />
-                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600 text-sm font-bold">ج.م</span>
+                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600 text-sm font-bold pointer-events-none">ج.م</span>
                           </div>
                           <p className="text-xs text-gray-500 mt-2 flex items-center gap-1.5">
                             <AlertCircle className="w-3.5 h-3.5" />
