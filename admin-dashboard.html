@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - Customer Requests</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 0 20px;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        
+        .stat-number {
+            font-size: 2.5em;
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .stat-label {
+            color: #666;
+            margin-top: 5px;
+        }
+        
+        .requests-table {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .table-header {
+            background: #f8f9fa;
+            padding: 15px 20px;
+            border-bottom: 1px solid #dee2e6;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .refresh-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        .refresh-btn:hover {
+            background: #5a6fd8;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        th, td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #495057;
+        }
+        
+        tr:hover {
+            background: #f8f9fa;
+        }
+        
+        .status {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+            text-transform: uppercase;
+        }
+        
+        .status.pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        .status.process {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+        
+        .status.approved {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .status.cancelled {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .action-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            margin: 2px;
+        }
+        
+        .action-btn:hover {
+            background: #5a6fd8;
+        }
+        
+        .action-btn.danger {
+            background: #dc3545;
+        }
+        
+        .action-btn.danger:hover {
+            background: #c82333;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        
+        .success {
+            background: #d4edda;
+            color: #155724;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+        
+        .modal-content {
+            background-color: white;
+            margin: 5% auto;
+            padding: 20px;
+            border-radius: 10px;
+            width: 80%;
+            max-width: 600px;
+        }
+        
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        
+        .close:hover {
+            color: #000;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+        
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        .form-group textarea {
+            height: 80px;
+            resize: vertical;
+        }
+        
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 20px;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+        
+        .btn:hover {
+            opacity: 0.9;
+        }
+        
+        .order-id-tag {
+            display: inline-block;
+            background: #e9ecef;
+            color: #495057;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            margin: 2px;
+            font-family: monospace;
+        }
+        
+        @media (max-width: 768px) {
+            .stats {
+                grid-template-columns: 1fr;
+            }
+            
+            .table-header {
+                flex-direction: column;
+                gap: 10px;
+            }
+            
+            table {
+                font-size: 14px;
+            }
+            
+            th, td {
+                padding: 8px 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🏢 Admin Dashboard</h1>
+        <p>Customer Requests Management</p>
+    </div>
+    
+    <div class="container">
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-number" id="totalRequests">-</div>
+                <div class="stat-label">Total Requests</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="pendingRequests">-</div>
+                <div class="stat-label">Pending</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="processedRequests">-</div>
+                <div class="stat-label">In Process</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="completedRequests">-</div>
+                <div class="stat-label">Completed</div>
+            </div>
+        </div>
+        
+        <div class="requests-table">
+            <div class="table-header">
+                <h2>📋 All Requests</h2>
+                <button class="refresh-btn" onclick="loadRequests()">🔄 Refresh</button>
+            </div>
+            
+            <div id="loading" class="loading">Loading requests...</div>
+            <div id="error" class="error" style="display: none;"></div>
+            
+            <table id="requestsTable" style="display: none;">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Phone</th>
+                        <th>Request</th>
+                        <th>Order IDs</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="requestsBody">
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <!-- Edit Request Modal -->
+    <div id="editModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <h2>✏️ Edit Request</h2>
+            <form id="editForm">
+                <input type="hidden" id="editId">
+                <div class="form-group">
+                    <label for="editName">Name:</label>
+                    <input type="text" id="editName" required>
+                </div>
+                <div class="form-group">
+                    <label for="editEmail">Email:</label>
+                    <input type="email" id="editEmail" required>
+                </div>
+                <div class="form-group">
+                    <label for="editPhone">Phone:</label>
+                    <input type="tel" id="editPhone" required>
+                </div>
+                <div class="form-group">
+                    <label for="editComment">Request Details:</label>
+                    <textarea id="editComment" required></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="editStatus">Status:</label>
+                    <select id="editStatus" required>
+                        <option value="pending">Pending</option>
+                        <option value="process">In Process</option>
+                        <option value="approved">Approved</option>
+                        <option value="cancelled">Cancelled</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="editAssignee">Assignee:</label>
+                    <input type="text" id="editAssignee" placeholder="Staff member name">
+                </div>
+                <div class="btn-group">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Add Note Modal -->
+    <div id="noteModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeNoteModal()">&times;</span>
+            <h2>📝 Add Note</h2>
+            <form id="noteForm">
+                <input type="hidden" id="noteRequestId">
+                <div class="form-group">
+                    <label for="noteAuthor">Author:</label>
+                    <input type="text" id="noteAuthor" required placeholder="Your name">
+                </div>
+                <div class="form-group">
+                    <label for="noteText">Note:</label>
+                    <textarea id="noteText" required placeholder="Enter your note here..."></textarea>
+                </div>
+                <div class="btn-group">
+                    <button type="button" class="btn btn-secondary" onclick="closeNoteModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Add Note</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <script>
+        const API_BASE = 'http://localhost:3001';
+        
+        // Load requests on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadRequests();
+        });
+        
+        // Load all requests
+        async function loadRequests() {
+            const loading = document.getElementById('loading');
+            const error = document.getElementById('error');
+            const table = document.getElementById('requestsTable');
+            
+            loading.style.display = 'block';
+            error.style.display = 'none';
+            table.style.display = 'none';
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/requests`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    displayRequests(data.requests);
+                    updateStats(data.requests);
+                } else {
+                    throw new Error(data.error || 'Failed to load requests');
+                }
+            } catch (err) {
+                error.textContent = `Error: ${err.message}`;
+                error.style.display = 'block';
+            } finally {
+                loading.style.display = 'none';
+            }
+        }
+        
+        // Display requests in table
+        function displayRequests(requests) {
+            const tbody = document.getElementById('requestsBody');
+            const table = document.getElementById('requestsTable');
+            
+            if (requests.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 40px;">No requests found</td></tr>';
+            } else {
+                tbody.innerHTML = requests.map(request => `
+                    <tr>
+                        <td>${new Date(request.created_at).toLocaleDateString()}</td>
+                        <td>${request.name}</td>
+                        <td>${request.email}</td>
+                        <td>${request.phone}</td>
+                                                 <td>${request.comment.substring(0, 50)}${request.comment.length > 50 ? '...' : ''}</td>
+                         <td>${formatOrderIds(request.order_ids)}</td>
+                         <td><span class="status ${request.status}">${request.status}</span></td>
+                        <td>
+                            <button class="action-btn" onclick="editRequest('${request.id}')">✏️ Edit</button>
+                            <button class="action-btn" onclick="addNote('${request.id}')">📝 Note</button>
+                            <button class="action-btn danger" onclick="deleteRequest('${request.id}')">🗑️ Delete</button>
+                        </td>
+                    </tr>
+                `).join('');
+            }
+            
+            table.style.display = 'table';
+        }
+        
+        // Update statistics
+        function updateStats(requests) {
+            const total = requests.length;
+            const pending = requests.filter(r => r.status === 'pending').length;
+            const process = requests.filter(r => r.status === 'process').length;
+            const completed = requests.filter(r => r.status === 'approved').length;
+            
+            document.getElementById('totalRequests').textContent = total;
+            document.getElementById('pendingRequests').textContent = pending;
+            document.getElementById('processedRequests').textContent = process;
+            document.getElementById('completedRequests').textContent = completed;
+        }
+        
+        // Edit request
+        async function editRequest(id) {
+            try {
+                const response = await fetch(`${API_BASE}/api/requests/${id}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    const request = data.request;
+                    document.getElementById('editId').value = request.id;
+                    document.getElementById('editName').value = request.name;
+                    document.getElementById('editEmail').value = request.email;
+                    document.getElementById('editPhone').value = request.phone;
+                    document.getElementById('editComment').value = request.comment;
+                    document.getElementById('editStatus').value = request.status;
+                    document.getElementById('editAssignee').value = request.assignee || '';
+                    
+                    document.getElementById('editModal').style.display = 'block';
+                }
+            } catch (err) {
+                alert(`Error loading request: ${err.message}`);
+            }
+        }
+        
+        // Add note
+        function addNote(requestId) {
+            document.getElementById('noteRequestId').value = requestId;
+            document.getElementById('noteModal').style.display = 'block';
+        }
+        
+        // Close modals
+        function closeModal() {
+            document.getElementById('editModal').style.display = 'none';
+        }
+        
+        function closeNoteModal() {
+            document.getElementById('noteModal').style.display = 'none';
+        }
+        
+        // Handle edit form submission
+        document.getElementById('editForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const id = document.getElementById('editId').value;
+            const updates = {
+                name: document.getElementById('editName').value,
+                email: document.getElementById('editEmail').value,
+                phone: document.getElementById('editPhone').value,
+                comment: document.getElementById('editComment').value,
+                status: document.getElementById('editStatus').value,
+                assignee: document.getElementById('editAssignee').value || null
+            };
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/requests/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(updates)
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    closeModal();
+                    loadRequests();
+                    alert('Request updated successfully!');
+                } else {
+                    throw new Error(data.error || 'Failed to update request');
+                }
+            } catch (err) {
+                alert(`Error updating request: ${err.message}`);
+            }
+        });
+        
+        // Handle note form submission
+        document.getElementById('noteForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const requestId = document.getElementById('noteRequestId').value;
+            const note = document.getElementById('noteText').value;
+            const author = document.getElementById('noteAuthor').value;
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/requests/${requestId}/notes`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ note, author })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    closeNoteModal();
+                    alert('Note added successfully!');
+                } else {
+                    throw new Error(data.error || 'Failed to add note');
+                }
+            } catch (err) {
+                alert(`Error adding note: ${err.message}`);
+            }
+        });
+        
+        // Delete request (placeholder - you can implement this if needed)
+        function deleteRequest(id) {
+            if (confirm('Are you sure you want to delete this request? This action cannot be undone.')) {
+                alert('Delete functionality not implemented yet. You can implement this in your server if needed.');
+            }
+        }
+        
+        // Format order IDs for display
+        function formatOrderIds(orderIds) {
+            if (!orderIds) return '-';
+            
+            try {
+                const ids = JSON.parse(orderIds);
+                if (Array.isArray(ids) && ids.length > 0) {
+                    return ids.map(id => `<span class="order-id-tag">${id}</span>`).join(' ');
+                }
+            } catch (e) {
+                // If it's already a string, return as is
+                return orderIds;
+            }
+            
+            return '-';
+        }
+        
+        // Auto-refresh every 30 seconds
+        setInterval(loadRequests, 30000);
+    </script>
+</body>
+</html>

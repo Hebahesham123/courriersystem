@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Request Form - Debug</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; max-width: 500px; margin: 0 auto; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input, textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; }
+        button { background: #ffffff; color: white; padding: 12px 24px; border: none; border-radius: 5px; cursor: pointer; width: 100%; font-size: 16px; }
+        button:disabled { background: #ccc; }
+        .debug { background: #f5f5f5; padding: 15px; margin-top: 20px; border-radius: 5px; font-family: monospace; font-size: 12px; white-space: pre-wrap; word-break: break-all; }
+        .success { background: #d4edda; color: #155724; padding: 15px; border-radius: 5px; margin-top: 15px; }
+        .error { background: #f8d7da; color: #721c24; padding: 15px; border-radius: 5px; margin-top: 15px; }
+    </style>
+</head>
+<body>
+    <h1>🔧 Debug Request Form</h1>
+    <p>This form shows all debug information</p>
+    
+    <form id="requestForm">
+        <div class="form-group">
+            <label>Name *</label>
+            <input type="text" id="name" required value="Test User">
+        </div>
+        <div class="form-group">
+            <label>Email *</label>
+            <input type="email" id="email" required value="test@test.com">
+        </div>
+        <div class="form-group">
+            <label>Phone *</label>
+            <input type="tel" id="phone" required value="123456789">
+        </div>
+        <div class="form-group">
+            <label>Comment *</label>
+            <textarea id="comment" required>Test request from debug form</textarea>
+        </div>
+        <button type="submit" id="submitBtn">Submit Request</button>
+    </form>
+    
+    <div id="result"></div>
+    <div class="debug" id="debug">Debug output will appear here...</div>
+
+    <script>
+        const SUPABASE_URL = 'https://bdquuixqypkmbvvfymvm.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJkcXV1aXhxeXBrbWJ2dmZ5bXZtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUyODgxNTQsImV4cCI6MjA4MDg2NDE1NH0.XK5oL2CyL_9-PGpDRjm1Mj4QPDGIqO-DIcNxZtQ0vIA';
+        
+        const debugEl = document.getElementById('debug');
+        const resultEl = document.getElementById('result');
+        
+        function log(msg) {
+            const time = new Date().toLocaleTimeString();
+            debugEl.textContent += `\n[${time}] ${msg}`;
+            console.log(msg);
+        }
+        
+        document.getElementById('requestForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const btn = document.getElementById('submitBtn');
+            btn.disabled = true;
+            btn.textContent = 'Submitting...';
+            resultEl.innerHTML = '';
+            debugEl.textContent = 'Starting submission...';
+            
+            const requestData = {
+                name: document.getElementById('name').value,
+                email: document.getElementById('email').value,
+                phone: document.getElementById('phone').value,
+                comment: document.getElementById('comment').value,
+                status: 'pending',
+                created_by: 'debug-form'
+            };
+            
+            log('Request data: ' + JSON.stringify(requestData, null, 2));
+            log('Supabase URL: ' + SUPABASE_URL);
+            log('Making POST request to: ' + SUPABASE_URL + '/rest/v1/requests');
+            
+            try {
+                const response = await fetch(`${SUPABASE_URL}/rest/v1/requests`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'apikey': SUPABASE_ANON_KEY,
+                        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+                        'Prefer': 'return=representation'
+                    },
+                    body: JSON.stringify(requestData)
+                });
+                
+                log('Response status: ' + response.status + ' ' + response.statusText);
+                log('Response headers: ' + JSON.stringify(Object.fromEntries(response.headers.entries()), null, 2));
+                
+                const responseText = await response.text();
+                log('Response body: ' + responseText);
+                
+                if (response.ok) {
+                    resultEl.innerHTML = '<div class="success">✅ SUCCESS! Request submitted. Check your Supabase table.</div>';
+                    log('✅ SUCCESS!');
+                } else {
+                    resultEl.innerHTML = `<div class="error">❌ FAILED: ${response.status} - ${responseText}</div>`;
+                    log('❌ FAILED!');
+                }
+                
+            } catch (error) {
+                log('❌ Network/JS Error: ' + error.message);
+                log('Error stack: ' + error.stack);
+                resultEl.innerHTML = `<div class="error">❌ Error: ${error.message}</div>`;
+            }
+            
+            btn.disabled = false;
+            btn.textContent = 'Submit Request';
+        });
+        
+        // Test connection on load
+        window.addEventListener('load', async () => {
+            log('Testing Supabase connection...');
+            try {
+                const response = await fetch(`${SUPABASE_URL}/rest/v1/`, {
+                    headers: {
+                        'apikey': SUPABASE_ANON_KEY
+                    }
+                });
+                log('Connection test: ' + response.status + ' ' + response.statusText);
+                
+                // Check if requests table exists
+                const tableCheck = await fetch(`${SUPABASE_URL}/rest/v1/requests?select=count&limit=0`, {
+                    headers: {
+                        'apikey': SUPABASE_ANON_KEY,
+                        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+                    }
+                });
+                log('Requests table check: ' + tableCheck.status + ' ' + tableCheck.statusText);
+                
+                if (tableCheck.status === 404) {
+                    log('❌ Table "requests" does not exist! Run the SQL first.');
+                } else if (tableCheck.status === 401 || tableCheck.status === 403) {
+                    log('❌ Permission denied. Check RLS policies.');
+                } else {
+                    log('✅ Table exists and is accessible');
+                }
+                
+            } catch (error) {
+                log('Connection error: ' + error.message);
+            }
+        });
+    </script>
+</body>
+</html>
+

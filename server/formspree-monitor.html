@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Formspree Sync Monitor</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .status-card {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        
+        .status-running {
+            background-color: #28a745;
+        }
+        
+        .status-stopped {
+            background-color: #dc3545;
+        }
+        
+        .status-unknown {
+            background-color: #6c757d;
+        }
+        
+        .control-buttons {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        
+        .btn-primary {
+            background-color: #007bff;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background-color: #0056b3;
+        }
+        
+        .btn-success {
+            background-color: #28a745;
+            color: white;
+        }
+        
+        .btn-success:hover {
+            background-color: #1e7e34;
+        }
+        
+        .btn-danger {
+            background-color: #dc3545;
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            background-color: #c82333;
+        }
+        
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background-color: #545b62;
+        }
+        
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        
+        .info-item {
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            padding: 15px;
+            text-align: center;
+        }
+        
+        .info-label {
+            font-size: 12px;
+            color: #6c757d;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 5px;
+        }
+        
+        .info-value {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .log-container {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+        }
+        
+        .log-entry {
+            margin-bottom: 5px;
+            padding: 2px 0;
+        }
+        
+        .log-time {
+            color: #6c757d;
+        }
+        
+        .log-info {
+            color: #007bff;
+        }
+        
+        .log-success {
+            color: #28a745;
+        }
+        
+        .log-warning {
+            color: #ffc107;
+        }
+        
+        .log-error {
+            color: #dc3545;
+        }
+        
+        .refresh-info {
+            text-align: center;
+            color: #6c757d;
+            font-size: 12px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔄 Formspree Sync Monitor</h1>
+        
+        <div class="status-card">
+            <h3>Service Status</h3>
+            <div id="statusDisplay">
+                <span class="status-indicator status-unknown"></span>
+                <span id="statusText">Checking status...</span>
+            </div>
+            
+            <div class="control-buttons">
+                <button class="btn btn-success" onclick="startSync()">▶️ Start Sync</button>
+                <button class="btn btn-danger" onclick="stopSync()">⏹️ Stop Sync</button>
+                <button class="btn btn-primary" onclick="manualSync()">🔄 Manual Sync</button>
+                <button class="btn btn-secondary" onclick="refreshStatus()">🔄 Refresh</button>
+            </div>
+        </div>
+        
+        <div class="info-grid" id="infoGrid">
+            <!-- Status info will be populated here -->
+        </div>
+        
+        <div class="status-card">
+            <h3>Recent Activity</h3>
+            <div class="log-container" id="logContainer">
+                <div class="log-entry">
+                    <span class="log-time">[System]</span>
+                    <span class="log-info">Monitor started. Waiting for status...</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="refresh-info">
+            Status updates automatically every 5 seconds
+        </div>
+    </div>
+
+    <script>
+        const SERVER_URL = 'http://localhost:3001';
+        let statusInterval;
+        
+        // Initialize monitor
+        document.addEventListener('DOMContentLoaded', function() {
+            refreshStatus();
+            startStatusPolling();
+        });
+        
+        // Start polling for status updates
+        function startStatusPolling() {
+            statusInterval = setInterval(refreshStatus, 5000);
+        }
+        
+        // Stop polling
+        function stopStatusPolling() {
+            if (statusInterval) {
+                clearInterval(statusInterval);
+            }
+        }
+        
+        // Refresh status from server
+        async function refreshStatus() {
+            try {
+                const response = await fetch(`${SERVER_URL}/api/formspree/status`);
+                if (response.ok) {
+                    const status = await response.json();
+                    updateStatusDisplay(status);
+                    addLogEntry('Status refreshed successfully', 'success');
+                } else {
+                    throw new Error('Failed to fetch status');
+                }
+            } catch (error) {
+                updateStatusDisplay({ isRunning: false, error: error.message });
+                addLogEntry(`Status check failed: ${error.message}`, 'error');
+            }
+        }
+        
+        // Update status display
+        function updateStatusDisplay(status) {
+            const statusIndicator = document.querySelector('.status-indicator');
+            const statusText = document.getElementById('statusText');
+            
+            if (status.error) {
+                statusIndicator.className = 'status-indicator status-unknown';
+                statusText.textContent = 'Service unavailable';
+            } else if (status.isRunning) {
+                statusIndicator.className = 'status-indicator status-running';
+                statusText.textContent = 'Sync service is running';
+            } else {
+                statusIndicator.className = 'status-indicator status-stopped';
+                statusText.textContent = 'Sync service is stopped';
+            }
+            
+            // Update info grid
+            updateInfoGrid(status);
+        }
+        
+        // Update information grid
+        function updateInfoGrid(status) {
+            const infoGrid = document.getElementById('infoGrid');
+            
+            if (status.error) {
+                infoGrid.innerHTML = `
+                    <div class="info-item">
+                        <div class="info-label">Status</div>
+                        <div class="info-value">Error</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">Message</div>
+                        <div class="info-value">${status.error}</div>
+                    </div>
+                `;
+                return;
+            }
+            
+            const lastSync = status.lastSyncTime ? new Date(status.lastSyncTime).toLocaleString() : 'Never';
+            const interval = status.syncInterval ? Math.round(status.syncInterval / 1000) : 'Unknown';
+            
+            infoGrid.innerHTML = `
+                <div class="info-item">
+                    <div class="info-label">Form ID</div>
+                    <div class="info-value">${status.formId || 'N/A'}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Sync Interval</div>
+                    <div class="info-value">${interval}s</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Last Sync</div>
+                    <div class="info-value">${lastSync}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Processed</div>
+                    <div class="info-value">${status.processedCount || 0}</div>
+                </div>
+            `;
+        }
+        
+        // Start sync service
+        async function startSync() {
+            try {
+                addLogEntry('Starting sync service...', 'info');
+                const response = await fetch(`${SERVER_URL}/api/formspree/start`, { method: 'POST' });
+                if (response.ok) {
+                    addLogEntry('Sync service started successfully', 'success');
+                    setTimeout(refreshStatus, 1000);
+                } else {
+                    throw new Error('Failed to start sync service');
+                }
+            } catch (error) {
+                addLogEntry(`Failed to start sync: ${error.message}`, 'error');
+            }
+        }
+        
+        // Stop sync service
+        async function stopSync() {
+            try {
+                addLogEntry('Stopping sync service...', 'info');
+                const response = await fetch(`${SERVER_URL}/api/formspree/stop`, { method: 'POST' });
+                if (response.ok) {
+                    addLogEntry('Sync service stopped successfully', 'success');
+                    setTimeout(refreshStatus, 1000);
+                } else {
+                    throw new Error('Failed to stop sync service');
+                }
+            } catch (error) {
+                addLogEntry(`Failed to stop sync: ${error.message}`, 'error');
+            }
+        }
+        
+        // Manual sync
+        async function manualSync() {
+            try {
+                addLogEntry('Triggering manual sync...', 'info');
+                const response = await fetch(`${SERVER_URL}/api/formspree/sync`, { method: 'POST' });
+                if (response.ok) {
+                    addLogEntry('Manual sync completed successfully', 'success');
+                    setTimeout(refreshStatus, 1000);
+                } else {
+                    throw new Error('Manual sync failed');
+                }
+            } catch (error) {
+                addLogEntry(`Manual sync failed: ${error.message}`, 'error');
+            }
+        }
+        
+        // Add log entry
+        function addLogEntry(message, type = 'info') {
+            const logContainer = document.getElementById('logContainer');
+            const timestamp = new Date().toLocaleTimeString();
+            
+            const logEntry = document.createElement('div');
+            logEntry.className = 'log-entry';
+            logEntry.innerHTML = `
+                <span class="log-time">[${timestamp}]</span>
+                <span class="log-${type}">${message}</span>
+            `;
+            
+            logContainer.appendChild(logEntry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+            
+            // Keep only last 50 entries
+            while (logContainer.children.length > 50) {
+                logContainer.removeChild(logContainer.firstChild);
+            }
+        }
+        
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', function() {
+            stopStatusPolling();
+        });
+    </script>
+</body>
+</html>

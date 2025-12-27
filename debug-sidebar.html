@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Sidebar</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .step {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 10px 0;
+        }
+        .step h3 {
+            color: #1e40af;
+            margin-top: 0;
+        }
+        .code {
+            background: #1f2937;
+            color: #f9fafb;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            margin: 10px 0;
+        }
+        .warning {
+            background: #fef3c7;
+            border: 1px solid #f59e0b;
+            color: #92400e;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+        .success {
+            background: #d1fae5;
+            border: 1px solid #10b981;
+            color: #065f46;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Debug: لماذا لا تظهر التحليلات في القائمة الجانبية؟</h1>
+        
+        <div class="warning">
+            <h3>⚠️ خطوات التحقق</h3>
+            <p>إذا كنت لا ترى "التحليلات" في القائمة الجانبية، اتبع هذه الخطوات:</p>
+        </div>
+
+        <div class="step">
+            <h3>1. تأكد من تسجيل الدخول كـ مندوب</h3>
+            <p>التحليلات تظهر فقط للمندوبين، وليس للمديرين.</p>
+            <div class="code">
+                - اذهب إلى صفحة تسجيل الدخول
+                - سجل دخولك بحساب مندوب (role: "courier")
+                - وليس بحساب مدير (role: "admin")
+            </div>
+        </div>
+
+        <div class="step">
+            <h3>2. امسح ذاكرة التخزين المؤقت</h3>
+            <p>قد تكون هناك مشكلة في التخزين المؤقت للمتصفح.</p>
+            <div class="code">
+                - اضغط Ctrl + Shift + R (أو Cmd + Shift + R على Mac)
+                - أو اذهب إلى Developer Tools > Application > Storage > Clear Storage
+                - أو افتح نافذة متصفح جديدة في وضع التصفح الخفي
+            </div>
+        </div>
+
+        <div class="step">
+            <h3>3. تحقق من وحدة التحكم (Console)</h3>
+            <p>افتح Developer Tools وتحقق من وجود أخطاء.</p>
+            <div class="code">
+                - اضغط F12 أو Ctrl + Shift + I
+                - اذهب إلى تبويب Console
+                - ابحث عن أي أخطاء (خطوط حمراء)
+                - أرسل لنا لقطة شاشة من الأخطاء إن وجدت
+            </div>
+        </div>
+
+        <div class="step">
+            <h3>4. تحقق من الشبكة (Network)</h3>
+            <p>تأكد من أن الملفات تُحمل بشكل صحيح.</p>
+            <div class="code">
+                - في Developer Tools، اذهب إلى تبويب Network
+                - امسح السجلات (Clear)
+                - حدث الصفحة (F5)
+                - تحقق من أن جميع الملفات تُحمل بنجاح (200 status)
+            </div>
+        </div>
+
+        <div class="step">
+            <h3>5. تحقق من المسار</h3>
+            <p>تأكد من أن المسار صحيح في المتصفح.</p>
+            <div class="code">
+                - يجب أن تكون في: http://localhost:5174/courier
+                - وليس في: http://localhost:5174/admin
+                - إذا كنت في /admin، اذهب إلى /courier
+            </div>
+        </div>
+
+        <div class="success">
+            <h3>✅ الحلول المقترحة</h3>
+            <ol>
+                <li><strong>تأكد من تسجيل الدخول كمندوب</strong></li>
+                <li><strong>امسح ذاكرة التخزين المؤقت</strong></li>
+                <li><strong>حدث الصفحة (Ctrl + F5)</strong></li>
+                <li><strong>تحقق من وحدة التحكم للأخطاء</strong></li>
+                <li><strong>تأكد من أنك في /courier وليس /admin</strong></li>
+            </ol>
+        </div>
+
+        <div class="step">
+            <h3>🔧 إذا استمرت المشكلة</h3>
+            <p>إذا لم تنجح الحلول أعلاه، جرب هذا:</p>
+            <div class="code">
+                1. أوقف الخادم (Ctrl + C في Terminal)
+                2. احذف مجلد node_modules
+                3. شغل: npm install
+                4. شغل: npm run dev
+                5. امسح ذاكرة التخزين المؤقت
+                6. حدث الصفحة
+            </div>
+        </div>
+
+        <div class="step">
+            <h3>📱 اختبار سريع</h3>
+            <p>جرب الوصول مباشرة لصفحة التحليلات:</p>
+            <div class="code">
+                http://localhost:5174/courier/analytics
+            </div>
+            <p>إذا عمل هذا الرابط، فالمشكلة في القائمة الجانبية فقط.</p>
+        </div>
+    </div>
+</body>
+</html>

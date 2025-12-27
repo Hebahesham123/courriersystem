@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Request Form</title>
+    
+    <!-- Supabase Configuration -->
+    <!-- Load configuration from supabase-config.js -->
+    <!-- IMPORTANT: Update supabase-config.js with your NEW database credentials -->
+    <script src="supabase-config.js"></script>
+    
+    <!-- Supabase Client Library -->
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+
+        .container {
+            max-width: 500px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 24px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        input, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: #007bff;
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        .required {
+            color: red;
+        }
+
+        .file-upload {
+            border: 1px solid #ddd;
+            padding: 15px;
+            text-align: center;
+            background: #f9f9f9;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .file-upload:hover {
+            background: #f0f0f0;
+        }
+
+        .file-upload input[type="file"] {
+            display: none;
+        }
+
+        .file-info {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .file-preview {
+            margin-top: 10px;
+            padding: 10px;
+            background: #e8f5e8;
+            border: 1px solid #c3e6c3;
+            border-radius: 4px;
+            display: none;
+        }
+
+        .file-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+
+        .remove-btn {
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .remove-btn:hover {
+            background: #ff5252;
+        }
+
+        .submit-btn {
+            width: 100%;
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 15px;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+
+        .submit-btn:hover {
+            background: #0056b3;
+        }
+
+        .submit-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #007bff;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .message {
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 20px;
+            text-align: center;
+        }
+
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .order-id-item {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+            align-items: center;
+        }
+
+        .order-id-input {
+            flex: 1;
+        }
+
+        .remove-order-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            white-space: nowrap;
+        }
+
+        .remove-order-btn:hover {
+            background: #c82333;
+        }
+
+        .add-order-btn {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+
+        .add-order-btn:hover {
+            background: #218838;
+        }
+
+        .submit-btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            width: 100%;
+            margin-top: 20px;
+        }
+
+        .submit-btn:hover {
+            background: #0056b3;
+        }
+
+        .submit-btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+            color: #007bff;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #007bff;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .message {
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 20px;
+            text-align: center;
+        }
+
+        .message.success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+
+        .message.error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+
+        @media (max-width: 600px) {
+            body {
+                padding: 10px;
+            }
+            
+            .container {
+                padding: 20px;
+            }
+            
+            h1 {
+                font-size: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Request Form</h1>
+        
+
+        
+        <form id="requestForm">
+            <div class="form-group">
+                <label for="name">Full Name <span class="required">*</span></label>
+                <input type="text" id="name" name="name" required placeholder="Enter your full name">
+            </div>
+
+            <div class="form-group">
+                <label for="email">Email <span class="required">*</span></label>
+                <input type="email" id="email" name="email" required placeholder="Enter your email">
+            </div>
+
+            <div class="form-group">
+                <label for="phone">Phone <span class="required">*</span></label>
+                <input type="tel" id="phone" name="phone" required placeholder="Enter your phone number">
+            </div>
+
+            <div class="form-group">
+                <label for="comment">Request Details <span class="required">*</span></label>
+                <textarea id="comment" name="comment" required placeholder="Describe what you need..."></textarea>
+            </div>
+
+            <div class="form-group">
+                <label>Order IDs (Optional)</label>
+                <div id="orderIdsContainer">
+                    <div class="order-id-item">
+                        <input type="text" class="order-id-input" placeholder="Enter Shopify order ID" name="orderIds[]">
+                        <button type="button" class="remove-order-btn" onclick="removeOrderId(this)" style="display: none;">Remove</button>
+                    </div>
+                </div>
+                <button type="button" class="add-order-btn" onclick="addOrderId()">+ Add Another Order ID</button>
+            </div>
+
+            <div class="form-group">
+                <label>Photo (Optional)</label>
+                <div class="file-upload" onclick="document.getElementById('image').click()">
+                    <div class="file-info">Click to add photo</div>
+                    <div class="file-info">Max size: 5MB</div>
+                    <input type="file" id="image" accept="image/*" onchange="handleImageUpload(this)">
+                </div>
+                <div id="imagePreview" class="file-preview"></div>
+            </div>
+
+            <div class="form-group">
+                <label>Video (Optional)</label>
+                <div class="file-upload" onclick="document.getElementById('video').click()">
+                    <div class="file-info">Click to add video</div>
+                    <div class="file-info">Max size: 50MB</div>
+                    <input type="file" id="video" accept="video/*" onchange="handleVideoUpload(this)">
+                </div>
+                <div id="videoPreview" class="file-preview"></div>
+            </div>
+
+            <button type="submit" class="submit-btn" id="submitBtn">Submit Request</button>
+        </form>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <div>Sending request...</div>
+        </div>
+
+        <div class="message success" id="successMessage" style="display: none;">
+            <strong>Success!</strong> Your request has been submitted.
+        </div>
+
+        <div class="message error" id="errorMessage" style="display: none;">
+            <strong>Error!</strong> <span id="errorText">Something went wrong.</span>
+        </div>
+    </div>
+
+    <script>
+        // Check if Supabase config is loaded
+        function checkSupabaseConfig() {
+            if (typeof window.SUPABASE_CONFIG === 'undefined' || !window.SUPABASE_CONFIG.url || !window.SUPABASE_CONFIG.anonKey) {
+                throw new Error('Supabase configuration is missing or incomplete. Please check the configuration.');
+            }
+            return true;
+        }
+
+        // Initialize Supabase client
+        let supabase;
+        function initializeSupabase() {
+            try {
+                checkSupabaseConfig();
+                supabase = window.supabase.createClient(
+                    window.SUPABASE_CONFIG.url,
+                    window.SUPABASE_CONFIG.anonKey
+                );
+                console.log('Supabase client initialized successfully');
+                return true;
+            } catch (error) {
+                console.error('Failed to initialize Supabase client:', error);
+                return false;
+            }
+        }
+
+        function handleImageUpload(input) {
+            const file = input.files[0];
+            if (file) {
+                showFilePreview('imagePreview', file, 'image');
+            }
+        }
+
+        function handleVideoUpload(input) {
+            const file = input.files[0];
+            if (file) {
+                showFilePreview('videoPreview', file, 'video');
+            }
+        }
+
+        function showFilePreview(previewId, file, type) {
+            const preview = document.getElementById(previewId);
+            const size = (file.size / 1024 / 1024).toFixed(2);
+            
+            preview.innerHTML = `
+                <div class="file-item">
+                    <div>${type === 'image' ? '📷' : '🎥'} ${file.name} (${size} MB)</div>
+                    <button type="button" class="remove-btn" onclick="removeFile('${previewId}', '${type}')">
+                        Remove
+                    </button>
+                </div>
+            `;
+            preview.style.display = 'block';
+        }
+
+        function removeFile(previewId, type) {
+            document.getElementById(previewId).style.display = 'none';
+            document.getElementById(type).value = '';
+        }
+
+        function addOrderId() {
+            const container = document.getElementById('orderIdsContainer');
+            const newItem = document.createElement('div');
+            newItem.className = 'order-id-item';
+            newItem.innerHTML = `
+                <input type="text" class="order-id-input" placeholder="Enter Shopify order ID" name="orderIds[]">
+                <button type="button" class="remove-order-btn" onclick="removeOrderId(this)">Remove</button>
+            `;
+            container.appendChild(newItem);
+            
+            // Show remove button for the first item if there are multiple
+            const items = container.querySelectorAll('.order-id-item');
+            if (items.length > 1) {
+                items.forEach(item => {
+                    const removeBtn = item.querySelector('.remove-order-btn');
+                    if (removeBtn) removeBtn.style.display = 'inline-block';
+                });
+            }
+        }
+
+        function removeOrderId(button) {
+            const container = document.getElementById('orderIdsContainer');
+            const item = button.parentElement;
+            container.removeChild(item);
+            
+            // Hide remove button for the first item if only one remains
+            const items = container.querySelectorAll('.order-id-item');
+            if (items.length === 1) {
+                const removeBtn = items[0].querySelector('.remove-order-btn');
+                if (removeBtn) removeBtn.style.display = 'none';
+            }
+        }
+
+        // Form submission
+        document.getElementById('requestForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            try {
+                checkSupabaseConfig();
+                
+                const submitBtn = document.getElementById('submitBtn');
+                const loading = document.getElementById('loading');
+                const successMessage = document.getElementById('successMessage');
+                const errorMessage = document.getElementById('errorMessage');
+                
+                // Show loading state
+                submitBtn.disabled = true;
+                loading.style.display = 'block';
+                successMessage.style.display = 'none';
+                errorMessage.style.display = 'none';
+                
+                // Get form data
+                const formData = new FormData(this);
+                const orderIds = [];
+                
+                // Collect order IDs
+                document.querySelectorAll('.order-id-input').forEach(input => {
+                    if (input.value.trim()) {
+                        orderIds.push(input.value.trim());
+                    }
+                });
+                
+                console.log('Collected order IDs:', orderIds);
+                console.log('Order IDs count:', orderIds.length);
+                
+                // Upload files first if they exist
+                let imageUrl = null;
+                let videoUrl = null;
+                
+                const imageFile = document.getElementById('image').files[0];
+                const videoFile = document.getElementById('video').files[0];
+                
+                if (imageFile) {
+                    console.log('Uploading image file:', imageFile.name);
+                    imageUrl = await uploadFileToSupabase(imageFile, 'image');
+                    if (!imageUrl) {
+                        throw new Error('Failed to upload image file');
+                    }
+                }
+                
+                if (videoFile) {
+                    console.log('Uploading video file:', videoFile.name);
+                    videoUrl = await uploadFileToSupabase(videoFile, 'video');
+                    if (!videoUrl) {
+                        throw new Error('Failed to upload video file');
+                    }
+                }
+                
+                // Prepare request data
+                const requestData = {
+                    name: formData.get('name'),
+                    email: formData.get('email'),
+                    phone: formData.get('phone'),
+                    comment: formData.get('comment'),
+                    order_id: orderIds.length > 0 ? orderIds.join(', ') : null,
+                    image_url: imageUrl,
+                    video_url: videoUrl,
+                    created_by: 'user:shopify-form',
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                };
+                
+                console.log('Submitting request data:', requestData);
+                console.log('Order ID field value:', requestData.order_id);
+                console.log('Image URL:', requestData.image_url);
+                console.log('Video URL:', requestData.video_url);
+                console.log('Supabase URL:', window.SUPABASE_CONFIG.url);
+                console.log('Full request URL:', `${window.SUPABASE_CONFIG.url}/rest/v1/requests`);
+
+                const response = await fetch(`${window.SUPABASE_CONFIG.url}/rest/v1/requests`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'apikey': window.SUPABASE_CONFIG.anonKey,
+                        'Authorization': `Bearer ${window.SUPABASE_CONFIG.anonKey}`
+                    },
+                    body: JSON.stringify(requestData)
+                });
+
+                if (!response.ok) {
+                    let errorData = '';
+                    try {
+                        errorData = await response.text();
+                    } catch (e) {
+                        errorData = 'No response body';
+                    }
+                    
+                    console.error('Response error:', response.status, errorData);
+                    console.error('Request data that was sent:', requestData);
+                    
+                    // Try to parse error details if it's JSON
+                    let errorMessage = `Failed to submit request: ${response.status} ${response.statusText}`;
+                    
+                    if (errorData && errorData.trim() !== '') {
+                        try {
+                            const errorJson = JSON.parse(errorData);
+                            if (errorJson.message) {
+                                errorMessage += ` - ${errorJson.message}`;
+                            }
+                            if (errorJson.details) {
+                                errorMessage += ` - ${errorJson.details}`;
+                            }
+                        } catch (e) {
+                            // If not JSON, use the raw error text
+                            errorMessage += ` - ${errorData}`;
+                        }
+                    }
+                    
+                    throw new Error(errorMessage);
+                }
+
+                // Check if response has content before trying to parse JSON
+                const responseText = await response.text();
+                let result = null;
+                
+                if (responseText && responseText.trim() !== '') {
+                    try {
+                        result = JSON.parse(responseText);
+                        console.log('Request submitted successfully:', result);
+                        console.log('Response data structure:', JSON.stringify(result, null, 2));
+                        
+                        // Check if order_id was saved correctly
+                        if (result.order_id) {
+                            console.log('✅ Order ID saved successfully:', result.order_id);
+                        } else {
+                            console.log('⚠️ Order ID not found in response');
+                        }
+                        
+                        // Check if files were saved correctly
+                        if (result.image_url) {
+                            console.log('✅ Image URL saved successfully:', result.image_url);
+                        }
+                        if (result.video_url) {
+                            console.log('✅ Video URL saved successfully:', result.video_url);
+                        }
+                    } catch (e) {
+                        console.log('Response received but not JSON:', responseText);
+                        result = { message: 'Request submitted successfully' };
+                    }
+                } else {
+                    console.log('Empty response received - request may have been submitted');
+                    result = { message: 'Request submitted successfully' };
+                }
+
+                document.getElementById('successMessage').style.display = 'block';
+                
+                // Verify the data was saved by checking the database
+                await verifyDataSaved(requestData);
+                
+                this.reset();
+                
+                // Clear file previews
+                document.getElementById('imagePreview').style.display = 'none';
+                document.getElementById('videoPreview').style.display = 'none';
+                
+                // Reset order IDs
+                const orderContainer = document.getElementById('orderIdsContainer');
+                orderContainer.innerHTML = `
+                    <div class="order-id-item">
+                        <input type="text" class="order-id-input" placeholder="Enter Shopify order ID" name="orderIds[]">
+                        <button type="button" class="remove-order-btn" onclick="removeOrderId(this)" style="display: none;">Remove</button>
+                    </div>
+                `;
+                
+            } catch (error) {
+                console.error('Error submitting request:', error);
+                document.getElementById('errorText').textContent = error.message;
+                document.getElementById('errorMessage').style.display = 'block';
+            } finally {
+                // Hide loading state
+                document.getElementById('submitBtn').disabled = false;
+                document.getElementById('loading').style.display = 'none';
+            }
+        });
+
+        // Function to upload file to Supabase storage
+        async function uploadFileToSupabase(file, type) {
+            try {
+                // Validate file size
+                const maxSize = type === 'image' ? 5 * 1024 * 1024 : 50 * 1024 * 1024; // 5MB for images, 50MB for videos
+                if (file.size > maxSize) {
+                    throw new Error(`${type === 'image' ? 'Image' : 'Video'} file size must be less than ${type === 'image' ? '5MB' : '50MB'}`);
+                }
+                
+                // Validate file type
+                const allowedImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+                const allowedVideoTypes = ['video/mp4', 'video/webm', 'video/ogg', 'video/avi'];
+                
+                if (type === 'image' && !allowedImageTypes.includes(file.type)) {
+                    throw new Error('Please select a valid image file (JPEG, PNG, GIF, or WebP)');
+                }
+                
+                if (type === 'video' && !allowedVideoTypes.includes(file.type)) {
+                    throw new Error('Please select a valid video file (MP4, WebM, OGG, or AVI)');
+                }
+                
+                // Create file path
+                const fileExt = file.name.split('.').pop();
+                const fileName = `${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
+                const filePath = `requests/${type}s/${fileName}`;
+                
+                console.log('Uploading file to path:', filePath);
+                
+                // Upload file to Supabase storage
+                const { data, error } = await supabase.storage
+                    .from('uploads')
+                    .upload(filePath, file);
+                
+                if (error) {
+                    console.error('Storage upload error:', error);
+                    throw new Error(`Failed to upload ${type}: ${error.message}`);
+                }
+                
+                // Get public URL
+                const { data: { publicUrl } } = supabase.storage
+                    .from('uploads')
+                    .getPublicUrl(filePath);
+                
+                console.log(`${type} uploaded successfully:`, publicUrl);
+                return publicUrl;
+                
+            } catch (error) {
+                console.error(`Error uploading ${type}:`, error);
+                throw error;
+            }
+        }
+
+        // Verify data was saved to database
+        async function verifyDataSaved(requestData) {
+            try {
+                console.log('🔍 Verifying data was saved to database...');
+                
+                // Wait a moment for the database to process
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                // Query the database to check if our data was saved
+                const response = await fetch(`${window.SUPABASE_CONFIG.url}/rest/v1/requests?select=id,name,email,order_id,created_at&order=created_at.desc&limit=1`, {
+                    method: 'GET',
+                    headers: {
+                        'apikey': window.SUPABASE_CONFIG.anonKey,
+                        'Authorization': `Bearer ${window.SUPABASE_CONFIG.anonKey}`
+                    }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('📊 Latest database record:', data);
+                    
+                    if (data && data.length > 0) {
+                        const latestRecord = data[0];
+                        console.log('📝 Latest record details:', {
+                            id: latestRecord.id,
+                            name: latestRecord.name,
+                            email: latestRecord.email,
+                            order_id: latestRecord.order_id,
+                            created_at: latestRecord.created_at
+                        });
+                        
+                        // Check if order_id matches what we sent
+                        if (latestRecord.order_id === requestData.order_id) {
+                            console.log('✅ Order ID verified in database:', latestRecord.order_id);
+                        } else {
+                            console.log('❌ Order ID mismatch!');
+                            console.log('   Sent:', requestData.order_id);
+                            console.log('   Saved:', latestRecord.order_id);
+                        }
+                    }
+                } else {
+                    console.error('❌ Failed to verify data:', response.status);
+                }
+                
+            } catch (error) {
+                console.error('❌ Error verifying data:', error);
+            }
+        }
+
+        // Initialize the form
+        document.addEventListener('DOMContentLoaded', function() {
+            // Check if Supabase config is available
+            try {
+                checkSupabaseConfig();
+                initializeSupabase();
+                console.log('Supabase configuration loaded successfully');
+            } catch (error) {
+                console.error('Configuration error:', error);
+            }
+        });
+    </script>
+</body>
+</html>

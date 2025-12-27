@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CourierPro - Delivery Management System</title>
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+
+    <!-- Preconnect for faster font loading -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+    <!-- Fonts - Added Noto Sans Arabic as universal fallback for Arabic -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Cairo:wght@300;400;500;600;700&family=Noto+Sans+Arabic:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+      /* Force Arabic fonts for all elements including native selects */
+      html[dir="rtl"] *,
+      html[dir="rtl"] select,
+      html[dir="rtl"] option,
+      html[dir="rtl"] input,
+      html[dir="rtl"] textarea {
+        font-family: 'Cairo', 'Noto Sans Arabic', 'Segoe UI', 'Tahoma', 'Arial Unicode MS', 'Geeza Pro', 'Traditional Arabic', system-ui, sans-serif !important;
+        direction: rtl;
+        text-align: right;
+      }
+
+      html[dir="ltr"] *,
+      html[dir="ltr"] select,
+      html[dir="ltr"] option {
+        font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, Tahoma, Arial, sans-serif;
+        direction: ltr;
+        text-align: left;
+      }
+      
+      /* Mobile-specific fixes for Arabic */
+      @supports (-webkit-touch-callout: none) {
+        /* iOS specific */
+        html[dir="rtl"] select,
+        html[dir="rtl"] option {
+          font-family: 'Geeza Pro', 'Cairo', 'Noto Sans Arabic', system-ui, sans-serif !important;
+        }
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow-x: auto;
+        background-color: #f9fafb;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+
+      /* Smooth page load animation */
+      #root {
+        opacity: 0;
+        animation: fadeInPage 0.4s ease-out 0.1s forwards;
+      }
+
+      @keyframes fadeInPage {
+        from { opacity: 0; transform: translateY(5px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+
+      /* Loading spinner */
+      .app-loader {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+        z-index: 9999;
+        transition: opacity 0.3s ease, visibility 0.3s ease;
+      }
+
+      .app-loader.hidden {
+        opacity: 0;
+        visibility: hidden;
+      }
+
+      .loader-spinner {
+        width: 50px;
+        height: 50px;
+        border: 4px solid rgba(255, 255, 255, 0.2);
+        border-top-color: white;
+        border-radius: 50%;
+        animation: loaderSpin 0.8s linear infinite;
+      }
+
+      @keyframes loaderSpin {
+        to { transform: rotate(360deg); }
+      }
+
+      @media (max-width: 768px) {
+        .sidebar {
+          position: fixed;
+          top: 0;
+          bottom: 0;
+          z-index: 50;
+          left: 0;
+        }
+
+        [dir="rtl"] .sidebar {
+          right: 0;
+          left: auto;
+        }
+      }
+
+      /* Smooth scrolling */
+      * {
+        scroll-behavior: smooth;
+      }
+
+      /* Better touch experience */
+      * {
+        -webkit-tap-highlight-color: transparent;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Loading Screen -->
+    <div id="app-loader" class="app-loader">
+      <div class="loader-spinner"></div>
+    </div>
+    <div id="root" class="min-h-screen w-full overflow-x-auto bg-gray-50"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

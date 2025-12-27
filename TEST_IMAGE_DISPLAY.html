@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Image Display</title>
+</head>
+<body>
+    <h1>Test Shopify Image URLs</h1>
+    <div id="images"></div>
+    
+    <script>
+        // Test image URLs from your logs
+        const testImages = [
+            'https://cdn.shopify.com/s/files/1/0484/5489/3719/files/celine-hippo-drawstring-cuile-triomphe-822660.webp?v=1721268684',
+            'https://cdn.shopify.com/s/files/1/0484/5489/3719/files/dior-slingback-pump-black-technical-fabric-253361.jpg?v=1729069467',
+            'https://cdn.shopify.com/s/files/1/0484/5489/3719/files/chanel-22-mini-handbag-shiny-calfskin-gold-tone-metal-black-407463.webp?v=1746058064'
+        ];
+        
+        const container = document.getElementById('images');
+        testImages.forEach((url, index) => {
+            const div = document.createElement('div');
+            div.innerHTML = `
+                <h3>Image ${index + 1}</h3>
+                <p>URL: ${url}</p>
+                <img src="${url}" alt="Test ${index + 1}" style="max-width: 200px; border: 1px solid #ccc; margin: 10px;" 
+                     onerror="this.style.border='2px solid red'; this.alt='FAILED TO LOAD: ' + this.src;"
+                     onload="this.style.border='2px solid green';">
+            `;
+            container.appendChild(div);
+        });
+    </script>
+</body>
+</html>
+
