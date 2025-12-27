@@ -2609,7 +2609,10 @@ const deleteDuplicatedOrder = async (order: Order) => {
                                           ? 'cursor-pointer hover:border-blue-400 hover:shadow-md transition-all' 
                                           : ''
                                       }`}
-                                      onClick={() => {
+                                      onClick={(e) => {
+                                        // Stop card click from opening the order modal; just show the image viewer
+                                        e.preventDefault()
+                                        e.stopPropagation()
                                         if (itemImage && itemImage !== 'data:image/svg+xml' && !itemImage.includes('placeholder')) {
                                           setSelectedImage(itemImage)
                                           setImageModalOpen(true)
@@ -3462,9 +3465,10 @@ const deleteDuplicatedOrder = async (order: Order) => {
       </div>
 
       {/* Image Modal - Large View */}
-      {imageModalOpen && selectedImage && (
+      {imageModalOpen && selectedImage && typeof document !== 'undefined' && createPortal(
         <div 
-          className="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 bg-black bg-opacity-90 z-[120] flex items-center justify-center p-4"
+          style={{ zIndex: 120 }}
           onClick={() => {
             setImageModalOpen(false)
             setSelectedImage(null)
@@ -3496,7 +3500,8 @@ const deleteDuplicatedOrder = async (order: Order) => {
               }}
             />
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   )
