@@ -1319,8 +1319,10 @@ const Summary: React.FC = () => {
   const calculateAccountingMetrics = useCallback(() => {
     // Using refreshKey to ensure recalculation on real-time updates
     console.log('Calculating metrics, refreshKey:', refreshKey, 'allOrders:', allOrders.length)
-    const filteredOrders = selectedCourier && selectedCourier.courierId !== 'total'
-      ? allOrders.filter((o) => o.assigned_courier_id === selectedCourier.courierId)
+    const filteredOrders = selectedCourier
+      ? (selectedCourier.courierId === 'total'
+          ? allOrders.filter((o) => o.assigned_courier_id !== null)
+          : allOrders.filter((o) => o.assigned_courier_id === selectedCourier.courierId))
       : allOrders
 
     // Overall Totals - Calculate as sum of all status counts to ensure accuracy
@@ -3250,7 +3252,7 @@ const Summary: React.FC = () => {
 
   // For courier view, show their detailed accounting dashboard
   const metrics = calculateAccountingMetrics()
-  const belongsToCourier = (o: Order) => currentCourier.courierId === 'total' || o.assigned_courier_id === currentCourier.courierId;
+  const belongsToCourier = (o: Order) => currentCourier.courierId === 'total' ? o.assigned_courier_id !== null : o.assigned_courier_id === currentCourier.courierId;
 
   return (
     <div className="min-h-screen bg-gray-50" dir="rtl">
