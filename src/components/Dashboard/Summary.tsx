@@ -466,6 +466,16 @@ const Summary: React.FC = () => {
     }
   }, [user?.id, user?.role])
 
+  useEffect(() => {
+    document.documentElement.dir = "rtl"
+    document.documentElement.lang = "ar"
+    return () => {
+      // Optional: reset on unmount if needed
+      // document.documentElement.dir = "ltr"
+      // document.documentElement.lang = "en"
+    }
+  }, [])
+
   const fetchSummary = useCallback(async () => {
     if (!user?.id) return
     setLoading(true)
@@ -1615,7 +1625,7 @@ const Summary: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50" dir="rtl">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50" dir="rtl" lang="ar">
         <div className="text-center space-y-4">
           <div
             className={`border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto ${
@@ -1630,7 +1640,7 @@ const Summary: React.FC = () => {
 
   if (!user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50" dir="rtl">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50" dir="rtl" lang="ar">
         <div className="text-center space-y-4">
           <div
             className={`bg-red-100 rounded-full flex items-center justify-center mx-auto ${
@@ -1650,7 +1660,7 @@ const Summary: React.FC = () => {
   // For admin users, show analytics or courier selection
   if (user.role !== "courier" && !selectedCourier) {
     return (
-      <div className="min-h-screen bg-gray-50" dir="rtl">
+      <div className="min-h-screen bg-gray-50" dir="rtl" lang="ar">
         {/* Header */}
         <div className="bg-white border-b border-gray-200 sticky top-0 z-10 shadow-sm">
           <div className="max-w-7xl mx-auto px-4 py-3">
@@ -3259,7 +3269,7 @@ const Summary: React.FC = () => {
   const belongsToCourier = (o: Order) => currentCourier.courierId === 'total' ? o.assigned_courier_id !== null : o.assigned_courier_id === currentCourier.courierId;
 
   return (
-    <div className="min-h-screen bg-gray-50" dir="rtl">
+    <div className="min-h-screen bg-gray-50" dir="rtl" lang="ar">
       {/* Header - Mobile Optimized for Couriers */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className={`max-w-7xl mx-auto ${isCourier ? "px-3 py-3" : "px-6 py-6"}`}>

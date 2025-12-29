@@ -653,6 +653,11 @@ const OrdersList: React.FC = () => {
 
   const courierVisibleStatuses = ["assigned", "partial", "delivered", "canceled", "return", "hand_to_hand", "receiving_part", "pending"]
 
+  useEffect(() => {
+    document.documentElement.dir = "rtl"
+    document.documentElement.lang = "ar"
+  }, [])
+
   const fetchOrders = useCallback(async (showRefreshing = false, showFullLoading = true) => {
     if (!user?.id) {
       console.error("User not authenticated")
@@ -1801,7 +1806,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
           transform: none !important;
         }
       `}</style>
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100" dir="rtl">
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100" dir="rtl" lang="ar">
 
       {/* Header Section - Mobile Optimized */}
       <div className="bg-gradient-to-br from-blue-600 to-blue-700 border-b border-blue-800 z-10 shadow-lg">

@@ -214,6 +214,16 @@ input:focus, select:focus, textarea:focus {
   }
 }
 
+/* ============================================
+   ARABIC FONT & RTL OPTIMIZATIONS
+   ============================================ */
+
+/* Global RTL font fix - Force Cairo or system Arabic fonts for all elements */
+[dir="rtl"], [dir="rtl"] * {
+  font-family: 'Cairo', 'Noto Sans Arabic', 'Geeza Pro', 'Traditional Arabic', 'Arial Unicode MS', 'Tahoma', system-ui, sans-serif !important;
+  font-feature-settings: "rlig" 1, "calt" 1, "liga" 1; /* Ensure ligatures are enabled */
+}
+
 /* Force Arabic fonts on all form elements for mobile compatibility */
 [dir="rtl"] select,
 [dir="rtl"] option,
