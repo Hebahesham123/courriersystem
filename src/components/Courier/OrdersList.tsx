@@ -673,39 +673,60 @@ const OrdersList: React.FC = () => {
       const endDate = new Date(selectedDate)
       endDate.setHours(23, 59, 59, 999)
 
-      // Get orders assigned to this courier within the date window
-      const { data: assignedOrders, error: assignedError } = await supabase
+      // Get orders assigned to this courier within the date window (using assigned_at as primary filter)
+      const { data: assignedAtOrders, error: assignedError } = await supabase
         .from("orders")
         .select("*")
         .eq("assigned_courier_id", user.id)
         .in("status", courierVisibleStatuses)
-        .order("assigned_at", { ascending: false })
-        .order("updated_at", { ascending: false })
-        .order("created_at", { ascending: false })
+        .gte("assigned_at", startDate.toISOString())
+        .lte("assigned_at", endDate.toISOString())
 
-      if (assignedError) {
-        console.error("Error fetching assigned orders:", assignedError)
-        throw new Error(`خطأ في جلب الطلبات المخصصة: ${assignedError.message}`)
+      // Legacy fallback: some old orders don't have assigned_at.
+      // For those, rely on their creation date
+      const { data: createdAtLegacyOrders, error: legacyError } = await supabase
+        .from("orders")
+        .select("*")
+        .eq("assigned_courier_id", user.id)
+        .in("status", courierVisibleStatuses)
+        .is("assigned_at", null)
+        .gte("created_at", startDate.toISOString())
+        .lte("created_at", endDate.toISOString())
+
+      if (assignedError || legacyError) {
+        const err = assignedError || legacyError
+        console.error("Error fetching courier orders:", err)
+        throw new Error(`خطأ في جلب الطلبات: ${err?.message}`)
+      }
+
+      // Merge both results, removing duplicates
+      const orderMap = new Map<string, any>()
+      for (const order of (assignedAtOrders || [])) {
+        orderMap.set(order.id, order)
+      }
+      for (const order of (createdAtLegacyOrders || [])) {
+        if (!orderMap.has(order.id)) {
+          orderMap.set(order.id, order)
+        }
       }
 
       // Then, get unassigned orders with specific payment methods (cashless) that are assignable
+      // (Keep this logic as is, but it also uses created_at)
       const { data: unassignedOrders, error: unassignedError } = await supabase
         .from("orders")
         .select("*")
         .is("assigned_courier_id", null)
         .in("payment_method", ["paymob", "valu"])
-        .eq("status", "assigned") // only assigned and not yet claimed
+        .eq("status", "assigned")
         .gte("created_at", startDate.toISOString())
         .lte("created_at", endDate.toISOString())
 
       if (unassignedError) {
-        console.error("Error fetching unassigned orders:", unassignedError)
-        // Don't throw for unassigned orders - just log and continue
-        console.warn("Could not fetch unassigned orders, continuing with assigned orders only")
+        console.warn("Could not fetch unassigned orders:", unassignedError)
       }
 
-      // Combine both results
-      const allOrders = [...(assignedOrders || []), ...(unassignedOrders || [])]
+      // ... rest of the logic
+      const allOrders = [...Array.from(orderMap.values()), ...(unassignedOrders || [])]
 
       // Fetch order_proofs and order_items separately for all order IDs
       if (allOrders.length > 0) {
@@ -769,20 +790,23 @@ const OrdersList: React.FC = () => {
         }
       }
 
-      // Filter to date window using assigned_at OR updated_at OR created_at
+      // Filter to date window using primarily assigned_at
       const withinDay = (d: Date) => d >= startDate && d <= endDate
       const assignedOnly = allOrders.filter((o: Order) => {
-        const a = o.assigned_at ? new Date(o.assigned_at) : null
-        const u = o.updated_at ? new Date(o.updated_at) : null
-        const c = o.created_at ? new Date(o.created_at) : null
-        return (
-          courierVisibleStatuses.includes(o.status) &&
-          (
-            (a && withinDay(a)) ||
-            (u && withinDay(u)) ||
-            (c && withinDay(c))
-          )
-        )
+        // Only include visible statuses
+        if (!courierVisibleStatuses.includes(o.status)) return false
+
+        // If assigned_at exists, use it as the definitive date for matching
+        if (o.assigned_at) {
+          return withinDay(new Date(o.assigned_at))
+        }
+        
+        // Legacy fallback: for orders without assigned_at, use created_at
+        if (o.created_at) {
+          return withinDay(new Date(o.created_at))
+        }
+        
+        return false
       })
 
       // Sort by order number (numeric part of order_id)

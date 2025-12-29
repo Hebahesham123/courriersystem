@@ -551,28 +551,11 @@ const Summary: React.FC = () => {
 
         if (selectedCourier) {
           // If a courier is selected, fetch all their orders for the date range
-          console.log('Fetching orders for selection:', selectedCourier.courierName)
+          console.log('Fetching orders for selection (matching assigned date):', selectedCourier.courierName)
           
           const isTotal = selectedCourier.courierId === 'total'
           
-          // Fetch by updated_at
-          let queryUpdate = supabase
-            .from("orders")
-            .select(`
-              *,
-              order_proofs (id, image_data),
-              assigned_courier:users!orders_assigned_courier_id_fkey(id, name, email)
-            `)
-            .gte("updated_at", startDateISO)
-            .lte("updated_at", endDateISO)
-
-          if (!isTotal) {
-            queryUpdate = queryUpdate.or(`assigned_courier_id.eq.${selectedCourier.courierId},original_courier_id.eq.${selectedCourier.courierId}`)
-          }
-          
-          const { data: updatedAtData, error: updatedAtError } = await queryUpdate
-          
-          // Also fetch by assigned_at
+          // Fetch by assigned_at (Primary)
           let queryAssign = supabase
             .from("orders")
             .select(`
@@ -580,18 +563,39 @@ const Summary: React.FC = () => {
               order_proofs (id, image_data),
               assigned_courier:users!orders_assigned_courier_id_fkey(id, name, email)
             `)
-            .not("assigned_at", "is", null)
             .gte("assigned_at", startDateISO)
             .lte("assigned_at", endDateISO)
 
           if (!isTotal) {
             queryAssign = queryAssign.or(`assigned_courier_id.eq.${selectedCourier.courierId},original_courier_id.eq.${selectedCourier.courierId}`)
+          } else {
+            queryAssign = queryAssign.not("assigned_courier_id", "is", null)
           }
           
-          const { data: assignedAtData } = await queryAssign
+          const { data: assignedAtData, error: assignedError } = await queryAssign
           
-          if (updatedAtError) {
-            console.error('Error fetching selected courier orders:', updatedAtError)
+          // Legacy fallback: some old orders don't have assigned_at.
+          let queryLegacy = supabase
+            .from("orders")
+            .select(`
+              *,
+              order_proofs (id, image_data),
+              assigned_courier:users!orders_assigned_courier_id_fkey(id, name, email)
+            `)
+            .is("assigned_at", null)
+            .gte("created_at", startDateISO)
+            .lte("created_at", endDateISO)
+
+          if (!isTotal) {
+            queryLegacy = queryLegacy.or(`assigned_courier_id.eq.${selectedCourier.courierId},original_courier_id.eq.${selectedCourier.courierId}`)
+          } else {
+            queryLegacy = queryLegacy.not("assigned_courier_id", "is", null)
+          }
+          
+          const { data: legacyData, error: legacyError } = await queryLegacy
+          
+          if (assignedError || legacyError) {
+            console.error('Error fetching admin summary orders:', assignedError || legacyError)
             orders = []
           } else {
             // Merge both results, removing duplicates
@@ -599,7 +603,7 @@ const Summary: React.FC = () => {
             for (const order of (assignedAtData || [])) {
               orderMap.set(order.id, order)
             }
-            for (const order of (updatedAtData || [])) {
+            for (const order of (legacyData || [])) {
               if (!orderMap.has(order.id)) {
                 orderMap.set(order.id, order)
               }
@@ -613,46 +617,47 @@ const Summary: React.FC = () => {
             })) as Order[]
           }
           
-          console.log(`Found ${orders.length} orders for selected courier in date range`)
+          console.log(`Found ${orders.length} orders for admin selection in date range (by assigned date)`)
           
         } else if (showAnalytics) {
           // If showing analytics, fetch ALL orders from ALL couriers for the date range
-          // Check both updated_at and assigned_at to ensure assigned orders are included
-          console.log('Fetching ALL orders from ALL couriers for analytics')
+          console.log('Fetching ALL assigned orders for analytics (by assigned date)')
           
-          // Fetch by updated_at
-          const { data: updatedAtData, error: updatedAtError } = await supabase
+          // Fetch by assigned_at
+          const { data: assignedAtData, error: assignedError } = await supabase
             .from("orders")
             .select(`
               *,
               order_proofs (id, image_data),
               assigned_courier:users!orders_assigned_courier_id_fkey(id, name, email)
             `)
-            .gte("updated_at", startDateISO)
-            .lte("updated_at", endDateISO)
-          
-          // Also fetch by assigned_at to catch orders assigned in date range
-          const { data: assignedAtData } = await supabase
-            .from("orders")
-            .select(`
-              *,
-              order_proofs (id, image_data),
-              assigned_courier:users!orders_assigned_courier_id_fkey(id, name, email)
-            `)
-            .not("assigned_at", "is", null)
+            .not("assigned_courier_id", "is", null)
             .gte("assigned_at", startDateISO)
             .lte("assigned_at", endDateISO)
           
-          if (updatedAtError) {
-            console.error('Error fetching all orders:', updatedAtError)
+          // Legacy fallback
+          const { data: legacyData, error: legacyError } = await supabase
+            .from("orders")
+            .select(`
+              *,
+              order_proofs (id, image_data),
+              assigned_courier:users!orders_assigned_courier_id_fkey(id, name, email)
+            `)
+            .not("assigned_courier_id", "is", null)
+            .is("assigned_at", null)
+            .gte("created_at", startDateISO)
+            .lte("created_at", endDateISO)
+          
+          if (assignedError || legacyError) {
+            console.error('Error fetching all analytics orders:', assignedError || legacyError)
             orders = []
           } else {
-            // Merge both results, removing duplicates
+            // Merge results
             const orderMap = new Map<string, any>()
             for (const order of (assignedAtData || [])) {
               orderMap.set(order.id, order)
             }
-            for (const order of (updatedAtData || [])) {
+            for (const order of (legacyData || [])) {
               if (!orderMap.has(order.id)) {
                 orderMap.set(order.id, order)
               }
@@ -666,52 +671,49 @@ const Summary: React.FC = () => {
             })) as Order[]
           }
           
-          console.log(`Found ${orders.length} total orders from all couriers in date range`)
+          console.log(`Found ${orders.length} total assigned orders for analytics (by assigned date)`)
           
         } else {
-          // Default: fetch ALL orders (including unassigned) for admin dashboard
-          // Check both updated_at and assigned_at to ensure assigned orders are included
-          console.log('Fetching ALL orders (including unassigned) for admin dashboard')
+          // Default: fetch list of orders to build summaryList
+          console.log('Fetching orders to build couriers summary list (by assigned date)')
           
-          // Fetch by updated_at
-          const { data: updatedAtData, error: updatedAtError } = await supabase
+          const { data: assignedAtData, error: assignedError } = await supabase
             .from("orders")
             .select(`
               *,
               order_proofs (id, image_data),
               assigned_courier:users!orders_assigned_courier_id_fkey(id, name, email)
             `)
-            .gte("updated_at", startDateISO)
-            .lte("updated_at", endDateISO)
-          
-          // Also fetch by assigned_at to catch orders assigned in date range
-          const { data: assignedAtData } = await supabase
-            .from("orders")
-            .select(`
-              *,
-              order_proofs (id, image_data),
-              assigned_courier:users!orders_assigned_courier_id_fkey(id, name, email)
-            `)
-            .not("assigned_at", "is", null)
+            .not("assigned_courier_id", "is", null)
             .gte("assigned_at", startDateISO)
             .lte("assigned_at", endDateISO)
+
+          const { data: legacyData, error: legacyError } = await supabase
+            .from("orders")
+            .select(`
+              *,
+              order_proofs (id, image_data),
+              assigned_courier:users!orders_assigned_courier_id_fkey(id, name, email)
+            `)
+            .not("assigned_courier_id", "is", null)
+            .is("assigned_at", null)
+            .gte("created_at", startDateISO)
+            .lte("created_at", endDateISO)
           
-          if (updatedAtError) {
-            console.error('Error fetching all orders:', updatedAtError)
+          if (assignedError || legacyError) {
+            console.error('Error fetching summary list orders:', assignedError || legacyError)
             orders = []
           } else {
-            // Merge both results, removing duplicates
             const orderMap = new Map<string, any>()
             for (const order of (assignedAtData || [])) {
               orderMap.set(order.id, order)
             }
-            for (const order of (updatedAtData || [])) {
+            for (const order of (legacyData || [])) {
               if (!orderMap.has(order.id)) {
                 orderMap.set(order.id, order)
               }
             }
             
-            // Map courier information to orders
             orders = Array.from(orderMap.values()).map((order: any) => ({
               ...order,
               courier_name: order.assigned_courier?.name || null,
@@ -719,7 +721,7 @@ const Summary: React.FC = () => {
             })) as Order[]
           }
           
-          console.log(`Found ${orders.length} total orders in date range`)
+          console.log(`Found ${orders.length} total orders for summary list (by assigned date)`)
         }
         
         setAllOrders(orders)
@@ -1267,10 +1269,12 @@ const Summary: React.FC = () => {
     setAllOrders([])
   }
 
+  /*
   const handleShowAnalytics = () => {
     setSelectedCourier(null)
     setShowAnalytics(true)
   }
+  */
 
   // Fixed date range function
   const setQuickDateRange = (filterType: string) => {
