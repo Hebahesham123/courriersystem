@@ -3302,7 +3302,6 @@ const deleteDuplicatedOrder = async (order: Order) => {
                             type="file"
                             accept="image/*"
                             multiple
-                            capture="environment"
                             onChange={handleImageChange}
                             disabled={imageUploading}
                             className="hidden"
