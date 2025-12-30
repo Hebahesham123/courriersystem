@@ -226,36 +226,30 @@ const renderNotesWithLinks = (notes: string, isInModal: boolean = false) => {
 const OrdersList: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [isInitialLoad, setIsInitialLoad] = useState(true)
+  const [editedOrderIds, setEditedOrderIds] = useState<Set<string>>(new Set())
+  const [imageUploading, setImageUploading] = useState(false)
+  const [imageUploadSuccess, setImageUploadSuccess] = useState(false)
+  const [uploadingImages, setUploadingImages] = useState<string[]>([]) 
+  
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
+  const [cardPosition, setCardPosition] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
   const [phoneOptionsOpen, setPhoneOptionsOpen] = useState(false)
   const [selectedPhoneNumber, setSelectedPhoneNumber] = useState<string>("")
   const [selectedImage, setSelectedImage] = useState<string | null>(null)
   const [imageModalOpen, setImageModalOpen] = useState(false)
-  const [cardPosition, setCardPosition] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
-  // Initialize isMobile based on window width (check if window is available for SSR)
-  const [isMobile, setIsMobile] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return window.innerWidth < 640
-    }
-    return false
-  })
+  const [saving, setSaving] = useState(false)
+  const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null)
+  const [duplicatingOrderId, setDuplicatingOrderId] = useState<string | null>(null)
+  const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null)
+  
   const cardPositionRef = useRef<{ top: number; left: number; width: number; height: number } | null>(null)
-  const windowScrollRef = useRef<number>(0)
   // Track orders we just updated to prevent real-time subscription from causing double updates
   const recentlyUpdatedOrderIds = useRef<Set<string>>(new Set())
   // Track which order cards have already been animated to prevent re-animation on updates
   const animatedOrderIds = useRef<Set<string>>(new Set())
-
-  // Track window size for responsive positioning
-  useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth < 640)
-    }
-    checkMobile()
-    window.addEventListener('resize', checkMobile)
-    return () => window.removeEventListener('resize', checkMobile)
-  }, [])
 
   // Body scroll lock disabled for stability on mobile
 
@@ -278,16 +272,6 @@ const OrdersList: React.FC = () => {
     payment_sub_type: "",
     collected_by: "",
   })
-  const [imageUploading, setImageUploading] = useState(false)
-  const [uploadingImages, setUploadingImages] = useState<string[]>([]) // Track which images are uploading
-  const [saving, setSaving] = useState(false)
-  const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null)
-  const [duplicatingOrderId, setDuplicatingOrderId] = useState<string | null>(null)
-  const [imageUploadSuccess, setImageUploadSuccess] = useState(false)
-  const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null)
-  const [editedOrderIds, setEditedOrderIds] = useState<Set<string>>(new Set())
-  const [refreshing, setRefreshing] = useState(false)
-  const [isInitialLoad, setIsInitialLoad] = useState(true)
 
   const { user } = useAuth()
 
@@ -1836,7 +1820,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
           transform: none !important;
         }
       `}</style>
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100" dir="rtl" lang="ar">
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 notranslate" dir="rtl" lang="ar">
 
       {/* Header Section - Mobile Optimized */}
       <div className="bg-gradient-to-br from-blue-600 to-blue-700 border-b border-blue-800 z-10 shadow-lg">
@@ -2980,6 +2964,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                       }}
                       className="w-full rounded-xl border-2 border-gray-300 px-4 py-3.5 text-base font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white hover:border-blue-400 transition-colors shadow-sm"
                       required
+                      translate="no"
                     >
                       {Object.entries(statusLabels).map(([key, { label }]) => (
                         <option key={key} value={key}>
