@@ -927,63 +927,87 @@ const OrdersList: React.FC = () => {
 
   // Compress a single image
   const compressImage = async (file: File): Promise<File> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = (event) => {
-        const img = new Image()
-        img.crossOrigin = "anonymous"
-        img.onload = () => {
-          const canvas = document.createElement("canvas")
-          const MAX_WIDTH = 720
-          const MAX_HEIGHT = 540
+    return new Promise((resolve) => {
+      // Use URL.createObjectURL instead of FileReader for better mobile memory management
+      const objectUrl = URL.createObjectURL(file)
+      const img = new Image()
+      
+      // Removed crossOrigin as it's not needed for local files and can cause issues on mobile
+      
+      img.onload = () => {
+        // Revoke the object URL immediately to free up memory
+        URL.revokeObjectURL(objectUrl)
+        
+        const canvas = document.createElement("canvas")
+        const MAX_WIDTH = 1024 // Increased slightly for better quality
+        const MAX_HEIGHT = 1024
+        
+        let width = img.width
+        let height = img.height
 
-          let width = img.width
-          let height = img.height
+        // Check if image is valid
+        if (width === 0 || height === 0) {
+          console.error("Image has no dimensions")
+          resolve(file)
+          return
+        }
 
-          if (width > height) {
-            if (width > MAX_WIDTH) {
-              height *= MAX_WIDTH / width
-              width = MAX_WIDTH
-            }
-          } else {
-            if (height > MAX_HEIGHT) {
-              width *= MAX_HEIGHT / height
-              height = MAX_HEIGHT
-            }
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width
+            width = MAX_WIDTH
           }
-
-          canvas.width = width
-          canvas.height = height
-
-          const ctx = canvas.getContext("2d")
-          if (!ctx) {
-            reject(new Error("Failed to get canvas context"))
-            return
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height
+            height = MAX_HEIGHT
           }
+        }
 
+        canvas.width = width
+        canvas.height = height
+
+        const ctx = canvas.getContext("2d")
+        if (!ctx) {
+          console.error("Failed to get canvas context")
+          resolve(file)
+          return
+        }
+
+        // Use white background for JPEGs to prevent transparency issues
+        ctx.fillStyle = "#FFFFFF"
+        ctx.fillRect(0, 0, width, height)
+        
+        // Draw the image
+        try {
           ctx.drawImage(img, 0, 0, width, height)
+        } catch (e) {
+          console.error("Error drawing image to canvas:", e)
+          resolve(file)
+          return
+        }
 
-          canvas.toBlob(
-            (blob) => {
-              if (blob) {
-                resolve(new File([blob], file.name, { type: "image/jpeg", lastModified: Date.now() }))
-              } else {
-                resolve(file)
-              }
-            },
-            "image/jpeg",
-            0.5,
-          )
-        }
-        img.onerror = () => {
-          reject(new Error("Failed to load image for compression"))
-        }
-        img.src = event.target?.result as string
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              resolve(new File([blob], file.name, { type: "image/jpeg", lastModified: Date.now() }))
+            } else {
+              console.error("Canvas toBlob returned null")
+              resolve(file)
+            }
+          },
+          "image/jpeg",
+          0.7, // Increased quality slightly
+        )
       }
-      reader.onerror = () => {
-        reject(new Error("Failed to read file"))
+      
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl)
+        console.error("Failed to load image for compression")
+        resolve(file) // Fallback to original file on error
       }
-      reader.readAsDataURL(file)
+      
+      img.src = objectUrl
     })
   }
 
@@ -1046,7 +1070,10 @@ const OrdersList: React.FC = () => {
         // Use functional update to preserve reference stability
         setSelectedOrder((prev) => {
           if (!prev) return prev
-          const newProofs = uploadedUrls.map(url => ({ id: crypto.randomUUID(), image_data: url }))
+          const newProofs = uploadedUrls.map(url => ({ 
+            id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 11), 
+            image_data: url 
+          }))
           // Only create new object if order_proofs actually changed
           const existingProofs = prev.order_proofs || []
           if (newProofs.length === 0) return prev
@@ -1063,7 +1090,10 @@ const OrdersList: React.FC = () => {
                   ...o,
                   order_proofs: [
                     ...(o.order_proofs || []),
-                    ...uploadedUrls.map(url => ({ id: crypto.randomUUID(), image_data: url })),
+                    ...uploadedUrls.map(url => ({ 
+                      id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 11), 
+                      image_data: url 
+                    })),
                   ],
                 }
               : o,
