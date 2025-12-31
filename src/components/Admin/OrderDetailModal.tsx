@@ -22,6 +22,7 @@ import {
   History,
   ArrowRight,
   RefreshCw,
+  Trash2,
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
 
@@ -105,10 +106,62 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
   const [orderHistory, setOrderHistory] = useState<OrderHistoryEntry[]>([])
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
+  const [removingItemId, setRemovingItemId] = useState<string | null>(null)
 
   // Safety check - if no order, don't render
   if (!order) {
     return null
+  }
+
+  const handleRemoveItem = async (itemId: string) => {
+    if (!confirm('Are you sure you want to remove this item? This will update the order total. / هل أنت متأكد من حذف هذا الصنف؟ سيتم تحديث إجمالي الطلب.')) {
+      return
+    }
+
+    setRemovingItemId(itemId)
+    try {
+      // 1. Delete the item from order_items
+      const { error: deleteError } = await supabase
+        .from('order_items')
+        .delete()
+        .eq('id', itemId)
+
+      if (deleteError) throw deleteError
+
+      // 2. Recalculate total from remaining items
+      const remainingItems = items.filter(i => i.id !== itemId && !i.is_removed && !(i as any).properties?._is_removed)
+      const newSubtotal = remainingItems.reduce((sum, i) => sum + (i.price * i.quantity), 0)
+      const newDiscounts = remainingItems.reduce((sum, i) => sum + (i.total_discount || 0), 0)
+      
+      // Calculate shipping, tax etc from original order or defaults
+      const shippingPrice = order.total_shipping_price || 0
+      const taxPrice = order.total_tax || 0
+      const newTotal = newSubtotal + shippingPrice + taxPrice - newDiscounts
+
+      // 3. Update the order in the database
+      const { error: updateError } = await supabase
+        .from('orders')
+        .update({
+          total_order_fees: newTotal,
+          subtotal_price: newSubtotal,
+          total_discounts: newDiscounts,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', order.id)
+
+      if (updateError) throw updateError
+
+      // 4. Update local state
+      setOrderItems(prev => prev.filter(i => i.id !== itemId))
+      if (onUpdate) onUpdate()
+      
+      alert('Item removed and total updated successfully. / تم حذف الصنف وتحديث الإجمالي بنجاح.')
+    } catch (e: any) {
+      console.error('Error removing item:', e)
+      alert(`Error: ${e.message}`)
+    } finally {
+      setRemovingItemId(null)
+    }
   }
 
   // Manual sync function to refresh order from Shopify
@@ -817,12 +870,29 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
 
                         {/* Product Details */}
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <h4 className="font-medium text-gray-900">{item.title}</h4>
-                            {(item.is_removed || (item as any).properties?._is_removed) && (
-                              <span className="px-2 py-0.5 bg-red-100 text-red-700 text-[10px] font-bold rounded-full uppercase">
-                                Removed
-                              </span>
+                          <div className="flex items-center justify-between gap-2 mb-1">
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-medium text-gray-900">{item.title}</h4>
+                              {(item.is_removed || (item as any).properties?._is_removed) && (
+                                <span className="px-2 py-0.5 bg-red-100 text-red-700 text-[10px] font-bold rounded-full uppercase">
+                                  Removed
+                                </span>
+                              )}
+                            </div>
+                            {/* Remove Item Button - Only for non-removed items */}
+                            {!item.is_removed && !(item as any).properties?._is_removed && (
+                              <button
+                                onClick={() => handleRemoveItem(item.id)}
+                                disabled={removingItemId === item.id}
+                                className="text-red-500 hover:text-red-700 p-1 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
+                                title="Remove item from order / حذف الصنف من الطلب"
+                              >
+                                {removingItemId === item.id ? (
+                                  <RefreshCw className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="w-4 h-4" />
+                                )}
+                              </button>
                             )}
                           </div>
                           {item.variant_title && (
