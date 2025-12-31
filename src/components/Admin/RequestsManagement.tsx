@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useLanguage } from '../../contexts/LanguageContext'
 import { supabase } from '../../lib/supabase'
 import {
@@ -1116,7 +1117,7 @@ const RequestsManagement: React.FC = () => {
         </div>
 
         {/* Detail Modal */}
-        {showDetailModal && selectedRequest && (
+        {showDetailModal && selectedRequest && typeof document !== 'undefined' && createPortal(
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
               <div className="p-6 border-b border-gray-200">
@@ -1491,11 +1492,12 @@ const RequestsManagement: React.FC = () => {
                  </button>
                </div>
             </div>
-          </div>
+          </div>,
+          document.body
         )}
 
         {/* Create Request Modal */}
-        {showCreateModal && (
+        {showCreateModal && typeof document !== 'undefined' && createPortal(
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-xl max-w-2xl w-full">
                              <div className="p-6 border-b border-gray-200">
@@ -1658,11 +1660,12 @@ const RequestsManagement: React.FC = () => {
                  </button>
                </div>
             </div>
-          </div>
+          </div>,
+          document.body
         )}
 
         {/* Report Page */}
-        {showReportPage && (
+        {showReportPage && typeof document !== 'undefined' && createPortal(
           <div className="fixed inset-0 bg-white z-50 overflow-y-auto">
             <div className="min-h-screen">
               {/* Header */}
@@ -1873,11 +1876,12 @@ const RequestsManagement: React.FC = () => {
                 )}
               </div>
             </div>
-          </div>
+          </div>,
+          document.body
         )}
 
         {/* Media Modal */}
-        {showMediaModal && (
+        {showMediaModal && typeof document !== 'undefined' && createPortal(
           <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
             <div className="relative max-w-6xl w-full max-h-[90vh]">
               <button
@@ -1917,7 +1921,8 @@ const RequestsManagement: React.FC = () => {
               className="absolute inset-0 -z-10" 
               onClick={() => setShowMediaModal(false)}
             />
-          </div>
+          </div>,
+          document.body
         )}
       </div>
     </div>

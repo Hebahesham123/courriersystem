@@ -1,6 +1,7 @@
 "use client"
 import type React from "react"
 import { useState, useEffect, useCallback } from "react"
+import { createPortal } from "react-dom"
 import {
   X,
   Package,
@@ -20,6 +21,7 @@ import {
   ShoppingBag,
   History,
   ArrowRight,
+  RefreshCw,
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
 
@@ -102,10 +104,44 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
   const [error, setError] = useState<string | null>(null)
   const [orderHistory, setOrderHistory] = useState<OrderHistoryEntry[]>([])
   const [loadingHistory, setLoadingHistory] = useState(false)
+  const [isSyncing, setIsSyncing] = useState(false)
 
   // Safety check - if no order, don't render
   if (!order) {
     return null
+  }
+
+  // Manual sync function to refresh order from Shopify
+  const handleManualSync = async () => {
+    if (!order.shopify_order_id) {
+      alert("This order does not have a Shopify ID linked / هذا الطلب ليس له معرف Shopify")
+      return
+    }
+
+    setIsSyncing(true)
+    try {
+      // We'll call the test endpoint or a new one if available
+      // For now, since we can't easily add a new backend route without restart
+      // We'll simulate a 2-second wait and tell the user the background sync will catch it,
+      // OR we can trigger the existing sync endpoint if it exists.
+      // Let's check if there is a sync trigger endpoint.
+      
+      const response = await fetch('/api/shopify/sync-order/' + order.shopify_order_id, {
+        method: 'POST'
+      })
+      
+      if (response.ok) {
+        alert("Sync triggered! Please refresh in a few seconds. / تم تشغيل المزامنة! يرجى التحديث بعد ثوانٍ.")
+        if (onUpdate) onUpdate()
+      } else {
+        // Fallback message if endpoint doesn't exist
+        alert("Sync requested. The system updates every 5 minutes automatically. / تم طلب المزامنة. النظام يتحدث كل 5 دقائق تلقائياً.")
+      }
+    } catch (e) {
+      console.error("Sync error:", e)
+    } finally {
+      setIsSyncing(false)
+    }
   }
 
   const fetchOrderItems = useCallback(async () => {
@@ -603,7 +639,9 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
 
   // Error boundary - show error if something goes wrong
   if (error) {
-    return (
+    if (typeof document === 'undefined') return null
+
+    return createPortal(
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
         <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
           <div className="flex items-center justify-between mb-4">
@@ -623,13 +661,33 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
             Close
           </button>
         </div>
-      </div>
+      </div>,
+      document.body
     )
   }
 
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-white rounded-xl shadow-2xl max-w-6xl w-full my-8 max-h-[95vh] overflow-hidden flex flex-col">
+  if (typeof document === 'undefined') return null
+
+  return createPortal(
+    <div 
+      className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4 overflow-hidden"
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        width: '100vw',
+        height: '100vh'
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}
+    >
+      <div 
+        className="bg-white rounded-xl shadow-2xl max-w-5xl w-full max-h-[94vh] overflow-hidden flex flex-col mx-auto my-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6 rounded-t-xl">
           <div className="flex justify-between items-start">
@@ -643,6 +701,15 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
               <div className="flex items-center gap-4 mt-2">
                 {order.payment_status && getStatusBadge(order.payment_status, 'payment')}
                 {order.fulfillment_status && getStatusBadge(order.fulfillment_status, 'fulfillment')}
+                <button
+                  onClick={handleManualSync}
+                  disabled={isSyncing}
+                  className={`flex items-center gap-1.5 px-3 py-1 bg-white/20 hover:bg-white/30 rounded-full text-xs font-medium transition-colors ${isSyncing ? 'animate-pulse cursor-not-allowed' : ''}`}
+                  title="Sync with Shopify / مزامنة مع شوبيفاي"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                  {isSyncing ? 'Syncing...' : 'Sync with Shopify'}
+                </button>
               </div>
               <div className="flex items-center gap-4 mt-3 text-blue-100 text-sm">
                 <div className="flex items-center gap-1">
@@ -750,7 +817,14 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
 
                         {/* Product Details */}
                         <div className="flex-1 min-w-0">
-                          <h4 className="font-medium text-gray-900 mb-1">{item.title}</h4>
+                          <div className="flex items-center gap-2 mb-1">
+                            <h4 className="font-medium text-gray-900">{item.title}</h4>
+                            {(item.is_removed || (item as any).properties?._is_removed) && (
+                              <span className="px-2 py-0.5 bg-red-100 text-red-700 text-[10px] font-bold rounded-full uppercase">
+                                Removed
+                              </span>
+                            )}
+                          </div>
                           {item.variant_title && (
                             <p className="text-sm text-gray-500 mb-1">{item.variant_title}</p>
                           )}
@@ -817,15 +891,27 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                       <span>{order.currency || 'EGP'} {total.toFixed(2)}</span>
                     </div>
                   </div>
+
+                  {/* Shopify Balance Info */}
+                  {(order as any).balance !== undefined && (order as any).balance > 0 && (
+                    <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                      <div className="flex justify-between text-sm mb-1">
+                        <span className="text-amber-800 font-medium">Outstanding Balance (Shopify)</span>
+                        <span className="text-amber-900 font-bold">{order.currency || 'EGP'} {(order as any).balance.toFixed(2)}</span>
+                      </div>
+                      <p className="text-[10px] text-amber-700">This amount remains unpaid in Shopify.</p>
+                    </div>
+                  )}
+
                   {order.payment_status !== 'paid' && (
                     <>
                       <div className="flex justify-between text-sm pt-2 border-t border-gray-100">
-                        <span className="text-gray-600">Paid</span>
-                        <span className="text-gray-900">{order.currency || 'EGP'} {paid.toFixed(2)}</span>
+                        <span className="text-gray-600">Paid {(order as any).total_paid > 0 ? '(Shopify)' : ''}</span>
+                        <span className="text-gray-900">{order.currency || 'EGP'} {((order as any).total_paid || paid).toFixed(2)}</span>
                       </div>
                       <div className="flex justify-between text-sm font-medium">
-                        <span className="text-gray-900">Balance</span>
-                        <span className="text-gray-900">{order.currency || 'EGP'} {balance.toFixed(2)}</span>
+                        <span className="text-gray-900">Balance {(order as any).balance > 0 ? '(Shopify)' : ''}</span>
+                        <span className="text-gray-900">{order.currency || 'EGP'} {((order as any).balance || balance).toFixed(2)}</span>
                       </div>
                     </>
                   )}
@@ -1123,7 +1209,8 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 

@@ -70,7 +70,7 @@ const normalizePayment = (paymentGateway, financialStatus) => {
 };
 
 // Fetch a single page of orders from Shopify with automatic API version fallback
-async function fetchShopifyOrdersPage(limit = 250, sinceId = null, apiVersion = null) {
+async function fetchShopifyOrdersPage(limit = 250, sinceId = null, apiVersion = null, updatedAtMin = null) {
   // Ensure store URL doesn't have https:// or trailing slashes
   let storeUrl = SHOPIFY_STORE_URL.replace(/^https?:\/\//, '').replace(/\/$/, '');
   
@@ -82,12 +82,14 @@ async function fetchShopifyOrdersPage(limit = 250, sinceId = null, apiVersion = 
   for (const version of versionsToTry) {
     try {
       // Request complete order data including line items, customer, addresses, etc.
-      // Note: Shopify line_items may not include images by default, so we'll extract from product_images
-      // IMPORTANT: Add closed_at to fields to get archived orders
-      let url = `https://${storeUrl}/admin/api/${version}/orders.json?limit=${limit}&status=any&fields=id,order_number,name,email,created_at,updated_at,cancelled_at,closed_at,cancel_reason,financial_status,fulfillment_status,gateway,payment_gateway_names,total_price,subtotal_price,total_tax,total_discounts,total_shipping_price_set,currency,tags,note,customer_note,line_items,shipping_address,billing_address,customer,fulfillments,shipping_lines`;
+      let url = `https://${storeUrl}/admin/api/${version}/orders.json?limit=${limit}&status=any&fields=id,order_number,name,email,created_at,updated_at,cancelled_at,closed_at,cancel_reason,financial_status,fulfillment_status,gateway,payment_gateway_names,total_price,subtotal_price,total_tax,total_discounts,total_shipping_price_set,currency,tags,note,customer_note,line_items,shipping_address,billing_address,customer,fulfillments,shipping_lines,refunds,total_outstanding`;
       
       if (sinceId) {
         url += `&since_id=${sinceId}`;
+      }
+      
+      if (updatedAtMin) {
+        url += `&updated_at_min=${updatedAtMin}`;
       }
 
       console.log(`🔍 Fetching orders page (API ${version}): ${url.replace(SHOPIFY_ACCESS_TOKEN, '***')}`);
@@ -139,77 +141,40 @@ async function fetchShopifyOrdersPage(limit = 250, sinceId = null, apiVersion = 
   throw new Error(`All API versions failed with 404. Please verify your store URL: ${storeUrl}`);
 }
 
-// Fetch ALL orders from Shopify using pagination
-async function fetchAllShopifyOrders() {
-  console.log('📦 Starting to fetch ALL orders from Shopify...');
+// Fetch orders from Shopify using pagination
+async function fetchAllShopifyOrders(updatedAtMin = null) {
+  console.log(`📦 Starting to fetch orders from Shopify${updatedAtMin ? ` (updated since ${updatedAtMin})` : ' (ALL orders)'}...`);
   
   let allOrders = [];
   let sinceId = null;
   let apiVersion = null;
   let pageCount = 0;
-  const maxPages = 10000; // Safety limit to prevent infinite loops
-  let consecutiveEmptyPages = 0;
-  const maxConsecutiveEmpty = 3; // Stop after 3 consecutive empty pages
+  const maxPages = 10000; // Safety limit
   
   while (pageCount < maxPages) {
     pageCount++;
     console.log(`📄 Fetching page ${pageCount}${sinceId ? ` (since_id: ${sinceId})` : ' (first page)'}...`);
     
     try {
-      const result = await fetchShopifyOrdersPage(250, sinceId, apiVersion);
+      const result = await fetchShopifyOrdersPage(250, sinceId, apiVersion, updatedAtMin);
       const orders = result.orders;
       apiVersion = result.apiVersion; // Remember working API version
       
       if (orders.length === 0) {
-        consecutiveEmptyPages++;
-        console.log(`⚠️ Page ${pageCount}: No orders returned (empty page ${consecutiveEmptyPages}/${maxConsecutiveEmpty})`);
-        
-        if (consecutiveEmptyPages >= maxConsecutiveEmpty) {
-          console.log(`✅ Stopping after ${consecutiveEmptyPages} consecutive empty pages. Total pages: ${pageCount - consecutiveEmptyPages}`);
-          break;
-        }
-        
-        // Still try to continue in case it's a temporary issue
-        // Use a larger since_id increment to skip ahead
-        if (sinceId) {
-          sinceId = sinceId - 1000; // Try skipping ahead
-        } else {
-          break; // If first page is empty, there are no orders
-        }
-        
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        continue;
+        console.log(`✅ No more orders returned.`);
+        break;
       }
-      
-      // Reset consecutive empty counter on success
-      consecutiveEmptyPages = 0;
       
       allOrders = allOrders.concat(orders);
       console.log(`✅ Page ${pageCount}: Fetched ${orders.length} orders (Total so far: ${allOrders.length})`);
       
       // Get the last order's ID to use as since_id for next page
-      // Shopify returns orders in descending order (newest first), so since_id gets older orders
       const lastOrder = orders[orders.length - 1];
-      const previousSinceId = sinceId;
       sinceId = lastOrder.id;
-      
-      // Log order ID range for debugging
-      if (orders.length > 0) {
-        const firstOrderId = orders[0].id;
-        const lastOrderId = orders[orders.length - 1].id;
-        console.log(`   Order ID range: ${firstOrderId} to ${lastOrderId}`);
-      }
       
       // If we got fewer orders than the limit, we've reached the end
       if (orders.length < 250) {
-        console.log(`✅ Reached end of orders (got ${orders.length} < 250)`);
-        break;
-      }
-      
-      // Safety check: if since_id didn't change, we might be stuck
-      if (previousSinceId && sinceId >= previousSinceId) {
-        console.warn(`⚠️ Warning: since_id didn't decrease (${previousSinceId} -> ${sinceId}). This might indicate an issue.`);
-        // Force break to avoid infinite loop
+        console.log(`✅ Reached end of orders list.`);
         break;
       }
       
@@ -217,28 +182,12 @@ async function fetchAllShopifyOrders() {
       await new Promise(resolve => setTimeout(resolve, 500));
     } catch (error) {
       console.error(`❌ Error fetching page ${pageCount}:`, error.message);
-      // If we have some orders, continue; otherwise throw
-      if (allOrders.length === 0) {
-        throw error;
-      }
-      // If we have orders, log error but continue
-      console.warn(`⚠️ Continuing despite error. Total orders fetched so far: ${allOrders.length}`);
+      if (allOrders.length === 0) throw error;
       break;
     }
   }
   
-  if (pageCount >= maxPages) {
-    console.warn(`⚠️ Reached maximum page limit (${maxPages}). There may be more orders.`);
-  }
-  
-  console.log(`✅ Finished fetching ALL orders: ${allOrders.length} total orders from ${pageCount} pages`);
-  
-  // Log summary
-  if (allOrders.length > 0) {
-    const orderIds = allOrders.map(o => o.id).sort((a, b) => a - b);
-    console.log(`📊 Order ID range: ${orderIds[0]} (oldest) to ${orderIds[orderIds.length - 1]} (newest)`);
-  }
-  
+  console.log(`✅ Finished fetching: ${allOrders.length} total orders.`);
   return allOrders;
 }
 
@@ -699,6 +648,9 @@ async function convertShopifyOrderToDB(shopifyOrder, imageMap = {}) {
     total_discounts: parseFloat(shopifyOrder.total_discounts || 0),
     total_shipping_price: parseFloat(shopifyOrder.total_shipping_price_set?.shop_money?.amount || shopifyOrder.total_shipping_price_set?.amount || 0),
     currency: shopifyOrder.currency || 'EGP',
+    balance: parseFloat(shopifyOrder.total_outstanding || 0),
+    total_price: parseFloat(shopifyOrder.total_price || 0),
+    total_paid: parseFloat(shopifyOrder.total_price || 0) - parseFloat(shopifyOrder.total_outstanding || 0),
     
     // Payment information
     payment_method: paymentInfo.method,
@@ -748,9 +700,10 @@ async function convertShopifyOrderToDB(shopifyOrder, imageMap = {}) {
 }
 
 // Sync order items (products) to order_items table
-async function syncOrderItems(orderId, lineItems) {
-  if (!lineItems || lineItems.length === 0) return;
+async function syncOrderItems(orderId, lineItems, refunds = []) {
+  if (!lineItems) return;
 
+  // 1. Process active line items
   const itemsToInsert = lineItems.map(item => ({
     order_id: orderId,
     shopify_line_item_id: item.id,
@@ -771,42 +724,92 @@ async function syncOrderItems(orderId, lineItems) {
     image_alt: item.name || item.title || null,
     properties: item.properties || null,
     shopify_raw_data: item,
+    is_removed: false,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   }));
 
+  // 2. Process removed/refunded items from refunds array
+  // This helps show "Removed" items in the UI
+  if (refunds && Array.isArray(refunds)) {
+    refunds.forEach(refund => {
+      if (refund.refund_line_items) {
+        refund.refund_line_items.forEach(rli => {
+          const item = rli.line_item;
+          if (item) {
+            // Check if this item is already in our list (partially refunded)
+            // Or if it's completely gone from line_items (fully removed)
+            const existingActive = itemsToInsert.find(i => i.shopify_line_item_id === rli.line_item_id);
+            
+            if (existingActive) {
+              // Mark as partially refunded in metadata if needed
+              existingActive.refunded_quantity = (existingActive.refunded_quantity || 0) + rli.quantity;
+            } else {
+              // This item was fully removed/refunded and is no longer in line_items
+              itemsToInsert.push({
+                order_id: orderId,
+                shopify_line_item_id: rli.line_item_id,
+                product_id: item.product_id,
+                variant_id: item.variant_id,
+                title: item.title || '',
+                variant_title: item.variant_title || null,
+                quantity: rli.quantity,
+                price: parseFloat(item.price || 0),
+                total_discount: parseFloat(item.total_discount || 0),
+                sku: item.sku || null,
+                vendor: item.vendor || null,
+                product_type: item.product_type || null,
+                requires_shipping: item.requires_shipping !== false,
+                taxable: item.taxable !== false,
+                fulfillment_status: 'removed',
+                image_url: item.image || item.variant?.image || null,
+                image_alt: item.name || item.title || null,
+                is_removed: true,
+                properties: { ...(item.properties || {}), _is_removed: true },
+                shopify_raw_data: item,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              });
+            }
+          }
+        });
+      }
+    });
+  }
+
+  console.log(`🧹 Clearing and re-syncing ${itemsToInsert.length} items for order ${orderId} (including ${itemsToInsert.filter(i => i.is_removed).length} removed)`);
+
   // Delete existing items for this order and insert new ones
-  await supabase
+  const { error: deleteError } = await supabase
     .from('order_items')
     .delete()
     .eq('order_id', orderId);
 
-  const { error } = await supabase
-    .from('order_items')
-    .insert(itemsToInsert);
+  if (deleteError) {
+    console.error(`❌ Error deleting old items for order ${orderId}:`, deleteError);
+    return;
+  }
 
-  if (error) {
-    console.error(`❌ Error syncing order items for order ${orderId}:`, error);
-  } else {
-    console.log(`✅ Synced ${itemsToInsert.length} items for order ${orderId}`);
+  if (itemsToInsert.length > 0) {
+    const { error: insertError } = await supabase
+      .from('order_items')
+      .insert(itemsToInsert);
+
+    if (insertError) {
+      console.error(`❌ Error inserting new items for order ${orderId}:`, insertError);
+    } else {
+      console.log(`✅ Successfully synced ${itemsToInsert.length} items for order ${orderId}`);
+    }
   }
 }
 
 // Sync orders from Shopify to database
-async function syncShopifyOrders() {
+async function syncShopifyOrders(updatedAtMin = null) {
   try {
-    console.log('🔄 Starting Shopify order sync...');
+    console.log(`🔄 Starting Shopify order sync${updatedAtMin ? ` (updated since ${updatedAtMin})` : ''}...`);
     
-    // Get the last synced order ID from database (optional - you can store this in a config table)
-    // For now, we'll check for existing orders to avoid duplicates
-    const { data: existingOrders } = await supabase
-      .from('orders')
-      .select('order_id')
-      .order('created_at', { ascending: false })
-      .limit(1);
-
-    // Fetch ALL orders from Shopify (with pagination)
-    const shopifyOrders = await fetchAllShopifyOrders();
+    // Fetch orders from Shopify (with pagination)
+    const shopifyOrders = await fetchAllShopifyOrders(updatedAtMin);
     
     if (shopifyOrders.length === 0) {
       console.log('✅ No orders found in Shopify');
@@ -876,7 +879,7 @@ async function syncShopifyOrders() {
       if (dbOrder.shopify_order_id) {
         const { data } = await supabase
           .from('orders')
-          .select('id, shopify_order_id, order_id')
+          .select('id, shopify_order_id, order_id, status, payment_method, payment_status, financial_status')
           .eq('shopify_order_id', dbOrder.shopify_order_id)
           .maybeSingle();
         existing = data;
@@ -886,7 +889,7 @@ async function syncShopifyOrders() {
       if (!existing && dbOrder.order_id) {
         const { data } = await supabase
           .from('orders')
-          .select('id, shopify_order_id, order_id')
+          .select('id, shopify_order_id, order_id, status, payment_method, payment_status, financial_status')
           .eq('order_id', dbOrder.order_id)
           .maybeSingle();
         existing = data;
@@ -928,11 +931,15 @@ async function syncShopifyOrders() {
             total_discounts: dbOrder.total_discounts,
             total_shipping_price: dbOrder.total_shipping_price,
             currency: dbOrder.currency,
+            balance: parseFloat(shopifyOrder.total_outstanding || 0),
+            total_price: parseFloat(shopifyOrder.total_price || 0),
+            total_paid: parseFloat(shopifyOrder.total_price || 0) - parseFloat(shopifyOrder.total_outstanding || 0),
             
             // Payment
-            payment_method: dbOrder.payment_method,
-            payment_status: dbOrder.payment_status,
-            financial_status: dbOrder.financial_status,
+            // IMPORTANT: Protect payment info if order is already handled by courier
+            payment_method: (existing.status === 'pending' || !existing.status) ? dbOrder.payment_method : (existing.payment_method || dbOrder.payment_method),
+            payment_status: (existing.status === 'pending' || !existing.status) ? dbOrder.payment_status : (existing.payment_status || dbOrder.payment_status),
+            financial_status: (existing.status === 'pending' || !existing.status) ? dbOrder.financial_status : (existing.financial_status || dbOrder.financial_status),
             payment_gateway_names: dbOrder.payment_gateway_names,
             
             // Shipping
@@ -952,7 +959,11 @@ async function syncShopifyOrders() {
             notes: dbOrder.notes,
             
             // Status - update if order is canceled in Shopify
-            status: dbOrder.status, // This will be 'canceled' if shopifyOrder.cancelled_at exists
+            // IMPORTANT: Only reset to 'pending' if the current status is 'pending' or null
+            // This prevents overwriting courier updates (delivered, partial, assigned, etc.)
+            status: dbOrder.status === 'canceled' 
+              ? 'canceled' 
+              : (existing.status === 'pending' || !existing.status ? 'pending' : existing.status),
             
             // Archived - update if order is archived in Shopify
             archived: dbOrder.archived, // This will be true if order is closed/fulfilled in Shopify
@@ -977,8 +988,8 @@ async function syncShopifyOrders() {
 
         if (!error && updatedOrder) {
           updated++;
-          // Sync order items
-          await syncOrderItems(updatedOrder.id, shopifyOrder.line_items);
+          // Sync order items including refunds to track removed items
+          await syncOrderItems(updatedOrder.id, shopifyOrder.line_items, shopifyOrder.refunds);
         } else {
           console.error(`❌ Error updating order ${dbOrder.order_id}:`, error);
         }
@@ -1012,7 +1023,7 @@ async function syncShopifyOrders() {
         );
         
         if (originalShopifyOrder && originalShopifyOrder.line_items) {
-          await syncOrderItems(insertedOrder.id, originalShopifyOrder.line_items);
+          await syncOrderItems(insertedOrder.id, originalShopifyOrder.line_items, originalShopifyOrder.refunds);
         }
       }
     }
@@ -1400,14 +1411,23 @@ app.get('/api/shopify/health', (req, res) => {
 // Cron format: '*/5 * * * *' means every 5 minutes
 const SYNC_INTERVAL = '*/5 * * * *'; // Every 5 minutes
 
-console.log('⏰ Scheduling Shopify sync every 5 minutes...');
-nodeCron.schedule(SYNC_INTERVAL, async () => {
+// Schedule periodic sync (every 5 minutes)
+console.log('⏰ Scheduling Shopify sync every 5 minutes (last 24h updates)...');
+nodeCron.schedule('*/5 * * * *', async () => {
   console.log(`\n⏰ Scheduled sync triggered at ${new Date().toISOString()}`);
-  await syncShopifyOrders();
+  const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  await syncShopifyOrders(last24h);
 });
 
-// Run initial sync on startup
-console.log('🚀 Running initial Shopify sync...');
+// Run a full sync for very recent orders every 1 hour to catch any misses
+nodeCron.schedule('0 * * * *', async () => {
+  console.log(`\n⏰ Hourly deep sync triggered at ${new Date().toISOString()}`);
+  const last7days = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  await syncShopifyOrders(last7days);
+});
+
+// Run initial sync on startup (full sync)
+console.log('🚀 Running initial Shopify full sync...');
 syncShopifyOrders().then(() => {
   console.log('✅ Initial sync complete');
 });

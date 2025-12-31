@@ -14,6 +14,13 @@
 /* Smooth page transitions */
 html {
   scroll-behavior: smooth;
+  overflow-x: hidden;
+}
+
+body {
+  overflow-x: hidden;
+  position: relative;
+  width: 100%;
 }
 
 /* Card and container animations */

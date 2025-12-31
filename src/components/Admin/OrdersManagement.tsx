@@ -988,25 +988,10 @@ const OrdersManagement: React.FC = () => {
         setExpandedRows((prev) => [...prev, orderId])
       }
       
+      // Initialize with an empty object to only track ACTUAL changes
       setOrderEdits((prev) => ({
         ...prev,
-        [orderId]: {
-          customer_name: order.customer_name,
-          address: order.address,
-          billing_city: order.billing_city,
-          mobile_number: order.mobile_number,
-          total_order_fees: order.total_order_fees,
-          payment_method: order.payment_method,
-          payment_status: order.payment_status,
-          status: order.status,
-          assigned_courier_id: order.assigned_courier_id,
-          notes: order.notes,
-          collected_by: order.collected_by,
-          payment_sub_type: order.payment_sub_type,
-          delivery_fee: order.delivery_fee,
-          partial_paid_amount: order.partial_paid_amount,
-          internal_comment: order.internal_comment,
-        },
+        [orderId]: {},
       }))
       setEditingOrder(orderId)
     }
@@ -1023,24 +1008,27 @@ const OrdersManagement: React.FC = () => {
 
   const saveOrderEdit = async (orderId: string) => {
     const changes = orderEdits[orderId]
-    if (!changes) return
+    if (!changes || Object.keys(changes).length === 0) {
+      setEditingOrder(null)
+      return
+    }
 
     setSavingOrderId(orderId)
     const originalOrder = orders.find((o) => o.id === orderId)
     
     try {
-      if (changes.assigned_courier_id && !originalOrder?.original_courier_id) {
-        changes.original_courier_id = changes.assigned_courier_id
-      }
-
-      // Add updated_at to changes to ensure it's updated in database
-      // Ensure payment_method is included if it was changed
+      // Create update payload with ONLY the changed fields
       const updateData: any = {
         ...changes,
-        updated_at: new Date().toISOString(), // Explicitly update updated_at so order appears on assignment date
+        updated_at: new Date().toISOString(),
+      }
+
+      // Logic for original courier
+      if (updateData.assigned_courier_id && !originalOrder?.original_courier_id) {
+        updateData.original_courier_id = updateData.assigned_courier_id
       }
       
-      // Convert empty strings to null for UUID fields (Supabase requires null, not "")
+      // Convert empty strings to null for UUID fields
       if (updateData.assigned_courier_id === "") {
         updateData.assigned_courier_id = null
         updateData.status = "pending" // Reset status when unassigning
@@ -1054,13 +1042,11 @@ const OrdersManagement: React.FC = () => {
         updateData.assigned_at = new Date().toISOString()
       }
       
-      // If payment_method was changed, make sure it's included in the update
-      if (changes.payment_method !== undefined) {
-        updateData.payment_method = changes.payment_method
-      }
-      
-      // If collected_by or payment_sub_type changed, also update payment_method accordingly
-      if (changes.collected_by === "courier" && changes.payment_sub_type) {
+      // Handle payment method mapping if relevant fields changed
+      const currentCollectedBy = updateData.collected_by !== undefined ? updateData.collected_by : originalOrder?.collected_by
+      const currentSubType = updateData.payment_sub_type !== undefined ? updateData.payment_sub_type : originalOrder?.payment_sub_type
+
+      if (currentCollectedBy === "courier" && currentSubType) {
         const paymentMethodMap: Record<string, string> = {
           "on_hand": "cash",
           "instapay": "instapay",
@@ -1068,8 +1054,11 @@ const OrdersManagement: React.FC = () => {
           "visa_machine": "card",
           "paymob": "paymob",
         }
-        updateData.payment_method = paymentMethodMap[changes.payment_sub_type] || originalOrder?.payment_method
-      } else if (changes.collected_by && changes.collected_by !== "courier") {
+        const newMethod = paymentMethodMap[currentSubType]
+        if (newMethod && newMethod !== originalOrder?.payment_method) {
+          updateData.payment_method = newMethod
+        }
+      } else if (currentCollectedBy && currentCollectedBy !== "courier") {
         const collectionMethodMap: Record<string, string> = {
           "paymob": "paymob",
           "valu": "valu",
@@ -1079,7 +1068,10 @@ const OrdersManagement: React.FC = () => {
           "orange_cash": "paid",
           "we_pay": "paid",
         }
-        updateData.payment_method = collectionMethodMap[changes.collected_by] || originalOrder?.payment_method
+        const newMethod = collectionMethodMap[currentCollectedBy]
+        if (newMethod && newMethod !== originalOrder?.payment_method) {
+          updateData.payment_method = newMethod
+        }
       }
 
       // Optimistically update the UI immediately
@@ -1091,7 +1083,7 @@ const OrdersManagement: React.FC = () => {
         )
       )
 
-      // Then update the database
+      // Then update the database with ONLY the changed fields
       const { error } = await supabase.from("orders").update(updateData).eq("id", orderId)
 
       if (error) {

@@ -225,7 +225,7 @@ const Sidebar: React.FC = () => {
       {/* Sidebar Container */}
       <aside
         className={`fixed top-0 ${isRTL ? "right-0" : "left-0"} z-50 h-full bg-gradient-to-b from-gray-900 via-gray-800 to-gray-900 text-white shadow-2xl transition-all duration-300 ease-in-out ${
-          isCollapsed ? "w-20" : "w-80"
+          isCollapsed ? "w-20" : "w-72 sm:w-80"
         } ${
           sidebarOpen ? "translate-x-0" : isRTL ? "translate-x-full" : "-translate-x-full"
         } lg:translate-x-0 lg:static`}

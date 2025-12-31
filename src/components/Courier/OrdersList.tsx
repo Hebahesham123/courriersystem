@@ -1,6 +1,6 @@
 "use client"
 import type React from "react"
-import { useState, useEffect, useCallback, useRef, useMemo } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { createPortal } from "react-dom"
 import {
   Edit,
@@ -31,7 +31,6 @@ import {
   CheckCircle,
   DollarSign,
   Trash2,
-  UserCheck,
   Copy,
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
@@ -137,12 +136,13 @@ const statusLabels: Record<string, { label: string; icon: React.ComponentType<an
       color: "text-indigo-700",
       bgColor: "bg-indigo-50 border-indigo-200",
     },
+    pending: {
+      label: "معلق",
+      icon: Clock,
+      color: "text-gray-600",
+      bgColor: "bg-gray-100 border-gray-300",
+    },
   }
-
-// Modified collection methods for courier's choice in modal
-const collectionMethodsForCourier: Record<string, string> = {
-  courier: "المندوب",
-}
 
 // Modified payment sub-types for courier's choice in modal
 const paymentSubTypesForCourier: Record<string, string> = {
@@ -228,14 +228,24 @@ const OrdersList: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [isInitialLoad, setIsInitialLoad] = useState(true)
-  const [editedOrderIds, setEditedOrderIds] = useState<Set<string>>(new Set())
+  const [editedOrderIds, setEditedOrderIds] = useState<Set<string>>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('courier_edited_orders')
+      return saved ? new Set(JSON.parse(saved)) : new Set()
+    }
+    return new Set()
+  })
+
+  // Save edited order IDs to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem('courier_edited_orders', JSON.stringify(Array.from(editedOrderIds)))
+  }, [editedOrderIds])
   const [imageUploading, setImageUploading] = useState(false)
   const [imageUploadSuccess, setImageUploadSuccess] = useState(false)
   const [uploadingImages, setUploadingImages] = useState<string[]>([]) 
   
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
-  const [cardPosition, setCardPosition] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
   const [phoneOptionsOpen, setPhoneOptionsOpen] = useState(false)
   const [selectedPhoneNumber, setSelectedPhoneNumber] = useState<string>("")
   const [selectedImage, setSelectedImage] = useState<string | null>(null)
@@ -243,7 +253,6 @@ const OrdersList: React.FC = () => {
   const [saving, setSaving] = useState(false)
   const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null)
   const [duplicatingOrderId, setDuplicatingOrderId] = useState<string | null>(null)
-  const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null)
   
   const cardPositionRef = useRef<{ top: number; left: number; width: number; height: number } | null>(null)
   // Track orders we just updated to prevent real-time subscription from causing double updates
@@ -275,13 +284,35 @@ const OrdersList: React.FC = () => {
 
   const { user } = useAuth()
 
-  // Scroll preservation disabled for mobile stability
-  const modalScroll = useMemo(() => ({
-    restoreScroll: () => {},
-    saveScroll: () => {},
-    hasSavedPosition: () => false,
-    containerRef: { current: null } as any,
-  }), [])
+  // Sync updateData with selectedOrder when it changes from real-time updates
+  // This ensures admin edits appear to the courier even if they have the modal open
+  useEffect(() => {
+    if (modalOpen && selectedOrder) {
+      // Only update if values are different to avoid input cursor jumps
+      setUpdateData(prev => {
+        const hasChanges = 
+          prev.delivery_fee !== (selectedOrder.delivery_fee?.toString() || "") ||
+          prev.partial_paid_amount !== (selectedOrder.partial_paid_amount?.toString() || "") ||
+          prev.status !== selectedOrder.status ||
+          prev.internal_comment !== (selectedOrder.internal_comment || "") ||
+          prev.payment_sub_type !== (selectedOrder.payment_sub_type || "") ||
+          prev.collected_by !== (selectedOrder.collected_by || "")
+
+        if (hasChanges) {
+          console.log('🔄 Syncing modal data with updated order from server')
+          return {
+            status: selectedOrder.status,
+            delivery_fee: selectedOrder.delivery_fee?.toString() || "",
+            partial_paid_amount: selectedOrder.partial_paid_amount?.toString() || "",
+            internal_comment: selectedOrder.internal_comment || "",
+            payment_sub_type: selectedOrder.payment_sub_type || "",
+            collected_by: selectedOrder.collected_by || "",
+          }
+        }
+        return prev
+      })
+    }
+  }, [selectedOrder, modalOpen])
 
   // Close image modal on ESC key
   useEffect(() => {
@@ -295,33 +326,25 @@ const OrdersList: React.FC = () => {
     return () => window.removeEventListener('keydown', handleEscape)
   }, [imageModalOpen])
 
-  // Close order modal on ESC key
+  // Modal ESC handler
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && modalOpen) {
         setModalOpen(false)
         setSelectedOrder(null)
-        setCardPosition(null)
         if (cardPositionRef.current) {
           cardPositionRef.current = null
         }
-        // Restore body scroll
-        const scrollY = document.body.style.top
-        document.body.style.position = ''
-        document.body.style.top = ''
-        document.body.style.width = ''
-        document.body.style.overflow = ''
-        document.documentElement.style.overflow = ''
-        if (scrollY) {
-          const savedScrollY = parseInt(scrollY.replace('px', '') || '0') * -1
-          window.scrollTo(0, savedScrollY)
-        }
       }
     }
+
     if (modalOpen) {
       window.addEventListener('keydown', handleEscape)
     }
-    return () => window.removeEventListener('keydown', handleEscape)
+
+    return () => {
+      window.removeEventListener('keydown', handleEscape)
+    }
   }, [modalOpen])
 
   // When modal opens, ensure its own scroll position starts at top (viewport stays where it is)
@@ -386,8 +409,7 @@ const OrdersList: React.FC = () => {
         {
           event: '*',
           schema: 'public',
-          table: 'orders',
-          filter: `assigned_courier_id=eq.${user.id}`
+          table: 'orders'
         },
         (payload) => {
           console.log('Order change detected:', payload)
@@ -408,50 +430,40 @@ const OrdersList: React.FC = () => {
               const orderIndex = prevOrders.findIndex(o => o.id === payload.new.id)
               if (orderIndex >= 0) {
                 const currentOrder = prevOrders[orderIndex]
-                // Only update if there are actual changes to prevent unnecessary re-renders
+                
+                // Special check for selectedOrder to update the modal if it's open
+                if (modalOpen && selectedOrder && selectedOrder.id === payload.new.id) {
+                  setSelectedOrder(prev => prev ? { ...prev, ...payload.new } : null)
+                }
+
+                // Only update if there are actual changes
                 const hasChanges = Object.keys(payload.new).some(key => {
                   const newValue = payload.new[key]
                   const currentValue = currentOrder[key as keyof Order]
-                  // Compare values, handling dates and nulls
                   if (newValue === null && currentValue === null) return false
                   if (newValue === currentValue) return false
-                  // For dates, compare timestamps
-                  if (key === 'updated_at' || key === 'created_at') {
-                    const newTime = new Date(newValue).getTime()
-                    const currentTime = new Date(currentValue as string).getTime()
-                    // Ignore if difference is less than 1 second (likely same update)
-                    return Math.abs(newTime - currentTime) > 1000
-                  }
                   return true
                 })
                 
-                if (!hasChanges) {
-                  console.log('No changes detected, skipping update for order:', orderId)
-                  return prevOrders
-                }
+                if (!hasChanges) return prevOrders
                 
-                // Update existing order smoothly without causing visual glitches
                 const updatedOrders = [...prevOrders]
                 updatedOrders[orderIndex] = { ...currentOrder, ...payload.new }
                 return updatedOrders
               }
               // If order not found and it's assigned to this courier, add it
               if (payload.new.assigned_courier_id === user.id) {
-                return [...prevOrders, payload.new as Order]
+                return [payload.new as Order, ...prevOrders]
               }
               return prevOrders
             })
           } else if (payload.eventType === 'INSERT' && payload.new && payload.new.assigned_courier_id === user.id) {
             // Add new order if it's assigned to this courier
             setOrders(prevOrders => {
-              // Check if order already exists
-              if (prevOrders.some(o => o.id === payload.new.id)) {
-                return prevOrders
-              }
+              if (prevOrders.some(o => o.id === payload.new.id)) return prevOrders
               return [payload.new as Order, ...prevOrders]
             })
           } else if (payload.eventType === 'DELETE') {
-            // Remove deleted order
             setOrders(prevOrders => prevOrders.filter(o => o.id !== payload.old.id))
           }
         }
@@ -461,7 +473,7 @@ const OrdersList: React.FC = () => {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [user?.id])
+  }, [user?.id, modalOpen, selectedOrder?.id])
 
   // Scroll preservation disabled for stability
 
@@ -624,11 +636,6 @@ const OrdersList: React.FC = () => {
     setSelectedDate(getTodayDateString())
   }
 
-  // Helper function to check if order was edited by courier
-  const wasOrderEditedByCourier = (order: Order) => {
-    return order.updated_at !== order.created_at
-  }
-
   // Helper function to extract numeric part from order_id for sorting
   const getOrderNumber = (orderId: string) => {
     const match = orderId.match(/\d+/)
@@ -662,7 +669,7 @@ const OrdersList: React.FC = () => {
       const endDate = new Date(selectedDate)
       endDate.setHours(23, 59, 59, 999)
 
-      // Get orders assigned to this courier within the date window (using assigned_at as primary filter)
+      // 1. Get orders where assigned_at is the selected date
       const { data: assignedAtOrders, error: assignedError } = await supabase
         .from("orders")
         .select("*")
@@ -671,14 +678,12 @@ const OrdersList: React.FC = () => {
         .gte("assigned_at", startDate.toISOString())
         .lte("assigned_at", endDate.toISOString())
 
-      // Legacy fallback: some old orders don't have assigned_at.
-      // For those, rely on their creation date
-      const { data: createdAtLegacyOrders, error: legacyError } = await supabase
+      // 2. ALSO get orders where created_at is the selected date (to catch claimed orders from that day)
+      const { data: createdAtOrders, error: legacyError } = await supabase
         .from("orders")
         .select("*")
         .eq("assigned_courier_id", user.id)
         .in("status", courierVisibleStatuses)
-        .is("assigned_at", null)
         .gte("created_at", startDate.toISOString())
         .lte("created_at", endDate.toISOString())
 
@@ -693,11 +698,13 @@ const OrdersList: React.FC = () => {
       for (const order of (assignedAtOrders || [])) {
         orderMap.set(order.id, order)
       }
-      for (const order of (createdAtLegacyOrders || [])) {
+      for (const order of (createdAtOrders || [])) {
         if (!orderMap.has(order.id)) {
           orderMap.set(order.id, order)
         }
       }
+
+      console.log(`Fetched ${orderMap.size} assigned orders for courier ${user.id} on date ${selectedDate}`)
 
       // Then, get unassigned orders with specific payment methods (cashless) that are assignable
       // (Keep this logic as is, but it also uses created_at)
@@ -706,12 +713,14 @@ const OrdersList: React.FC = () => {
         .select("*")
         .is("assigned_courier_id", null)
         .in("payment_method", ["paymob", "valu"])
-        .eq("status", "assigned")
+        .in("status", ["assigned", "partial", "pending"]) // Only show assignable statuses for unassigned orders
         .gte("created_at", startDate.toISOString())
         .lte("created_at", endDate.toISOString())
 
       if (unassignedError) {
         console.warn("Could not fetch unassigned orders:", unassignedError)
+      } else {
+        console.log(`Fetched ${unassignedOrders?.length || 0} assignable unassigned orders`)
       }
 
       // ... rest of the logic
@@ -806,6 +815,18 @@ const OrdersList: React.FC = () => {
       })
 
       setOrders(sortedData)
+
+      // Derive edited orders from data: any order that is not "assigned" 
+      // was likely edited by the courier during their shift
+      setEditedOrderIds(prev => {
+        const next = new Set(prev)
+        sortedData.forEach((order: Order) => {
+          if (order.status !== "assigned") {
+            next.add(order.id)
+          }
+        })
+        return next
+      })
     } catch (error: any) {
       console.error("Error fetching orders:", error)
       const errorMessage = error?.message || "حدث خطأ غير معروف"
@@ -847,14 +868,14 @@ const OrdersList: React.FC = () => {
           height: rect.height,
         }
         cardPositionRef.current = position
-        setCardPosition(position)
+        
       } else {
         cardPositionRef.current = null
-        setCardPosition(null)
+        
       }
     } else {
       cardPositionRef.current = null
-      setCardPosition(null)
+      
     }
 
     const method = normalizeMethod(order.payment_method)
@@ -876,13 +897,9 @@ const OrdersList: React.FC = () => {
     } else if (isOrderOriginallyPaidOnline && !order.delivery_fee && !order.partial_paid_amount) {
       initialCollectedBy = method
       initialPaymentSubType = ""
-    } else if (!isOrderOriginallyPaidOnline && !isOrderPaid(order) && order.status !== "canceled") {
-      initialCollectedBy = "courier"
-    } else if (order.status === "canceled" && (order.delivery_fee || order.partial_paid_amount)) {
-      initialCollectedBy = "courier"
-    } else if (order.status === "canceled" && !order.delivery_fee && !order.partial_paid_amount) {
-      initialCollectedBy = ""
-      initialPaymentSubType = ""
+    } else {
+      // Default to courier for most updates if not already set
+      initialCollectedBy = order.collected_by || "courier"
     }
 
     setSelectedOrder(order)
@@ -1130,47 +1147,58 @@ const OrdersList: React.FC = () => {
     if (!selectedOrder) return
 
     setSaving(true)
-    setUpdatingOrderId(selectedOrder.id)
+    
     
     // Store original order for rollback
     const originalOrder = { ...selectedOrder }
     
-    try {
-      const method = normalizeMethod(selectedOrder.payment_method)
-      const isOrderOriginallyPaidOnline = isOrderPaid(selectedOrder)
-      const isOrderUnpaid = !isOrderPaid(selectedOrder)
+          try {
+            const method = normalizeMethod(selectedOrder.payment_method)
+            const isOrderOriginallyPaidOnline = isOrderPaid(selectedOrder)
+            const isOrderUnpaid = !isOrderPaid(selectedOrder)
 
-      const updatePayload: any = {
-        status: updateData.status,
-        updated_at: new Date().toISOString(),
-      }
+            const updatePayload: any = {
+              status: updateData.status,
+              updated_at: new Date().toISOString(),
+            }
 
-      let fee = Number.parseFloat(updateData.delivery_fee) || 0
-      let partial = Math.abs(Number.parseFloat(updateData.partial_paid_amount) || 0)
+            let fee = Number.parseFloat(updateData.delivery_fee) || 0
+            let partial = Math.abs(Number.parseFloat(updateData.partial_paid_amount) || 0)
 
-      const isReturnStatus = updateData.status === "return"
-      const isReceivingPartWithNoFees = updateData.status === "receiving_part" && fee === 0 && partial === 0
-      const isHandToHandWithNoFees = updateData.status === "hand_to_hand" && fee === 0 && partial === 0
-      const isCanceledWithNoFees = updateData.status === "canceled" && fee === 0 && partial === 0
+            const isReturnStatus = updateData.status === "return"
+            const isHandToHandWithNoFees = updateData.status === "hand_to_hand" && fee === 0 && partial === 0
+            const isCanceledWithNoFees = updateData.status === "canceled" && fee === 0 && partial === 0
 
-      if (isReturnStatus || isReceivingPartWithNoFees || isCanceledWithNoFees) {
-        fee = 0
-        partial = 0
-        updatePayload.collected_by = null
-        updatePayload.payment_sub_type = null
-      }
+            if (isReturnStatus || (updateData.status === "receiving_part" && fee === 0 && partial === 0) || isHandToHandWithNoFees || isCanceledWithNoFees) {
+              fee = 0
+              partial = 0
+              updatePayload.collected_by = null
+              updatePayload.payment_sub_type = null
+            }
 
       updatePayload.delivery_fee = fee
       updatePayload.partial_paid_amount = partial
+      updatePayload.internal_comment = updateData.internal_comment?.trim() || null
 
-      if (updateData.internal_comment?.trim()) {
-        updatePayload.internal_comment = updateData.internal_comment.trim()
+      // If order is not assigned yet or assigned to someone else, assign it to the current courier
+      // Also ensure assigned_at is set for legacy orders already assigned to the courier
+      if (user?.id) {
+        if (!selectedOrder.assigned_courier_id || selectedOrder.assigned_courier_id !== user.id) {
+          console.log('Assigning order to current courier:', user.id)
+          updatePayload.assigned_courier_id = user.id
+          if (!selectedOrder.assigned_at) {
+            updatePayload.assigned_at = new Date().toISOString()
+          }
+        } else if (!selectedOrder.assigned_at) {
+          // Fix legacy orders that are assigned but missing assigned_at
+          updatePayload.assigned_at = new Date().toISOString()
+        }
       }
 
       if (
-        ["partial", "canceled", "delivered", "hand_to_hand", "return", "receiving_part"].includes(updateData.status)
+        courierVisibleStatuses.includes(updateData.status.toLowerCase())
       ) {
-        if (isReturnStatus || isReceivingPartWithNoFees || isCanceledWithNoFees) {
+        if (isReturnStatus || (updateData.status === "receiving_part" && fee === 0 && partial === 0) || isCanceledWithNoFees) {
           // Already handled above
         } else if (isHandToHandWithNoFees) {
           updatePayload.collected_by = null
@@ -1195,13 +1223,13 @@ const OrdersList: React.FC = () => {
             if (!updateData.collected_by) {
               alert("يرجى اختيار طريقة تحصيل للرسوم الإضافية.")
               setSaving(false)
-              setUpdatingOrderId(null)
+              
               return
             }
             if (updateData.collected_by === "courier" && !updateData.payment_sub_type) {
               alert("يرجى اختيار نوع الدفع الفرعي للمندوب للرسوم الإضافية.")
               setSaving(false)
-              setUpdatingOrderId(null)
+              
               return
             }
             updatePayload.collected_by = updateData.collected_by
@@ -1215,7 +1243,7 @@ const OrdersList: React.FC = () => {
           if (!updateData.payment_sub_type) {
             alert("يرجى اختيار نوع الدفع الفرعي للمندوب عند إضافة رسوم التوصيل لطلب ملغي.")
             setSaving(false)
-            setUpdatingOrderId(null)
+            
             return
           }
           updatePayload.collected_by = "courier"
@@ -1243,14 +1271,14 @@ const OrdersList: React.FC = () => {
             if (!collected) {
               alert("يرجى اختيار طريقة تحصيل عند إضافة رسوم التوصيل.")
               setSaving(false)
-              setUpdatingOrderId(null)
+              
               return
             }
             if (collected === "courier") {
               if (!updateData.payment_sub_type) {
                 alert("يرجى اختيار نوع الدفع الفرعي للمندوب.")
                 setSaving(false)
-                setUpdatingOrderId(null)
+                
                 return
               }
               updatePayload.collected_by = collected
@@ -1265,14 +1293,14 @@ const OrdersList: React.FC = () => {
             if (!collected) {
               alert("يرجى اختيار طريقة تحصيل عند إضافة رسوم التوصيل.")
               setSaving(false)
-              setUpdatingOrderId(null)
+              
               return
             }
             if (collected === "courier") {
               if (!updateData.payment_sub_type) {
                 alert("يرجى اختيار نوع الدفع الفرعي للمندوب.")
                 setSaving(false)
-                setUpdatingOrderId(null)
+                
                 return
               }
               updatePayload.collected_by = collected
@@ -1337,26 +1365,38 @@ const OrdersList: React.FC = () => {
       })
 
       // Then update the database
-      const { error } = await supabase.from("orders").update(updatePayload).eq("id", selectedOrder.id)
+      console.log('Sending update to Supabase for order:', selectedOrder.id, updatePayload)
       
-      // Remove from recently updated set after a delay (subscription will ignore it for 2 seconds)
-      setTimeout(() => {
-        recentlyUpdatedOrderIds.current.delete(selectedOrder.id)
-      }, 3000)
+      const { data: updatedRows, error } = await supabase
+        .from("orders")
+        .update(updatePayload)
+        .eq("id", selectedOrder.id)
+        .select()
 
       if (error) {
-        // Rollback on error
-        setOrders(prevOrders =>
-          prevOrders.map(order =>
-            order.id === selectedOrder.id ? originalOrder : order
-          )
-        )
-        console.error("Supabase error:", error.message)
-        alert("خطأ في الحفظ: " + error.message)
-        setSaving(false)
-        setUpdatingOrderId(null)
-        return
+        recentlyUpdatedOrderIds.current.delete(selectedOrder.id)
+        console.error("Supabase update error:", error)
+        throw new Error(error.message)
       }
+
+      if (!updatedRows || updatedRows.length === 0) {
+        recentlyUpdatedOrderIds.current.delete(selectedOrder.id)
+        console.error("No rows updated. This might be a permission (RLS) issue.")
+        throw new Error("لم يتم تحديث أي بيانات. قد لا تملك الصلاحية لتعديل هذا الطلب أو أن الطلب لم يعد متاحاً.")
+      }
+
+      console.log('Update successful, confirmed data in DB:', updatedRows[0])
+      
+      // Give the database a tiny moment to stabilize and indexes to update
+      await new Promise(resolve => setTimeout(resolve, 300))
+      
+      // Successful update - explicitly refresh from database to ensure everything is in sync
+      await fetchOrders(true, false)
+
+      // Remove from recently updated set after a delay
+      setTimeout(() => {
+        recentlyUpdatedOrderIds.current.delete(selectedOrder.id)
+      }, 2000)
 
       // Mark visually as edited
       setEditedOrderIds(prev => {
@@ -1365,37 +1405,45 @@ const OrdersList: React.FC = () => {
         return next
       })
 
+      // Success message for the courier
+      alert(`تم حفظ التغييرات بنجاح للطلب #${selectedOrder.order_id}`)
+
       // Success - close modal and clear anchors
       setModalOpen(false)
       setSelectedOrder(null)
-      setCardPosition(null)
+      
       if (cardPositionRef.current) {
         cardPositionRef.current = null
       }
-      document.body.style.overflow = ''
-      document.documentElement.style.overflow = ''
       setSaving(false)
-      setUpdatingOrderId(null)
+      
+      // Explicitly refresh after a small delay to ensure DB sync
+      setTimeout(() => {
+        fetchOrders(true, false)
+      }, 500)
+
       return
     } catch (error: any) {
+      console.error('Error in handleSaveUpdate:', error)
       // Rollback on error
       setOrders(prevOrders =>
         prevOrders.map(order =>
           order.id === selectedOrder.id ? originalOrder : order
         )
       )
-      alert("خطأ: " + error.message)
+      alert("خطأ في الحفظ: " + error.message)
     } finally {
       if (modalOpen) {
         setSaving(false)
-        setUpdatingOrderId(null)
+        
       }
     }
   }
 
   const getStatusInfo = (status: string) => {
+    const statusKey = (status || "assigned").toLowerCase()
     return (
-      statusLabels[status] || {
+      statusLabels[statusKey] || {
         label: status,
         icon: Clock,
         color: "text-gray-700",
@@ -1405,7 +1453,7 @@ const OrdersList: React.FC = () => {
   }
 
   const canEditOrder = (order: Order) => {
-    return ["assigned", "partial", "delivered", "hand_to_hand", "return", "canceled", "receiving_part"].includes(order.status)
+    return ["assigned", "partial", "delivered", "hand_to_hand", "return", "canceled", "receiving_part", "pending"].includes(order.status)
   }
 
   // Helper function to get display payment method
@@ -1645,49 +1693,6 @@ const duplicateOrder = async (order: Order) => {
   }
 };
 
-// Test function to check RLS policies (kept for debugging)
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const testRLSPolicies = async () => {
-  if (!user) return;
-  
-  console.log("Testing RLS policies...");
-  console.log("User ID:", user.id);
-  console.log("User role:", user.role);
-  
-  try {
-    // Test SELECT policy
-    const { data: selectTest, error: selectError } = await supabase
-      .from("orders")
-      .select("id, order_id")
-      .eq("assigned_courier_id", user.id)
-      .limit(1);
-    
-    console.log("SELECT test result:", selectTest, selectError);
-    
-    // Test UPDATE policy
-    const { data: updateTest, error: updateError } = await supabase
-      .from("orders")
-      .update({ internal_comment: "RLS test" })
-      .eq("assigned_courier_id", user.id)
-      .eq("id", orders[0]?.id)
-      .select();
-    
-    console.log("UPDATE test result:", updateTest, updateError);
-    
-    // Test DELETE policy
-    const { data: deleteTest, error: deleteError } = await supabase
-      .from("orders")
-      .delete()
-      .eq("id", "test-id-that-doesnt-exist")
-      .select();
-    
-    console.log("DELETE test result:", deleteTest, deleteError);
-    
-  } catch (error) {
-    console.error("RLS test error:", error);
-  }
-};
-
 // Delete duplicated order function
 const deleteDuplicatedOrder = async (order: Order) => {
   // Only allow deletion of duplicated orders
@@ -1909,7 +1914,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
       </div>
 
       {/* Main Content - Mobile First List View */}
-      <div className="px-2 py-3 pb-20">
+      <div className="px-3 sm:px-6 py-4 pb-20 max-w-7xl mx-auto">
         {orders.length === 0 ? (
           /* Empty State */
           <div className="text-center py-16 px-4">
@@ -1956,9 +1961,9 @@ const deleteDuplicatedOrder = async (order: Order) => {
             </div>
           </div>
         ) : (
-          // Orders List - Two Columns on Mobile and Desktop
-          <div className="grid grid-cols-2 gap-3 sm:gap-4">
-            {orders.map((order, index) => {
+          // Orders List - Single Column on Mobile, Grid on Tablet/Desktop
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {orders.map((order) => {
               const statusInfo = getStatusInfo(order.status)
               const StatusIcon = statusInfo.icon
               const deliveryFee = order.delivery_fee || 0
@@ -2158,7 +2163,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                               // CRITICAL: Store in ref FIRST (synchronous, immediate)
                               cardPositionRef.current = position
                               // Then update state (async, but ref is already set)
-                              setCardPosition(position)
+                              
                               
                               console.log('Update button - Position captured:', position)
                               
@@ -2200,7 +2205,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                             e.preventDefault()
                           }}
                           disabled={duplicatingOrderId === order.id}
-                          className="px-1.5 sm:px-3 py-1.5 sm:py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-md sm:rounded-xl transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center flex-shrink-0"
+                          className="px-3 py-2 sm:py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center flex-shrink-0"
                           title="نسخ الطلب"
                         >
                           {duplicatingOrderId === order.id ? (
@@ -2298,31 +2303,37 @@ const deleteDuplicatedOrder = async (order: Order) => {
         {modalOpen && selectedOrder && typeof document !== 'undefined' && createPortal(
           (
           <div 
-            className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-6"
+            className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4"
             style={{ 
               position: 'fixed',
               top: '0',
               left: '0',
               right: '0',
               bottom: '0',
+              width: '100vw',
+              height: '100vh',
               pointerEvents: 'auto',
-              backgroundColor: 'rgba(0, 0, 0, 0.5)',
+              backgroundColor: 'rgba(0, 0, 0, 0.6)',
               backdropFilter: 'blur(4px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
             }}
             onClick={(e) => {
-              if (e.target === e.currentTarget) {
+              if (e.target === e.currentTarget && !saving && !imageUploading) {
                 setModalOpen(false)
                 setSelectedOrder(null)
-                setCardPosition(null)
+                
                 cardPositionRef.current = null
               }
             }}
           >
             <div 
               data-modal-container
-              className="relative w-full max-w-3xl bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden flex flex-col"
+              className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden flex flex-col mx-auto"
               style={{
-                maxHeight: '90vh',
+                maxHeight: '92vh',
+                margin: 'auto'
               }}
               onClick={(e) => {
                 e.stopPropagation()
@@ -2338,20 +2349,9 @@ const deleteDuplicatedOrder = async (order: Order) => {
                     e.stopPropagation()
                     setModalOpen(false)
                     setSelectedOrder(null)
-                    setCardPosition(null)
+                    
                     if (cardPositionRef.current) {
                       cardPositionRef.current = null
-                    }
-                    // Restore body scroll
-                    const scrollY = document.body.style.top
-                    document.body.style.position = ''
-                    document.body.style.top = ''
-                    document.body.style.width = ''
-                    document.body.style.overflow = ''
-                    document.documentElement.style.overflow = ''
-                    if (scrollY) {
-                      const savedScrollY = parseInt(scrollY.replace('px', '') || '0') * -1
-                      window.scrollTo(0, savedScrollY)
                     }
                   }}
                   className="absolute top-2 right-2 sm:top-4 sm:right-4 p-2.5 sm:p-3 bg-red-500 hover:bg-red-600 active:bg-red-700 text-white rounded-lg sm:rounded-xl transition-all active:scale-95 shadow-2xl border-2 border-white z-50"
@@ -2383,24 +2383,24 @@ const deleteDuplicatedOrder = async (order: Order) => {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <h3 className="text-xs sm:text-xl font-bold truncate">#{selectedOrder.order_id}</h3>
-                          <p className="text-blue-100 text-[9px] sm:text-sm whitespace-nowrap">{formatTime(selectedOrder.created_at)}</p>
+                          <h3 className="text-sm sm:text-xl font-bold truncate">#{selectedOrder.order_id}</h3>
+                          <p className="text-blue-100 text-[10px] sm:text-sm whitespace-nowrap">{formatTime(selectedOrder.created_at)}</p>
                         </div>
-                        <p className="text-[10px] sm:text-lg font-semibold truncate mt-0.5">{selectedOrder.customer_name}</p>
+                        <p className="text-xs sm:text-lg font-semibold truncate mt-0.5">{selectedOrder.customer_name}</p>
                       </div>
                     </div>
                     {/* Address - Single line truncated on mobile */}
                     <div className="flex items-center gap-1 sm:gap-2 bg-white/10 backdrop-blur-sm rounded-lg px-1.5 py-1 sm:p-2 mb-1 sm:mb-0">
                       <MapPin className="w-3 h-3 sm:w-4 sm:h-4 text-blue-200 flex-shrink-0" />
-                      <p className="text-blue-100 text-[9px] sm:text-sm leading-tight flex-1 line-clamp-1">{selectedOrder.address}</p>
+                      <p className="text-blue-100 text-[10px] sm:text-sm leading-tight flex-1 line-clamp-1">{selectedOrder.address}</p>
                     </div>
                     {/* Admin Notes - Collapsed indicator only on mobile */}
                     {(selectedOrder.notes || selectedOrder.order_note || selectedOrder.customer_note) && (
                       <div className="flex items-center gap-1 sm:gap-2 mt-1 sm:mt-3 px-1.5 py-1 sm:p-3 bg-yellow-500/20 backdrop-blur-sm rounded-lg border border-yellow-400/30">
                         <FileText className="w-3 h-3 sm:w-5 sm:h-5 text-yellow-200 flex-shrink-0" />
-                        <p className="text-yellow-100 text-[9px] sm:text-sm font-bold flex items-center gap-1 sm:gap-2">
+                        <p className="text-yellow-100 text-[10px] sm:text-sm font-bold flex items-center gap-1 sm:gap-2">
                           <span className="truncate">ملاحظات الإدارة:</span>
-                          <span className="bg-yellow-500/30 px-1 sm:px-2 py-0.5 rounded text-[8px] sm:text-xs whitespace-nowrap">مهم</span>
+                          <span className="bg-yellow-500/30 px-1 sm:px-2 py-0.5 rounded text-[10px] sm:text-xs whitespace-nowrap">مهم</span>
                         </p>
                       </div>
                     )}
@@ -3028,8 +3028,6 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         const currentPartial = Number.parseFloat(updateData.partial_paid_amount) || 0
                         const isReturnStatus = updateData.status === "return"
                         // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                        const isReceivingPartWithNoFees =
-                          updateData.status === "receiving_part" && currentFee === 0 && currentPartial === 0
                         const isHandToHandWithNoFees =
                           updateData.status === "hand_to_hand" && currentFee === 0 && currentPartial === 0
                         const isCanceledWithNoFees =
@@ -3069,17 +3067,6 @@ const deleteDuplicatedOrder = async (order: Order) => {
                             (isOrderUnpaid && updateData.status !== "receiving_part") ||
                             (updateData.status === "canceled" && currentFee > 0) ||
                             (updateData.status === "receiving_part" && (currentFee > 0 || currentPartial > 0)))
-
-                        // Condition to show Collected By dropdown
-                        // Allow collected_by selection even for paid orders (courier can change if client pays differently)
-                        const showCollectedByDropdown =
-                          !isReturnStatus &&
-                          !isHandToHandWithNoFees &&
-                          !isCanceledWithNoFees &&
-                          ((currentFee > 0 || currentPartial > 0) ||
-                            (isOrderOriginallyPaidOnline && updateData.status !== "receiving_part")) && // Allow for paid orders
-                          (isOrderOriginallyPaidOnline ||
-                            (!isOrderOriginallyPaidOnline && !isOrderUnpaid && updateData.status !== "canceled"))
 
                         return (
                           <>
@@ -3187,32 +3174,6 @@ const deleteDuplicatedOrder = async (order: Order) => {
                                 >
                                   <option value="">اختر طريقة الدفع</option>
                                   {Object.entries(paymentSubTypesForCourier).map(([key, label]) => (
-                                    <option key={key} value={key}>
-                                      {label}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-                            )}
-
-                            {showCollectedByDropdown && (
-                              <div className="bg-white rounded-xl border-2 border-gray-200 p-4">
-                                <label className="flex items-center gap-2 mb-3">
-                                  <div className="w-8 h-8 bg-gradient-to-br from-teal-500 to-cyan-600 rounded-lg flex items-center justify-center">
-                                    <UserCheck className="w-4 h-4 text-white" />
-                                  </div>
-                                  <span className="text-base font-bold text-gray-800">تم تحصيل الدفع بواسطة</span>
-                                </label>
-                                <select
-                                  value={updateData.collected_by}
-                                  onChange={(e) => {
-                                    setUpdateData({ ...updateData, collected_by: e.target.value })
-                                  }}
-                                  className="w-full rounded-xl border-2 border-gray-300 px-4 py-3.5 text-base font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white hover:border-teal-400 transition-colors shadow-sm"
-                                  required={showCollectedByDropdown}
-                                >
-                                  <option value="">اختر الطريقة</option>
-                                  {Object.entries(collectionMethodsForCourier).map(([key, label]) => (
                                     <option key={key} value={key}>
                                       {label}
                                     </option>
@@ -3440,13 +3401,10 @@ const deleteDuplicatedOrder = async (order: Order) => {
                           e.stopPropagation()
                           setModalOpen(false)
                           setSelectedOrder(null)
-                          setCardPosition(null)
+                          
                           if (cardPositionRef.current) {
                             cardPositionRef.current = null
                           }
-                          // Restore body scroll
-                          document.body.style.overflow = ''
-                          document.documentElement.style.overflow = ''
                         }}
                         className="flex-1 px-4 py-4 rounded-xl bg-gradient-to-br from-gray-100 to-gray-200 hover:from-gray-200 hover:to-gray-300 text-gray-800 font-bold transition-all active:scale-95 text-base shadow-md border-2 border-gray-300"
                         disabled={saving}

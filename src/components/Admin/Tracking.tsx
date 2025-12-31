@@ -93,23 +93,34 @@ const normalizePaymentMethod = (method = ""): "cash" | "paymob" | "valu" | "visa
   // Treat accounting collectors (e.g., CAR, Emad) as cash on hand for summaries
   if (m.includes("car") || m.includes("emad") || m.includes("cae")) return "on_hand"
   if (m.includes("valu") || m.includes("paymob.valu")) return "valu"
-  if (m === "visa_machine") return "visa_machine"
+  if (m === "visa_machine" || m === "visa machine" || m.includes("visa_machine") || m.includes("visa machine")) return "visa_machine"
   if (m === "instapay") return "instapay"
   if (m === "wallet") return "wallet"
   if (m === "on_hand" || m === "on hand") return "on_hand"
+  
+  // Specific Paymob check - only match explicit Paymob or Card strings if they are likely online paid
   if (
     m === "paymob" ||
     m.includes("paymob") ||
     m.includes("pay mob") ||
-    m.includes("باي موب") ||
+    m.includes("باي موب")
+  ) {
+    return "paymob"
+  }
+
+  // Handle generic card payments - these usually come from Shopify online orders
+  if (
     m.includes("visa") ||
     m.includes("mastercard") ||
     m.includes("card") ||
     m.includes("credit") ||
     m.includes("debit")
-  )
-    return "paymob"
+  ) {
+    return "paymob" // We'll keep them as Paymob for now but caught after visa_machine
+  }
+
   if (m === "cash" || m === "cod" || m.includes("cash on delivery") || m === "cash_on_delivery") return "cash"
+  
   // Debug: log any sub-methods that are grouped as 'other'
   if (m && m !== "other") {
     if (typeof window !== 'undefined' && window.console) {
