@@ -13,16 +13,16 @@ import {
   Truck,
   Calendar,
   Clock,
-  CheckCircle,
-  AlertCircle,
   Image as ImageIcon,
-  DollarSign,
   FileText,
   ShoppingBag,
   History,
   ArrowRight,
   RefreshCw,
   Trash2,
+  Edit3,
+  Save,
+  RotateCcw,
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
 
@@ -38,6 +38,7 @@ interface OrderItem {
   image_url: string | null
   image_alt: string | null
   shopify_raw_data: any
+  is_removed?: boolean
 }
 
 interface Order {
@@ -45,6 +46,7 @@ interface Order {
   order_id: string
   shopify_order_id?: number
   shopify_order_name?: string
+  shopify_raw_data?: any
   customer_name: string
   customer_email?: string
   customer_phone?: string
@@ -79,6 +81,7 @@ interface Order {
   created_at?: string
   updated_at?: string
   assigned_courier_id?: string | null
+  original_courier_id?: string | null
   courier_name?: string
 }
 
@@ -107,6 +110,16 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
   const [removingItemId, setRemovingItemId] = useState<string | null>(null)
+  const [restoringItemId, setRestoringItemId] = useState<string | null>(null)
+  const [isEditing, setIsEditing] = useState(false)
+  const [editingPrice, setEditingPrice] = useState<string>("")
+  const [editingNotes, setEditingNotes] = useState<string>("")
+  const [editingOrderNote, setEditingOrderNote] = useState<string>("")
+  const [editingCustomerNote, setEditingCustomerNote] = useState<string>("")
+  const [saving, setSaving] = useState(false)
+  const [couriers, setCouriers] = useState<Array<{ id: string; name: string; email: string }>>([])
+  const [loadingCouriers, setLoadingCouriers] = useState(false)
+  const [assigningCourier, setAssigningCourier] = useState(false)
 
   // Safety check - if no order, don't render
   if (!order) {
@@ -114,22 +127,26 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
   }
 
   const handleRemoveItem = async (itemId: string) => {
-    if (!confirm('Are you sure you want to remove this item? This will update the order total. / هل أنت متأكد من حذف هذا الصنف؟ سيتم تحديث إجمالي الطلب.')) {
+    if (!confirm('Are you sure you want to remove this item? You can restore it later. / هل أنت متأكد من حذف هذا الصنف؟ يمكنك استعادته لاحقاً.')) {
       return
     }
 
     setRemovingItemId(itemId)
     try {
-      // 1. Delete the item from order_items
-      const { error: deleteError } = await supabase
+      // 1. Mark the item as removed instead of deleting it
+      const { error: updateError } = await supabase
         .from('order_items')
-        .delete()
+        .update({
+          is_removed: true,
+          updated_at: new Date().toISOString()
+        })
         .eq('id', itemId)
 
-      if (deleteError) throw deleteError
+      if (updateError) throw updateError
 
-      // 2. Recalculate total from remaining items
-      const remainingItems = items.filter(i => i.id !== itemId && !i.is_removed && !(i as any).properties?._is_removed)
+      // 2. Recalculate total from remaining (non-removed) items
+      // Use current orderItems state, excluding the one being removed
+      const remainingItems = orderItems.filter(i => i.id !== itemId && !i.is_removed && !(i as any).properties?._is_removed)
       const newSubtotal = remainingItems.reduce((sum, i) => sum + (i.price * i.quantity), 0)
       const newDiscounts = remainingItems.reduce((sum, i) => sum + (i.total_discount || 0), 0)
       
@@ -139,7 +156,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
       const newTotal = newSubtotal + shippingPrice + taxPrice - newDiscounts
 
       // 3. Update the order in the database
-      const { error: updateError } = await supabase
+      const { error: orderUpdateError } = await supabase
         .from('orders')
         .update({
           total_order_fees: newTotal,
@@ -149,18 +166,92 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
         })
         .eq('id', order.id)
 
-      if (updateError) throw updateError
+      if (orderUpdateError) throw orderUpdateError
 
-      // 4. Update local state
-      setOrderItems(prev => prev.filter(i => i.id !== itemId))
+      // 4. Refresh items to show updated state
+      await fetchOrderItems()
+      // Update local state immediately - ensure is_removed is set
+      setOrderItems(prev => prev.map(i => {
+        if (i.id === itemId) {
+          return { ...i, is_removed: true, properties: { ...(i as any).properties, _is_removed: true } }
+        }
+        return i
+      }))
       if (onUpdate) onUpdate()
       
-      alert('Item removed and total updated successfully. / تم حذف الصنف وتحديث الإجمالي بنجاح.')
+      alert('Item removed and total updated successfully. You can restore it anytime. / تم حذف الصنف وتحديث الإجمالي بنجاح. يمكنك استعادته في أي وقت.')
     } catch (e: any) {
       console.error('Error removing item:', e)
       alert(`Error: ${e.message}`)
     } finally {
       setRemovingItemId(null)
+    }
+  }
+
+  const handleRestoreItem = async (itemId: string) => {
+    setRestoringItemId(itemId)
+    try {
+      // 1. Restore the item by setting is_removed to false
+      const { error: updateError } = await supabase
+        .from('order_items')
+        .update({
+          is_removed: false,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', itemId)
+
+      if (updateError) throw updateError
+
+      // 2. Recalculate total including the restored item
+      // Use current orderItems state, including the one being restored
+      const activeItems = orderItems.filter(i => {
+        if (i.id === itemId) return true // Include the item being restored
+        return !i.is_removed && !(i as any).properties?._is_removed
+      })
+      const newSubtotal = activeItems.reduce((sum, i) => sum + (i.price * i.quantity), 0)
+      const newDiscounts = activeItems.reduce((sum, i) => sum + (i.total_discount || 0), 0)
+      
+      // Calculate shipping, tax etc from original order or defaults
+      const shippingPrice = order.total_shipping_price || 0
+      const taxPrice = order.total_tax || 0
+      const newTotal = newSubtotal + shippingPrice + taxPrice - newDiscounts
+
+      // 3. Update the order in the database
+      const { error: orderUpdateError } = await supabase
+        .from('orders')
+        .update({
+          total_order_fees: newTotal,
+          subtotal_price: newSubtotal,
+          total_discounts: newDiscounts,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', order.id)
+
+      if (orderUpdateError) throw orderUpdateError
+
+      // 4. Refresh items to show updated state
+      await fetchOrderItems()
+      // Update local state immediately - ensure is_removed is cleared
+      setOrderItems(prev => prev.map(i => {
+        if (i.id === itemId) {
+          const updated: any = { ...i, is_removed: false }
+          // Remove _is_removed from properties if it exists
+          if ((i as any).properties) {
+            const { _is_removed, ...restProperties } = (i as any).properties
+            updated.properties = restProperties
+          }
+          return updated
+        }
+        return i
+      }))
+      if (onUpdate) onUpdate()
+      
+      alert('Item restored and total updated successfully. / تم استعادة الصنف وتحديث الإجمالي بنجاح.')
+    } catch (e: any) {
+      console.error('Error restoring item:', e)
+      alert(`Error: ${e.message}`)
+    } finally {
+      setRestoringItemId(null)
     }
   }
 
@@ -184,8 +275,27 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
       })
       
       if (response.ok) {
-        alert("Sync triggered! Please refresh in a few seconds. / تم تشغيل المزامنة! يرجى التحديث بعد ثوانٍ.")
-        if (onUpdate) onUpdate()
+        alert("Sync triggered successfully! / تم تشغيل المزامنة بنجاح")
+        
+        // Refresh everything after a short delay
+        setTimeout(async () => {
+          // 1. Refresh items from table
+          await fetchOrderItems()
+          
+          // 2. Re-fetch order details from DB to get updated totals
+          const { data: updatedOrder } = await supabase
+            .from('orders')
+            .select('*')
+            .eq('id', order.id)
+            .single()
+          
+          if (updatedOrder) {
+            // Note: Since 'order' is a prop, we can't update it directly, 
+            // but the parent 'onUpdate' will eventually pass a new one.
+            // However, calling onUpdate() here triggers the parent.
+            if (onUpdate) onUpdate()
+          }
+        }, 2000)
       } else {
         // Fallback message if endpoint doesn't exist
         alert("Sync requested. The system updates every 5 minutes automatically. / تم طلب المزامنة. النظام يتحدث كل 5 دقائق تلقائياً.")
@@ -274,22 +384,214 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
     }
   }, [order?.order_id])
 
+  // Fetch couriers list
+  useEffect(() => {
+    const fetchCouriers = async () => {
+      setLoadingCouriers(true)
+      try {
+        const { data, error } = await supabase
+          .from('users')
+          .select('id, name, email')
+          .eq('role', 'courier')
+          .order('name', { ascending: true })
+
+        if (error) throw error
+        setCouriers(data || [])
+      } catch (err: any) {
+        console.error('Error fetching couriers:', err)
+      } finally {
+        setLoadingCouriers(false)
+      }
+    }
+    fetchCouriers()
+  }, [])
+
   useEffect(() => {
     if (order?.id) {
       fetchOrderItems()
       fetchOrderHistory()
+      // Initialize editing values
+      setEditingPrice(order.total_order_fees?.toString() || "0")
+      setEditingNotes(order.notes || "")
+      setEditingOrderNote(order.order_note || "")
+      setEditingCustomerNote(order.customer_note || "")
     }
     
     // Debug: Log order data when it changes
-    console.log('🔍 Order data received:', {
+    console.log('🔍 Order data received in Modal:', {
       id: order?.id,
       order_id: order?.order_id,
-      has_product_images: !!order?.product_images,
+      shopify_order_id: (order as any).shopify_order_id,
+      total_order_fees: order?.total_order_fees,
+      subtotal_price: (order as any).subtotal_price,
       has_line_items: !!order?.line_items,
-      product_images_type: typeof order?.product_images,
-      product_images_value: order?.product_images
+      line_items_count: Array.isArray(order?.line_items) ? order?.line_items.length : (typeof order?.line_items === 'string' ? 'string' : 'no')
     })
-  }, [order?.id, fetchOrderItems, fetchOrderHistory, order?.product_images, order?.line_items])
+  }, [order?.id, fetchOrderItems, fetchOrderHistory, order?.product_images, order?.line_items, order?.total_order_fees, order?.notes, order?.order_note, order?.customer_note])
+
+  const handleSaveEdit = async () => {
+    if (!order?.id) return
+
+    setSaving(true)
+    try {
+      const updateData: any = {
+        updated_at: new Date().toISOString(),
+      }
+
+      // Update price if changed (use tolerance for floating point comparison)
+      const newPrice = parseFloat(editingPrice)
+      if (!isNaN(newPrice) && editingPrice.trim() !== "") {
+        const currentPrice = order.total_order_fees || 0
+        const priceDifference = Math.abs(newPrice - currentPrice)
+        // If price differs by more than 0.01, consider it changed
+        if (priceDifference > 0.01) {
+          updateData.total_order_fees = newPrice
+          // Recalculate balance when total is edited: Balance = Total - Paid
+          const raw = order.shopify_raw_data || {}
+          const totalPaid = parseFloat(raw.total_paid || (raw.current_total_price ? (parseFloat(raw.current_total_price) - parseFloat(raw.total_outstanding || 0)) : 0))
+          const paid = order.payment_status === 'paid' ? newPrice : totalPaid
+          const newBalance = newPrice - paid
+          updateData.balance = Math.max(0, newBalance) // Ensure balance is not negative
+          console.log(`Price change: ${currentPrice} -> ${newPrice}, Balance: ${newBalance}`)
+        } else if (priceDifference > 0) {
+          // Even if difference is small, update to ensure exact value is saved
+          updateData.total_order_fees = newPrice
+          // Recalculate balance
+          const raw = order.shopify_raw_data || {}
+          const totalPaid = parseFloat(raw.total_paid || (raw.current_total_price ? (parseFloat(raw.current_total_price) - parseFloat(raw.total_outstanding || 0)) : 0))
+          const paid = order.payment_status === 'paid' ? newPrice : totalPaid
+          const newBalance = newPrice - paid
+          updateData.balance = Math.max(0, newBalance)
+          console.log(`Price update (small difference): ${currentPrice} -> ${newPrice}, Balance: ${newBalance}`)
+        }
+      } else if (editingPrice.trim() === "") {
+        // If price field is empty, don't update it
+        console.log('Price field is empty, skipping price update')
+      } else {
+        // Invalid price value
+        alert('يرجى إدخال سعر صحيح / Please enter a valid price')
+        setSaving(false)
+        return
+      }
+
+      // Update notes if changed
+      if (editingNotes !== (order.notes || "")) {
+        updateData.notes = editingNotes
+      }
+      if (editingOrderNote !== (order.order_note || "")) {
+        updateData.order_note = editingOrderNote
+      }
+      if (editingCustomerNote !== (order.customer_note || "")) {
+        updateData.customer_note = editingCustomerNote
+      }
+
+      if (Object.keys(updateData).length === 1) {
+        // Only updated_at was set, no actual changes
+        alert('لم يتم إجراء أي تغييرات / No changes detected')
+        setIsEditing(false)
+        setSaving(false)
+        return
+      }
+
+      console.log('Saving order update:', updateData)
+
+      const { error: updateError } = await supabase
+        .from('orders')
+        .update(updateData)
+        .eq('id', order.id)
+
+      if (updateError) {
+        console.error('Supabase update error:', updateError)
+        throw updateError
+      }
+
+      console.log('Order updated successfully')
+
+      // Refresh the order data from database to show updated price
+      const { data: updatedOrder } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('id', order.id)
+        .single()
+
+      if (updatedOrder) {
+        // Update the order prop by calling onUpdate which should refresh the parent
+        if (onUpdate) {
+          onUpdate()
+        }
+        // Also update local editing price to match the saved value
+        setEditingPrice(updatedOrder.total_order_fees?.toString() || "0")
+      }
+
+      setIsEditing(false)
+      alert('تم حفظ التغييرات بنجاح / Changes saved successfully')
+    } catch (error: any) {
+      console.error('Error saving order:', error)
+      alert(`خطأ في الحفظ / Error saving: ${error.message || 'Unknown error'}`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleCancelEdit = () => {
+    // Reset to original values
+    setEditingPrice(order?.total_order_fees?.toString() || "0")
+    setEditingNotes(order?.notes || "")
+    setEditingOrderNote(order?.order_note || "")
+    setEditingCustomerNote(order?.customer_note || "")
+    setIsEditing(false)
+  }
+
+  const handleAssignCourier = async (courierId: string | null) => {
+    if (!order?.id) return
+
+    setAssigningCourier(true)
+    try {
+      const updateData: any = {
+        assigned_courier_id: courierId,
+        updated_at: new Date().toISOString(),
+      }
+
+      if (courierId) {
+        // Assigning to a courier
+        updateData.status = "assigned"
+        updateData.assigned_at = new Date().toISOString()
+        
+        // Preserve original_courier_id if not set
+        if (!order.original_courier_id && order.assigned_courier_id) {
+          updateData.original_courier_id = order.assigned_courier_id
+        } else if (!order.original_courier_id) {
+          updateData.original_courier_id = courierId
+        }
+      } else {
+        // Unassigning - set status to pending
+        updateData.status = "pending"
+        updateData.assigned_at = null
+      }
+
+      const { error: updateError } = await supabase
+        .from('orders')
+        .update(updateData)
+        .eq('id', order.id)
+
+      if (updateError) throw updateError
+
+      // Refresh order data
+      if (onUpdate) {
+        onUpdate()
+      }
+      
+      alert(courierId 
+        ? `تم تعيين الطلب إلى المندوب بنجاح / Order assigned to courier successfully`
+        : `تم إلغاء تعيين الطلب بنجاح / Order unassigned successfully`
+      )
+    } catch (error: any) {
+      console.error('Error assigning courier:', error)
+      alert(`خطأ في تعيين المندوب / Error assigning courier: ${error.message || 'Unknown error'}`)
+    } finally {
+      setAssigningCourier(false)
+    }
+  }
 
   // Parse line items from JSON if order_items table is empty
   let parsedLineItems: any[] = []
@@ -449,6 +751,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
         return {
           ...orderItem,
           image_url: imageUrl || orderItem.image_url,
+          is_removed: orderItem.is_removed || (orderItem as any).properties?._is_removed || orderItem.quantity === 0
         };
       })
     : parsedLineItems.map((item: any, index: number) => {
@@ -611,17 +914,60 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
           image_url: imageUrl,
           image_alt: item.title || item.name || null,
           shopify_raw_data: item,
+          is_removed: item.is_removed || (item.properties && (item.properties._is_removed === true || item.properties._is_removed === 'true')) || parseFloat(String(item.quantity)) === 0
         }
       })
 
-  // Calculate totals
-  const subtotal = order.subtotal_price || order.total_order_fees || 0
-  const tax = order.total_tax || 0
-  const discounts = order.total_discounts || 0
-  const shipping = order.total_shipping_price || 0
-  const total = order.total_order_fees || subtotal + tax - discounts + shipping
-  const paid = order.payment_status === 'paid' ? total : 0
-  const balance = total - paid
+  // Use Shopify's EXACT values - don't recalculate, trust Shopify's math
+  // This ensures 100% accuracy when orders are edited in Shopify
+  const raw = order.shopify_raw_data || {}
+  
+  // Count active items (not removed, quantity > 0) - this matches Shopify's "X items" count
+  const activeItems = items.filter(i => {
+    const item = i as any
+    const isRemoved = item.is_removed || item.properties?._is_removed || parseFloat(String(item.quantity)) === 0
+    return !isRemoved && item.quantity > 0
+  })
+  
+  // Use Shopify's exact totals (these are the source of truth, especially for edited orders)
+  const subtotal = parseFloat(raw.current_subtotal_price || order.subtotal_price || 0)
+  const tax = parseFloat(raw.current_total_tax || order.total_tax || 0)
+  const discounts = parseFloat(raw.current_total_discounts || order.total_discounts || 0)
+  const shipping = parseFloat(raw.total_shipping_price_set?.shop_money?.amount || order.total_shipping_price || 0)
+  
+  // Calculate total as: Subtotal + Tax + Shipping - Discounts
+  const calculatedTotal = subtotal + tax + shipping - discounts
+  
+  // Prioritize manually edited total_order_fees over calculated total
+  // This ensures admin edits are always reflected
+  const total = parseFloat(order.total_order_fees?.toString() || calculatedTotal.toString() || "0")
+  
+  // Calculate paid and balance from Shopify's data
+  const totalPaid = parseFloat(raw.total_paid || (raw.current_total_price ? (parseFloat(raw.current_total_price) - parseFloat(raw.total_outstanding || 0)) : 0))
+  const paid = order.payment_status === 'paid' ? total : totalPaid
+  
+  // Calculate balance: 
+  // 1. If balance was saved in database (from manual edit), use it
+  // 2. If total was manually edited (different from Shopify), recalculate balance
+  // 3. Otherwise use Shopify's total_outstanding
+  const savedBalance = (order as any).balance
+  const shopifyTotal = parseFloat(raw.current_total_price || "0")
+  const isManuallyEdited = Math.abs(total - shopifyTotal) > 0.01
+  
+  let balance: number
+  if (savedBalance !== undefined && savedBalance !== null) {
+    // Use saved balance from database (from previous manual edit)
+    balance = parseFloat(savedBalance.toString())
+  } else if (isManuallyEdited) {
+    // Recalculate balance when total is manually edited
+    balance = total - paid
+  } else {
+    // Use Shopify's balance
+    balance = parseFloat(raw.total_outstanding || (total - paid).toString())
+  }
+  
+  // Ensure balance is not negative
+  balance = Math.max(0, balance)
 
   // Parse addresses (they might be JSON strings)
   let shippingAddr: any = {}
@@ -665,6 +1011,9 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
     const statusColors: Record<string, string> = {
       paid: 'bg-green-100 text-green-800 border-green-200',
       pending: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+      partially_paid: 'bg-orange-100 text-orange-800 border-orange-200',
+      'partially paid': 'bg-orange-100 text-orange-800 border-orange-200',
+      unpaid: 'bg-red-100 text-red-800 border-red-200',
       cod: 'bg-orange-100 text-orange-800 border-orange-200',
       unfulfilled: 'bg-gray-100 text-gray-800 border-gray-200',
       fulfilled: 'bg-blue-100 text-blue-800 border-blue-200',
@@ -674,6 +1023,9 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
     const statusLabels: Record<string, string> = {
       paid: 'Paid',
       pending: 'Payment pending',
+      partially_paid: 'Partially paid',
+      'partially paid': 'Partially paid',
+      unpaid: 'Unpaid',
       cod: 'Cash on Delivery',
       unfulfilled: 'Unfulfilled',
       fulfilled: 'Fulfilled',
@@ -719,7 +1071,14 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
     )
   }
 
-  if (typeof document === 'undefined') return null
+  // Sort items to show removed ones at the bottom
+  const sortedItems = [...items].sort((a, b) => {
+    const aRemoved = a.is_removed || (a as any).properties?._is_removed;
+    const bRemoved = b.is_removed || (b as any).properties?._is_removed;
+    if (aRemoved && !bRemoved) return 1;
+    if (!aRemoved && bRemoved) return -1;
+    return 0;
+  });
 
   return createPortal(
     <div 
@@ -751,9 +1110,55 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                   <span className="text-blue-200 text-sm">({order.shopify_order_name})</span>
                 )}
               </div>
-              <div className="flex items-center gap-4 mt-2">
-                {order.payment_status && getStatusBadge(order.payment_status, 'payment')}
+              <div className="flex items-center gap-4 mt-2 flex-wrap">
+                {/* Use financial_status from Shopify if available, otherwise use payment_status */}
+                {(order.financial_status || order.payment_status) && getStatusBadge(
+                  order.financial_status || order.payment_status || 'pending', 
+                  'payment'
+                )}
                 {order.fulfillment_status && getStatusBadge(order.fulfillment_status, 'fulfillment')}
+                {!isEditing ? (
+                  <button
+                    onClick={() => {
+                      // Initialize editing values when entering edit mode
+                      setEditingPrice(order.total_order_fees?.toString() || "0")
+                      setEditingNotes(order.notes || "")
+                      setEditingOrderNote(order.order_note || "")
+                      setEditingCustomerNote(order.customer_note || "")
+                      setIsEditing(true)
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1 bg-white/20 hover:bg-white/30 rounded-full text-xs font-medium transition-colors"
+                    title="Edit order / تعديل الطلب"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                    Edit
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleSaveEdit}
+                      disabled={saving}
+                      className="flex items-center gap-1.5 px-3 py-1 bg-green-500 hover:bg-green-600 rounded-full text-xs font-medium transition-colors disabled:opacity-50"
+                      title="Save changes / حفظ التغييرات"
+                    >
+                      {saving ? (
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Save className="w-3.5 h-3.5" />
+                      )}
+                      {saving ? 'Saving...' : 'Save'}
+                    </button>
+                    <button
+                      onClick={handleCancelEdit}
+                      disabled={saving}
+                      className="flex items-center gap-1.5 px-3 py-1 bg-red-500 hover:bg-red-600 rounded-full text-xs font-medium transition-colors disabled:opacity-50"
+                      title="Cancel / إلغاء"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                      Cancel
+                    </button>
+                  </div>
+                )}
                 <button
                   onClick={handleManualSync}
                   disabled={isSyncing}
@@ -820,101 +1225,180 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                 <h3 className="font-semibold text-gray-900 mb-4">Products</h3>
                 {loadingItems ? (
                   <div className="text-center py-8 text-gray-500">Loading products...</div>
-                ) : items.length > 0 ? (
+                ) : sortedItems.length > 0 ? (
                   <div className="space-y-4">
-                    {items.map((item, index) => (
-                      <div key={item.id || index} className="flex gap-4 pb-4 border-b border-gray-100 last:border-0">
-                        {/* Product Image */}
-                        <div className="flex-shrink-0">
-                          {(() => {
-                            const hasImage = item.image_url && 
-                                           item.image_url !== 'null' && 
-                                           item.image_url !== null &&
-                                           typeof item.image_url === 'string' &&
-                                           item.image_url.trim() !== '' &&
-                                           !item.image_url.includes('undefined')
-                            
-                            console.log(`🖼️ Rendering image for "${item.title}":`, {
-                              image_url: item.image_url,
-                              hasImage: hasImage,
-                              image_url_type: typeof item.image_url,
-                              image_url_length: item.image_url ? item.image_url.length : 0
-                            })
-                            
-                            return hasImage ? (
-                              <img
-                                src={item.image_url}
-                                alt={item.image_alt || item.title}
-                                className="w-20 h-20 object-cover rounded-lg border border-gray-200"
-                                onError={(e) => {
-                                  console.error(`❌ Image failed to load for "${item.title}":`, {
-                                    url: item.image_url,
-                                    error: e,
-                                    target: (e.target as HTMLImageElement).src
-                                  })
-                                  const target = e.target as HTMLImageElement
-                                  target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="80" height="80"%3E%3Crect width="80" height="80" fill="%23f3f4f6"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%239ca3af" font-size="12"%3ENo Image%3C/text%3E%3C/svg%3E'
-                                  target.onerror = null // Prevent infinite loop
-                                }}
-                                onLoad={() => {
-                                  console.log(`✅ Image loaded successfully: "${item.title}"`, item.image_url?.substring(0, 60))
-                                }}
-                              />
-                            ) : (
-                              <div className="w-20 h-20 bg-gray-100 rounded-lg flex items-center justify-center" title={`No image: ${item.image_url || 'null'}`}>
-                                <ImageIcon className="w-8 h-8 text-gray-400" />
-                              </div>
-                            )
-                          })()}
-                        </div>
+                    {sortedItems.map((item, index) => {
+                      // Check if item is removed - prioritize database flag, then properties, then quantity
+                      const isRemoved = item.is_removed === true || (item as any).properties?._is_removed === true || (item as any).properties?._is_removed === 'true' || parseFloat(String(item.quantity)) === 0;
+                      
+                      // Debug log for removed items
+                      if (isRemoved) {
+                        console.log('🔴 Removed item detected:', {
+                          id: item.id,
+                          title: item.title,
+                          is_removed: item.is_removed,
+                          properties: (item as any).properties,
+                          quantity: item.quantity
+                        })
+                      }
+                      
+                      return (
+                        <div 
+                          key={item.id || index} 
+                          className={`flex gap-4 pb-4 border-b border-gray-100 last:border-0 ${
+                            isRemoved 
+                              ? 'bg-red-50/80 border-2 border-red-300 -mx-2 px-3 py-3 rounded-xl opacity-75 grayscale' 
+                              : ''
+                          }`}
+                        >
+                          {/* Product Image */}
+                          <div className="flex-shrink-0">
+                            {(() => {
+                              const hasImage = item.image_url && 
+                                             item.image_url !== 'null' && 
+                                             item.image_url !== null &&
+                                             typeof item.image_url === 'string' &&
+                                             item.image_url.trim() !== '' &&
+                                             !item.image_url.includes('undefined')
+                              
+                              return hasImage ? (
+                                <img
+                                  src={item.image_url}
+                                  alt={item.image_alt || item.title}
+                                  className={`w-20 h-20 object-cover rounded-lg border ${isRemoved ? 'border-red-200' : 'border-gray-200'}`}
+                                  onError={(e) => {
+                                    const target = e.target as HTMLImageElement
+                                    target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="80" height="80"%3E%3Crect width="80" height="80" fill="%23f3f4f6"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%239ca3af" font-size="12"%3ENo Image%3C/text%3E%3C/svg%3E'
+                                    target.onerror = null
+                                  }}
+                                />
+                              ) : (
+                                <div className={`w-20 h-20 rounded-lg flex items-center justify-center ${isRemoved ? 'bg-red-50' : 'bg-gray-100'}`}>
+                                  <ImageIcon className={`w-8 h-8 ${isRemoved ? 'text-red-300' : 'text-gray-400'}`} />
+                                </div>
+                              )
+                            })()}
+                          </div>
 
-                        {/* Product Details */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-2 mb-1">
-                            <div className="flex items-center gap-2">
-                              <h4 className="font-medium text-gray-900">{item.title}</h4>
-                              {(item.is_removed || (item as any).properties?._is_removed) && (
-                                <span className="px-2 py-0.5 bg-red-100 text-red-700 text-[10px] font-bold rounded-full uppercase">
-                                  Removed
-                                </span>
+                          {/* Product Details */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-2 mb-1">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <h4 className={`font-medium truncate ${isRemoved ? 'text-red-800' : 'text-gray-900'}`}>{item.title}</h4>
+                                  {isRemoved && (
+                                    <span className="px-2 py-0.5 bg-red-600 text-white text-[10px] font-bold rounded-full uppercase shadow-sm whitespace-nowrap">
+                                      Removed
+                                    </span>
+                                  )}
+                                  {item.shopify_raw_data?.fulfillment_status === 'fulfilled' && !isRemoved && (
+                                    <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-bold rounded-full uppercase border border-blue-200 whitespace-nowrap">
+                                      Fulfilled
+                                    </span>
+                                  )}
+                                  {(!item.shopify_raw_data?.fulfillment_status || item.shopify_raw_data?.fulfillment_status === 'null') && !isRemoved && (
+                                    <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-[10px] font-bold rounded-full uppercase border border-yellow-200 whitespace-nowrap">
+                                      Unfulfilled
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              {/* Action Buttons */}
+                              {!isRemoved ? (
+                                <button
+                                  onClick={() => handleRemoveItem(item.id)}
+                                  disabled={removingItemId === item.id}
+                                  className="text-red-500 hover:text-red-700 p-1 hover:bg-red-50 rounded transition-colors disabled:opacity-50 flex-shrink-0"
+                                  title="Remove item from order / حذف الصنف من الطلب"
+                                >
+                                  {removingItemId === item.id ? (
+                                    <RefreshCw className="w-4 h-4 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="w-4 h-4" />
+                                  )}
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => handleRestoreItem(item.id)}
+                                  disabled={restoringItemId === item.id}
+                                  className="text-green-600 hover:text-green-700 p-1 hover:bg-green-50 rounded transition-colors disabled:opacity-50 flex-shrink-0"
+                                  title="Restore item to order / استعادة الصنف إلى الطلب"
+                                >
+                                  {restoringItemId === item.id ? (
+                                    <RefreshCw className="w-4 h-4 animate-spin" />
+                                  ) : (
+                                    <RotateCcw className="w-4 h-4" />
+                                  )}
+                                </button>
                               )}
                             </div>
-                            {/* Remove Item Button - Only for non-removed items */}
-                            {!item.is_removed && !(item as any).properties?._is_removed && (
-                              <button
-                                onClick={() => handleRemoveItem(item.id)}
-                                disabled={removingItemId === item.id}
-                                className="text-red-500 hover:text-red-700 p-1 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
-                                title="Remove item from order / حذف الصنف من الطلب"
-                              >
-                                {removingItemId === item.id ? (
-                                  <RefreshCw className="w-4 h-4 animate-spin" />
-                                ) : (
-                                  <Trash2 className="w-4 h-4" />
-                                )}
-                              </button>
+                            {item.variant_title && (
+                              <p className={`text-sm mb-1 ${isRemoved ? 'text-red-400' : 'text-gray-500'}`}>{item.variant_title}</p>
+                            )}
+                            {item.sku && (
+                              <p className={`text-xs mb-1 ${isRemoved ? 'text-red-300' : 'text-gray-400'}`}>SKU: {item.sku}</p>
+                            )}
+                            
+                            {/* Fulfillment Date - Show like Shopify */}
+                            {(() => {
+                              const itemRaw = item.shopify_raw_data || {}
+                              const fulfillments = raw.fulfillments || []
+                              let fulfillmentDate = null
+                              
+                              // Find fulfillment date for this specific line item
+                              if (fulfillments && Array.isArray(fulfillments)) {
+                                for (const fulfillment of fulfillments) {
+                                  if (fulfillment.line_items && Array.isArray(fulfillment.line_items)) {
+                                    const lineItemMatch = fulfillment.line_items.find((li: any) => 
+                                      String(li.id) === String(itemRaw.id) || 
+                                      String(li.line_item_id) === String(itemRaw.id)
+                                    )
+                                    if (lineItemMatch && fulfillment.created_at) {
+                                      fulfillmentDate = fulfillment.created_at
+                                      break
+                                    }
+                                  }
+                                }
+                              }
+                              
+                              if (fulfillmentDate && !isRemoved) {
+                                const date = new Date(fulfillmentDate)
+                                const formattedDate = date.toLocaleDateString('en-US', {
+                                  year: 'numeric',
+                                  month: 'long',
+                                  day: 'numeric'
+                                })
+                                return (
+                                  <p className="text-xs text-blue-600 mb-1 font-medium">
+                                    Fulfilled: {formattedDate}
+                                  </p>
+                                )
+                              }
+                              return null
+                            })()}
+                            
+                            <div className="flex items-center justify-between mt-2">
+                              <span className={`text-sm ${isRemoved ? 'text-red-500 line-through font-medium' : 'text-gray-600'}`}>
+                                Quantity: <span className={isRemoved ? 'text-red-600' : ''}>{item.quantity}</span>
+                              </span>
+                              <span className={`font-semibold text-lg ${isRemoved ? 'text-red-600 line-through' : 'text-gray-900'}`}>
+                                {order.currency || 'EGP'} {(item.price * item.quantity).toFixed(2)}
+                              </span>
+                            </div>
+                            {isRemoved && (
+                              <div className="mt-2 p-2 bg-red-100 border border-red-300 rounded-lg">
+                                <p className="text-xs font-bold text-red-700">⚠️ This item was removed from the order in Shopify</p>
+                              </div>
+                            )}
+                            {item.total_discount > 0 && !isRemoved && (
+                              <p className="text-xs text-green-600 mt-1">
+                                Discount: -{order.currency || 'EGP'} {item.total_discount.toFixed(2)}
+                              </p>
                             )}
                           </div>
-                          {item.variant_title && (
-                            <p className="text-sm text-gray-500 mb-1">{item.variant_title}</p>
-                          )}
-                          {item.sku && (
-                            <p className="text-xs text-gray-400 mb-2">SKU: {item.sku}</p>
-                          )}
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm text-gray-600">Quantity: {item.quantity}</span>
-                            <span className="font-semibold text-gray-900">
-                              {order.currency || 'EGP'} {(item.price * item.quantity).toFixed(2)}
-                            </span>
-                          </div>
-                          {item.total_discount > 0 && (
-                            <p className="text-xs text-green-600 mt-1">
-                              Discount: -{order.currency || 'EGP'} {item.total_discount.toFixed(2)}
-                            </p>
-                          )}
                         </div>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 ) : (
                   <div className="text-center py-8 text-gray-500">
@@ -933,7 +1417,9 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-gray-600">Subtotal</span>
-                    <span className="text-gray-900">{items.length} item{items.length !== 1 ? 's' : ''}</span>
+                    <span className="text-gray-900">
+                      {activeItems.length} {activeItems.length === 1 ? 'item' : 'items'}
+                    </span>
                     <span className="font-medium text-gray-900">{order.currency || 'EGP'} {subtotal.toFixed(2)}</span>
                   </div>
                   {shipping > 0 && (
@@ -958,33 +1444,35 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                   <div className="border-t border-gray-200 pt-2 mt-2">
                     <div className="flex justify-between font-semibold text-lg">
                       <span>Total</span>
-                      <span>{order.currency || 'EGP'} {total.toFixed(2)}</span>
+                      {isEditing ? (
+                        <div className="flex items-center gap-2">
+                          <span>{order.currency || 'EGP'}</span>
+                          <input
+                            type="number"
+                            value={editingPrice}
+                            onChange={(e) => setEditingPrice(e.target.value)}
+                            className="w-32 px-2 py-1 border border-gray-300 rounded text-lg font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            step="0.01"
+                            min="0"
+                          />
+                        </div>
+                      ) : (
+                        <span>{order.currency || 'EGP'} {total.toFixed(2)}</span>
+                      )}
                     </div>
                   </div>
 
-                  {/* Shopify Balance Info */}
-                  {(order as any).balance !== undefined && (order as any).balance > 0 && (
-                    <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                      <div className="flex justify-between text-sm mb-1">
-                        <span className="text-amber-800 font-medium">Outstanding Balance (Shopify)</span>
-                        <span className="text-amber-900 font-bold">{order.currency || 'EGP'} {(order as any).balance.toFixed(2)}</span>
-                      </div>
-                      <p className="text-[10px] text-amber-700">This amount remains unpaid in Shopify.</p>
+                  {/* Shopify Paid/Balance Info */}
+                  <div className="mt-4 space-y-2 pt-4 border-t border-gray-100">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Paid Amount (المبلغ المدفوع)</span>
+                      <span className="text-green-700 font-bold">{order.currency || 'EGP'} {((order as any).total_paid || paid).toFixed(2)}</span>
                     </div>
-                  )}
-
-                  {order.payment_status !== 'paid' && (
-                    <>
-                      <div className="flex justify-between text-sm pt-2 border-t border-gray-100">
-                        <span className="text-gray-600">Paid {(order as any).total_paid > 0 ? '(Shopify)' : ''}</span>
-                        <span className="text-gray-900">{order.currency || 'EGP'} {((order as any).total_paid || paid).toFixed(2)}</span>
-                      </div>
-                      <div className="flex justify-between text-sm font-medium">
-                        <span className="text-gray-900">Balance {(order as any).balance > 0 ? '(Shopify)' : ''}</span>
-                        <span className="text-gray-900">{order.currency || 'EGP'} {((order as any).balance || balance).toFixed(2)}</span>
-                      </div>
-                    </>
-                  )}
+                    <div className="flex justify-between text-sm p-3 bg-amber-50 rounded-xl border-2 border-amber-200">
+                      <span className="text-amber-900 font-bold">Balance (المتبقي للتحصيل)</span>
+                      <span className="text-amber-900 font-black text-base">{order.currency || 'EGP'} {((order as any).balance || balance).toFixed(2)}</span>
+                    </div>
+                  </div>
                 </div>
                 {order.payment_gateway_names && order.payment_gateway_names.length > 0 && (
                   <div className="mt-3 pt-3 border-t border-gray-200">
@@ -1022,6 +1510,49 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                       {order.mobile_number || order.customer_phone}
                     </a>
                   )}
+                </div>
+              </div>
+
+              {/* Courier Assignment */}
+              <div className="bg-white border border-gray-200 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                    <Truck className="w-5 h-5" />
+                    Courier Assignment
+                  </h3>
+                </div>
+                <div className="space-y-3">
+                  {order.courier_name ? (
+                    <div className="mb-3">
+                      <p className="text-sm text-gray-600 mb-2">Current Courier:</p>
+                      <p className="font-medium text-gray-900">{order.courier_name}</p>
+                    </div>
+                  ) : (
+                    <div className="mb-3">
+                      <p className="text-sm text-gray-500">No courier assigned</p>
+                    </div>
+                  )}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      {order.courier_name ? 'Change Courier / تغيير المندوب' : 'Assign Courier / تعيين مندوب'}
+                    </label>
+                    <select
+                      value={order.assigned_courier_id || ""}
+                      onChange={(e) => handleAssignCourier(e.target.value || null)}
+                      disabled={assigningCourier || loadingCouriers}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <option value="">{order.courier_name ? 'Unassign / إلغاء التعيين' : 'Select Courier / اختر المندوب'}</option>
+                      {couriers.map((courier) => (
+                        <option key={courier.id} value={courier.id}>
+                          {courier.name}
+                        </option>
+                      ))}
+                    </select>
+                    {assigningCourier && (
+                      <p className="text-xs text-gray-500 mt-2">Updating...</p>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -1075,31 +1606,64 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
               )}
 
               {/* Notes */}
-              {(order.notes || order.order_note || order.customer_note) && (
-                <div className="bg-white border border-gray-200 rounded-lg p-4">
-                  <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <div className="bg-white border border-gray-200 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-semibold text-gray-900 flex items-center gap-2">
                     <FileText className="w-5 h-5" />
                     Notes
                   </h3>
-                  <div className="space-y-3 text-sm">
-                    {order.order_note && (
-                      <div>
-                        <p className="text-gray-600 mb-1">Order Note:</p>
-                        <p className="text-gray-900 whitespace-pre-wrap">{order.order_note}</p>
-                      </div>
+                </div>
+                <div className="space-y-3 text-sm">
+                  <div>
+                    <label className="block text-gray-600 mb-1 font-medium">Order Note:</label>
+                    {isEditing ? (
+                      <textarea
+                        value={editingOrderNote}
+                        onChange={(e) => setEditingOrderNote(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                        rows={3}
+                        placeholder="Order note..."
+                      />
+                    ) : (
+                      <p className="text-gray-900 whitespace-pre-wrap min-h-[3rem]">
+                        {order.order_note || <span className="text-gray-400 italic">No order note</span>}
+                      </p>
                     )}
-                    {order.customer_note && (
-                      <div>
-                        <p className="text-gray-600 mb-1">Customer Note:</p>
-                        <p className="text-gray-900 whitespace-pre-wrap">{order.customer_note}</p>
-                      </div>
+                  </div>
+                  <div>
+                    <label className="block text-gray-600 mb-1 font-medium">Customer Note:</label>
+                    {isEditing ? (
+                      <textarea
+                        value={editingCustomerNote}
+                        onChange={(e) => setEditingCustomerNote(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                        rows={3}
+                        placeholder="Customer note..."
+                      />
+                    ) : (
+                      <p className="text-gray-900 whitespace-pre-wrap min-h-[3rem]">
+                        {order.customer_note || <span className="text-gray-400 italic">No customer note</span>}
+                      </p>
                     )}
-                    {order.notes && !order.order_note && !order.customer_note && (
-                      <p className="text-gray-900 whitespace-pre-wrap">{order.notes}</p>
+                  </div>
+                  <div>
+                    <label className="block text-gray-600 mb-1 font-medium">General Notes:</label>
+                    {isEditing ? (
+                      <textarea
+                        value={editingNotes}
+                        onChange={(e) => setEditingNotes(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                        rows={3}
+                        placeholder="General notes..."
+                      />
+                    ) : (
+                      <p className="text-gray-900 whitespace-pre-wrap min-h-[3rem]">
+                        {order.notes || <span className="text-gray-400 italic">No notes</span>}
+                      </p>
                     )}
                   </div>
                 </div>
-              )}
+              </div>
 
               {/* Order Tags */}
               {order.order_tags && order.order_tags.length > 0 && (
@@ -1285,3 +1849,4 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
 }
 
 export default OrderDetailModal
+

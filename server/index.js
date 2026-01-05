@@ -4,6 +4,7 @@ import multer from 'multer';
 import { createClient } from '@supabase/supabase-js';
 import FormspreeSync from './formspree-sync.js';
 import dotenv from 'dotenv';
+import fetch from 'node-fetch';
 
 dotenv.config();
 
@@ -231,6 +232,23 @@ app.post('/api/formspree/stop', (req, res) => {
   } catch (error) {
     console.error('Stop sync error:', error);
     res.status(500).json({ error: 'Failed to stop sync service' });
+  }
+});
+
+// Proxy Shopify sync requests to the sync server (port 3002)
+app.post('/api/shopify/sync-order/:id', async (req, res) => {
+  const shopifySyncPort = process.env.SHOPIFY_SYNC_PORT || 3002;
+  try {
+    console.log(`📡 Proxying sync request for order ${req.params.id} to port ${shopifySyncPort}`);
+    const response = await fetch(`http://localhost:${shopifySyncPort}/api/shopify/sync-order/${req.params.id}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const data = await response.json();
+    res.status(response.status).json(data);
+  } catch (error) {
+    console.error('Error proxying to Shopify sync server:', error);
+    res.status(500).json({ error: 'Shopify sync server unreachable / خادم المزامنة غير متاح' });
   }
 });
 

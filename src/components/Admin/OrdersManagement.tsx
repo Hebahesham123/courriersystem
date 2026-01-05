@@ -38,11 +38,15 @@ import {
   Check,
   Eye,
   MessageCircle,
+  ArrowLeft,
+  ArrowRight,
+  Copy,
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
 import { useLanguage } from "../../contexts/LanguageContext"
 import { useAuth } from "../../contexts/AuthContext"
 import OrderDetailModal from "./OrderDetailModal"
+import ReceivePieceOrExchange from "./ReceivePieceOrExchange"
 
 interface Order {
   id: string
@@ -94,6 +98,7 @@ interface Order {
   delivery_fee?: number | null
   partial_paid_amount?: number | null
   internal_comment?: string | null
+  receive_piece_or_exchange?: string | null
 }
 
 interface Courier {
@@ -206,6 +211,8 @@ const OrdersManagement: React.FC = () => {
   const [selectedOrderForDetail, setSelectedOrderForDetail] = useState<Order | null>(null)
   const [notesPopupOrderId, setNotesPopupOrderId] = useState<string | null>(null)
   const [notesPopupPosition, setNotesPopupPosition] = useState<{ top: number; left: number } | null>(null)
+  const [showReceivePieceOrExchange, setShowReceivePieceOrExchange] = useState(false)
+  const [duplicatingOrderId, setDuplicatingOrderId] = useState<string | null>(null)
 
   // Date range state - default to last 3 months
   const [dateRange, setDateRange] = useState<{ from: string; to: string }>(() => {
@@ -397,7 +404,7 @@ const OrdersManagement: React.FC = () => {
           status, fulfillment_status, shipping_method, tracking_number, tracking_url,
           line_items, product_images, order_note, customer_note, notes, order_tags,
           shopify_created_at, shopify_cancelled_at, assigned_courier_id, original_courier_id, created_at, updated_at,
-          archived, archived_at, collected_by, payment_sub_type, delivery_fee, partial_paid_amount, internal_comment,
+          archived, archived_at, collected_by, payment_sub_type, delivery_fee, partial_paid_amount, internal_comment, shopify_raw_data, receive_piece_or_exchange,
           users!orders_assigned_courier_id_fkey(name)
         `,
         )
@@ -1109,6 +1116,109 @@ const OrdersManagement: React.FC = () => {
       setError("Failed to save changes / فشل حفظ التغييرات: " + error.message)
     } finally {
       setSavingOrderId(null)
+    }
+  }
+
+  const handleOpenReceivePieceOrExchange = () => {
+    // If orders are selected, mark them as receive_piece first, then open the page
+    if (selectedOrders.length > 0) {
+      supabase
+        .from("orders")
+        .update({ receive_piece_or_exchange: "receive_piece" })
+        .in("id", selectedOrders)
+        .then(() => {
+          setShowReceivePieceOrExchange(true)
+          setSelectedOrders([]) // Clear selection
+        })
+        .catch((error: any) => {
+          setError("خطأ في تحديد الطلبات: " + error.message)
+        })
+    } else {
+      // Just open the page to view/manage existing orders
+      setShowReceivePieceOrExchange(true)
+    }
+  }
+
+  const handleDuplicateOrder = async (orderId: string) => {
+    if (!orderId) return
+
+    setDuplicatingOrderId(orderId)
+    setError(null)
+
+    try {
+      // Fetch the original order with all its data
+      const { data: originalOrder, error: fetchError } = await supabase
+        .from("orders")
+        .select("*")
+        .eq("id", orderId)
+        .single()
+
+      if (fetchError) throw fetchError
+      if (!originalOrder) throw new Error("Order not found")
+
+      // Fetch order items
+      const { data: orderItems, error: itemsError } = await supabase
+        .from("order_items")
+        .select("*")
+        .eq("order_id", orderId)
+
+      if (itemsError) throw itemsError
+
+      // Create new order data (duplicate)
+      const newOrderData: any = {
+        ...originalOrder,
+        id: undefined, // Let database generate new ID
+        order_id: `${originalOrder.order_id}-COPY-${Date.now()}`, // Unique order_id
+        shopify_order_id: null, // Don't duplicate Shopify ID
+        assigned_courier_id: null,
+        original_courier_id: null,
+        assigned_at: null,
+        status: "pending",
+        archived: false,
+        archived_at: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        receive_piece_or_exchange: null, // Reset special status
+      }
+
+      // Remove fields that shouldn't be duplicated
+      delete newOrderData.id
+
+      // Insert the new order
+      const { data: newOrder, error: insertError } = await supabase
+        .from("orders")
+        .insert(newOrderData)
+        .select()
+        .single()
+
+      if (insertError) throw insertError
+
+      // Duplicate order items if they exist
+      if (orderItems && orderItems.length > 0) {
+        const newItems = orderItems.map((item: any) => {
+          const { id, ...itemWithoutId } = item
+          return {
+            ...itemWithoutId,
+            order_id: newOrder.id,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }
+        })
+
+        const { error: itemsInsertError } = await supabase
+          .from("order_items")
+          .insert(newItems)
+
+        if (itemsInsertError) throw itemsInsertError
+      }
+
+      setSuccessMessage(`تم نسخ الطلب #${originalOrder.order_id} بنجاح`)
+      await fetchOrders()
+    } catch (error: any) {
+      console.error("Error duplicating order:", error)
+      setError("خطأ في نسخ الطلب: " + error.message)
+    } finally {
+      setDuplicatingOrderId(null)
     }
   }
 
@@ -2032,6 +2142,19 @@ const OrdersManagement: React.FC = () => {
                     <Eye className="w-3 h-3" />
                     تفاصيل
                   </button>
+                  <button
+                    onClick={() => handleDuplicateOrder(order.id)}
+                    disabled={duplicatingOrderId === order.id}
+                    className="flex items-center gap-1 px-3 py-1 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="نسخ/تقسيم الطلب"
+                  >
+                    {duplicatingOrderId === order.id ? (
+                      <RefreshCw className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <Copy className="w-3 h-3" />
+                    )}
+                    نسخ
+                  </button>
                   {viewMode === "active" && (
                     <button
                       onClick={() => startEdit(order.id)}
@@ -2057,6 +2180,18 @@ const OrdersManagement: React.FC = () => {
           </div>
         )}
       </div>
+    )
+  }
+
+  // Show ReceivePieceOrExchange page if requested
+  if (showReceivePieceOrExchange) {
+    return (
+      <ReceivePieceOrExchange
+        onBack={() => {
+          setShowReceivePieceOrExchange(false)
+          fetchOrders()
+        }}
+      />
     )
   }
 
@@ -2102,6 +2237,20 @@ const OrdersManagement: React.FC = () => {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              {/* استلام قطعه او تبديل Button */}
+              <button
+                onClick={handleOpenReceivePieceOrExchange}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors text-sm"
+                title="استلام قطعه او تبديل"
+              >
+                <Package className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">استلام قطعه او تبديل</span>
+                {selectedOrders.length > 0 && (
+                  <span className="bg-white/20 px-1.5 py-0.5 rounded text-xs font-bold">
+                    {selectedOrders.length}
+                  </span>
+                )}
+              </button>
               {/* Subtle loading indicator for filter/date changes */}
               {refreshing && !loading && (
                 <div className="flex items-center gap-1.5 text-sm text-gray-600">
@@ -3544,6 +3693,19 @@ const OrdersManagement: React.FC = () => {
                                   <Eye className="w-3 h-3" />
                                   تفاصيل
                                 </button>
+                                <button
+                                  onClick={() => handleDuplicateOrder(order.id)}
+                                  disabled={duplicatingOrderId === order.id}
+                                  className="flex items-center gap-1 px-3 py-1 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                                  title="نسخ/تقسيم الطلب"
+                                >
+                                  {duplicatingOrderId === order.id ? (
+                                    <RefreshCw className="w-3 h-3 animate-spin" />
+                                  ) : (
+                                    <Copy className="w-3 h-3" />
+                                  )}
+                                  نسخ
+                                </button>
                                 {viewMode === "active" && (
                                   <button
                                     onClick={() => startEdit(order.id)}
@@ -3949,11 +4111,30 @@ const OrdersManagement: React.FC = () => {
           <OrderDetailModal
             order={selectedOrderForDetail}
             onClose={() => setSelectedOrderForDetail(null)}
-            onUpdate={() => {
-              // Just refresh the selected order from the list instead of refetching all
-              const updatedOrder = orders.find(o => o.id === selectedOrderForDetail.id)
+            onUpdate={async () => {
+              // Re-fetch orders from database to get updated data
+              await fetchOrders()
+              
+              // Find the updated order in the new list and update the modal
+              // Note: fetchOrders updates the 'orders' state, but we need to wait for it
+              // Actually, since fetchOrders is async, we can just fetch the single order here too
+              const { data: updatedOrder } = await supabase
+                .from('orders')
+                .select(`
+                  id, order_id, shopify_order_id, shopify_order_name, customer_name, customer_email, customer_phone,
+                  address, billing_address, shipping_address, billing_city, shipping_city, billing_country, shipping_country, mobile_number,
+                  total_order_fees, subtotal_price, total_tax, total_discounts, total_shipping_price, currency,
+                  payment_method, payment_status, financial_status, payment_gateway_names,
+                  status, fulfillment_status, shipping_method, tracking_number, tracking_url,
+                  line_items, product_images, order_note, customer_note, notes, order_tags,
+                  shopify_created_at, shopify_cancelled_at, assigned_courier_id, original_courier_id, created_at, updated_at,
+                  archived, archived_at, collected_by, payment_sub_type, delivery_fee, partial_paid_amount, internal_comment, shopify_raw_data
+                `)
+                .eq('id', selectedOrderForDetail.id)
+                .single()
+              
               if (updatedOrder) {
-                setSelectedOrderForDetail(updatedOrder)
+                setSelectedOrderForDetail(updatedOrder as any)
               }
             }}
           />

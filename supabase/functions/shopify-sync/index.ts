@@ -65,31 +65,73 @@ Deno.serve(async (req: Request) => {
     // Ensure store URL doesn't have https:// or trailing slashes
     const cleanStoreUrl = shopifyStoreUrl.replace(/^https?:\/\//, '').replace(/\/$/, '')
     
-    // Normalize payment method (same as webhook)
-    const normalizePayment = (gateway: string, financialStatus: string) => {
+    // Normalize payment method (enhanced to handle gift cards and partial payments)
+    const normalizePayment = (gateway: string, financialStatus: string, transactions: any[] = []) => {
       const gatewayLower = (gateway || '').toLowerCase()
       const statusLower = (financialStatus || '').toLowerCase()
 
+      // Check for gift card payments in transactions
+      const giftCardTransactions = transactions.filter((t: any) => 
+        (t.gateway && t.gateway.toLowerCase().includes('gift')) ||
+        t.kind === 'gift_card' ||
+        (t.payment_details && t.payment_details.credit_card_company === 'gift_card')
+      )
+
+      // Check for partial payments
+      const isPartiallyPaid = statusLower.includes('partially') || statusLower === 'partially_paid'
+      
+      // Collect all payment methods used
+      const paymentMethods: string[] = []
+      if (giftCardTransactions.length > 0) {
+        paymentMethods.push('gift_card')
+      }
+      
       if (gatewayLower.includes('paymob') || gatewayLower.includes('pay mob')) {
-        return { method: 'paymob', status: 'paid' }
+        if (!paymentMethods.includes('paymob')) paymentMethods.push('paymob')
       }
       if (gatewayLower.includes('valu')) {
-        return { method: 'valu', status: 'paid' }
+        if (!paymentMethods.includes('valu')) paymentMethods.push('valu')
       }
       if (gatewayLower.includes('card') || gatewayLower.includes('stripe')) {
-        return { method: 'paid', status: 'paid' }
+        if (!paymentMethods.includes('paid')) paymentMethods.push('paid')
       }
-      if (statusLower.includes('paid')) {
-        return { method: 'paid', status: 'paid' }
+
+      // Determine payment status
+      let paymentStatus = 'cod'
+      if (statusLower.includes('paid') && !isPartiallyPaid) {
+        paymentStatus = 'paid'
+      } else if (isPartiallyPaid) {
+        paymentStatus = 'partially_paid'
+      } else if (statusLower.includes('pending') || statusLower.includes('authorized')) {
+        paymentStatus = 'pending'
       }
-      return { method: 'cash', status: 'cod' }
+
+      // Determine primary payment method
+      let primaryMethod = 'cash'
+      if (paymentMethods.length > 0) {
+        primaryMethod = paymentMethods[0]
+      } else if (statusLower.includes('paid') && !isPartiallyPaid) {
+        primaryMethod = 'paid'
+      }
+
+      return { 
+        method: primaryMethod, 
+        status: paymentStatus,
+        paymentMethods: paymentMethods,
+        hasGiftCard: giftCardTransactions.length > 0,
+        isPartiallyPaid: isPartiallyPaid
+      }
     }
 
     // Function to process a single order
     const processOrder = async (shopifyOrder: any, imageMap: Record<string, string> = {}): Promise<{ imported: boolean, updated: boolean }> => {
+      // Get payment transactions (for gift cards and partial payments)
+      const transactions = shopifyOrder.payment_transactions || []
+      
       const paymentInfo = normalizePayment(
         shopifyOrder.gateway || shopifyOrder.payment_gateway_names?.[0],
-        shopifyOrder.financial_status
+        shopifyOrder.financial_status,
+        transactions
       )
 
       const shippingAddress = shopifyOrder.shipping_address || {}
@@ -177,6 +219,47 @@ Deno.serve(async (req: Request) => {
         return imageUrl
       }
 
+      // Check if order exists in orders table (where frontend reads from)
+      const { data: existing } = await supabaseClient
+        .from('orders')
+        .select('id, assigned_courier_id, updated_at, status, payment_method, payment_status, financial_status, line_items')
+        .eq('shopify_order_id', shopifyOrder.id)
+        .maybeSingle()
+
+      // PRESERVE REMOVED ITEMS in line_items JSON
+      const currentLineItems = (shopifyOrder.line_items || []).map((item: any) => ({
+        ...item,
+        is_removed: item.quantity === 0 || item.fulfillment_status === 'removed' || (item.properties && item.properties._is_removed)
+      }))
+
+      let finalLineItems = [...currentLineItems]
+
+      if (existing && existing.line_items) {
+        let existingItems = []
+        try {
+          existingItems = typeof existing.line_items === 'string' 
+            ? JSON.parse(existing.line_items) 
+            : existing.line_items
+        } catch (e) {
+          existingItems = []
+        }
+
+        if (Array.isArray(existingItems)) {
+          existingItems.forEach((oldItem: any) => {
+            const stillExists = currentLineItems.some((newItem: any) => String(newItem.id) === String(oldItem.id))
+            if (!stillExists) {
+              finalLineItems.push({
+                ...oldItem,
+                quantity: 0,
+                is_removed: true,
+                fulfillment_status: 'removed',
+                properties: { ...(oldItem.properties || {}), _is_removed: true }
+              })
+            }
+          })
+        }
+      }
+
       // Prepare order data for orders table (frontend reads from here)
       const orderData: any = {
         shopify_order_id: shopifyOrder.id,
@@ -186,10 +269,11 @@ Deno.serve(async (req: Request) => {
         status: shopifyOrder.cancelled_at ? 'canceled' : 'pending',
         financial_status: shopifyOrder.financial_status || paymentInfo.status,
         fulfillment_status: shopifyOrder.fulfillment_status,
-        total_order_fees: parseFloat(shopifyOrder.total_price || 0),
-        subtotal_price: parseFloat(shopifyOrder.subtotal_price || 0),
-        total_tax: parseFloat(shopifyOrder.total_tax || 0),
-        total_discounts: parseFloat(shopifyOrder.total_discounts || 0),
+        // Use current_total_price for edited orders, fallback to total_price
+        total_order_fees: parseFloat(shopifyOrder.current_total_price || shopifyOrder.total_price || 0),
+        subtotal_price: parseFloat(shopifyOrder.current_subtotal_price || shopifyOrder.subtotal_price || 0),
+        total_tax: parseFloat(shopifyOrder.current_total_tax || shopifyOrder.total_tax || 0),
+        total_discounts: parseFloat(shopifyOrder.current_total_discounts || shopifyOrder.total_discounts || 0),
         total_shipping_price: parseFloat(shopifyOrder.total_shipping_price_set?.shop_money?.amount || shopifyOrder.total_shipping_price_set?.amount || 0),
         currency: shopifyOrder.currency || 'EGP',
         customer_name: shippingAddress.name || billingAddress.name || `${customer.first_name || ''} ${customer.last_name || ''}`.trim() || 'Unknown',
@@ -207,10 +291,12 @@ Deno.serve(async (req: Request) => {
         payment_method: paymentInfo.method,
         payment_status: paymentInfo.status,
         payment_gateway_names: shopifyOrder.payment_gateway_names || [],
+        // Store payment transactions for gift cards and partial payments
+        payment_transactions: transactions.length > 0 ? JSON.stringify(transactions) : null,
         shipping_method: shopifyOrder.shipping_lines?.[0]?.title,
         tracking_number: shopifyOrder.fulfillments?.[0]?.tracking_number,
         tracking_url: shopifyOrder.fulfillments?.[0]?.tracking_url,
-        line_items: shopifyOrder.line_items || [],
+        line_items: finalLineItems,
         product_images: (shopifyOrder.line_items || []).map((item: any) => ({
           product_id: item.product_id,
           variant_id: item.variant_id,
@@ -230,20 +316,6 @@ Deno.serve(async (req: Request) => {
         updated_at: new Date().toISOString(),
       }
       
-      // Add archived field only if column exists (check by trying to query it first)
-      // For now, we'll skip it and add it after running the SQL migration
-      // Uncomment after running ADD_ARCHIVED_TO_SHOPIFY_ORDERS.sql:
-      // if (shopifyOrder.closed_at) {
-      //   orderData.archived = true
-      // }
-
-      // Check if order exists in orders table (where frontend reads from)
-      const { data: existing } = await supabaseClient
-        .from('orders')
-        .select('id, assigned_courier_id, updated_at')
-        .eq('shopify_order_id', shopifyOrder.id)
-        .maybeSingle()
-
       // If order already exists AND has a courier assigned, don't update certain fields
       // to preserve the assignment date and status
       if (existing && existing.assigned_courier_id) {
@@ -253,11 +325,23 @@ Deno.serve(async (req: Request) => {
           shopify_cancelled_at: orderData.shopify_cancelled_at,
           shopify_closed_at: orderData.shopify_closed_at,
           financial_status: orderData.financial_status,
-          // Keep these updated from Shopify
-          total_order_fees: orderData.total_order_fees,
+          // IMPORTANT: Preserve manually edited total_order_fees if it differs from Shopify
+          total_order_fees: (() => {
+            const existingTotal = existing.total_order_fees || 0
+            const shopifyTotal = orderData.total_order_fees || 0
+            const difference = Math.abs(existingTotal - shopifyTotal)
+            // If difference is significant (> 0.01), assume it was manually edited and preserve it
+            if (difference > 0.01 && existingTotal > 0) {
+              console.log(`🔒 Preserving manually edited total for order ${shopifyOrder.id}: ${existingTotal} (Shopify: ${shopifyTotal})`)
+              return existingTotal
+            }
+            return orderData.total_order_fees
+          })(),
           subtotal_price: orderData.subtotal_price,
           total_tax: orderData.total_tax,
           total_discounts: orderData.total_discounts,
+          line_items: orderData.line_items,
+          product_images: orderData.product_images,
           // DON'T update: status, assigned_courier_id, updated_at - these are managed by the courier system
         }
         
@@ -270,6 +354,9 @@ Deno.serve(async (req: Request) => {
           console.error(`Error updating order ${shopifyOrder.id}:`, error)
           return { imported: false, updated: false }
         }
+        
+        // Sync items separately
+        await syncOrderItems(existing.id, shopifyOrder.line_items, shopifyOrder.refunds)
         
         return { imported: false, updated: true }
       }
@@ -288,7 +375,7 @@ Deno.serve(async (req: Request) => {
       const wasUpdated = !!existing
 
       // Sync order items to order_items table
-      if (shopifyOrder.line_items && shopifyOrder.line_items.length > 0) {
+      if (shopifyOrder.line_items) {
         const { data: order } = await supabaseClient
           .from('orders')
           .select('id')
@@ -296,37 +383,115 @@ Deno.serve(async (req: Request) => {
           .single()
 
         if (order) {
-          const items = shopifyOrder.line_items.map((item: any) => ({
-            shopify_line_item_id: item.id,
-            order_id: order.id, // Reference to orders table
-            product_id: item.product_id,
-            variant_id: item.variant_id,
-            title: item.title || '',
-            variant_title: item.variant_title,
-            quantity: item.quantity || 1,
-            price: parseFloat(item.price || 0),
-            total_discount: parseFloat(item.total_discount || 0),
-            sku: item.sku,
-            vendor: item.vendor,
-            product_type: item.product_type,
-            image_url: extractImageUrl(item),
-            image_alt: item.title || null,
-            properties: item.properties || null,
-            shopify_raw_data: item,
-          }))
-
-          // Delete existing items for this order
-          await supabaseClient
-            .from('order_items')
-            .delete()
-            .eq('order_id', order.id)
-
-          // Insert new items
-          await supabaseClient
-            .from('order_items')
-            .insert(items)
+          await syncOrderItems(order.id, shopifyOrder.line_items, shopifyOrder.refunds)
         }
       }
+
+      return { imported: wasImported, updated: wasUpdated }
+    }
+
+    // Helper function to sync order items
+    const syncOrderItems = async (orderId: string, lineItems: any[], refunds: any[] = []) => {
+      if (!lineItems) return;
+
+      // 1. Fetch current items in DB for this order
+      const { data: existingItemsDB } = await supabaseClient
+        .from('order_items')
+        .select('*')
+        .eq('order_id', orderId)
+
+      const existingItemsMap = new Map()
+      if (existingItemsDB) {
+        existingItemsDB.forEach((item: any) => {
+          const key = item.shopify_line_item_id ? String(item.shopify_line_item_id) : `db-${item.id}`
+          existingItemsMap.set(key, item)
+        })
+      }
+
+      // 2. Prepare items from Shopify
+      const itemsFromShopify = lineItems.map((item: any) => ({
+        shopify_line_item_id: item.id,
+        order_id: orderId,
+        product_id: item.product_id,
+        variant_id: item.variant_id,
+        title: item.title || '',
+        variant_title: item.variant_title,
+        quantity: item.quantity || 0,
+        price: parseFloat(item.price || 0),
+        total_discount: parseFloat(item.total_discount || 0),
+        sku: item.sku,
+        vendor: item.vendor,
+        product_type: item.product_type,
+        image_url: extractImageUrl(item),
+        image_alt: item.title || null,
+        properties: item.properties || null,
+        shopify_raw_data: item,
+        is_removed: item.quantity === 0 || item.fulfillment_status === 'removed' || (item.properties && item.properties._is_removed)
+      }))
+
+      // 3. Find removed items
+      const removedItems: any[] = []
+      existingItemsMap.forEach((dbItem, key) => {
+        const stillExistsInShopify = lineItems.some((li: any) => String(li.id) === String(dbItem.shopify_line_item_id))
+        
+        if (dbItem.is_removed) {
+          removedItems.push({ ...dbItem, quantity: 0 })
+        } else if (dbItem.shopify_line_item_id && !stillExistsInShopify) {
+          removedItems.push({
+            ...dbItem,
+            is_removed: true,
+            quantity: 0,
+            fulfillment_status: 'removed',
+            properties: { ...(dbItem.properties || {}), _is_removed: true }
+          })
+        }
+      })
+
+      // 4. Combine items
+      const finalItemsMap = new Map()
+      itemsFromShopify.forEach((item: any) => {
+        const key = String(item.shopify_line_item_id)
+        const dbItem = existingItemsMap.get(key)
+        
+        // IMPORTANT: Preserve manually removed items (items that exist in Shopify but were manually marked as removed)
+        if (dbItem && dbItem.is_removed === true && item.quantity > 0 && !item.is_removed) {
+          // Item exists in Shopify but was manually removed in DB - preserve the removal
+          console.log(`🔒 Preserving manually removed item: ${dbItem.title} (Shopify ID: ${key})`)
+          finalItemsMap.set(key, {
+            ...item,
+            is_removed: true,
+            quantity: 0,
+            fulfillment_status: 'removed',
+            properties: { ...(item.properties || {}), _is_removed: true },
+            updated_at: new Date().toISOString()
+          })
+        } else {
+          finalItemsMap.set(key, item)
+        }
+      })
+      removedItems.forEach((item: any) => {
+        if (!finalItemsMap.has(String(item.shopify_line_item_id))) {
+          finalItemsMap.set(String(item.shopify_line_item_id), item)
+        }
+      })
+
+      const allItems = Array.from(finalItemsMap.values())
+
+      // 5. Delete and re-insert
+      await supabaseClient
+        .from('order_items')
+        .delete()
+        .eq('order_id', orderId)
+
+      if (allItems.length > 0) {
+        await supabaseClient
+          .from('order_items')
+          .insert(allItems.map((i: any) => {
+            const { id, created_at, updated_at, ...rest } = i
+            return rest
+          }))
+      }
+    }
 
       return { imported: wasImported, updated: wasUpdated }
     }
@@ -417,7 +582,8 @@ Deno.serve(async (req: Request) => {
 
     // Function to fetch a single page of orders
     const fetchOrdersPage = async (sinceId: number | null = null): Promise<{ orders: any[], hasMore: boolean }> => {
-      let url = `https://${cleanStoreUrl}/admin/api/${shopifyApiVersion}/orders.json?limit=250&status=any&fields=id,order_number,name,email,created_at,updated_at,cancelled_at,closed_at,cancel_reason,financial_status,fulfillment_status,gateway,payment_gateway_names,total_price,subtotal_price,total_tax,total_discounts,total_shipping_price_set,currency,tags,note,customer_note,line_items,shipping_address,billing_address,customer,fulfillments,shipping_lines`
+      // Explicitly include current_* fields to handle edited orders correctly
+      let url = `https://${cleanStoreUrl}/admin/api/${shopifyApiVersion}/orders.json?limit=250&status=any&fields=id,order_number,name,email,created_at,updated_at,cancelled_at,closed_at,cancel_reason,financial_status,fulfillment_status,gateway,payment_gateway_names,total_price,subtotal_price,total_tax,total_discounts,total_shipping_price_set,currency,tags,note,customer_note,line_items,shipping_address,billing_address,customer,fulfillments,shipping_lines,refunds,total_outstanding,current_total_price,current_subtotal_price,current_total_tax,current_total_discounts,current_total_duties,payment_transactions`
       
       if (sinceId) {
         url += `&since_id=${sinceId}`

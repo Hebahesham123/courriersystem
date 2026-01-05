@@ -745,7 +745,23 @@ const Trach: React.FC = () => {
         </div>
       </div>
 
-      <OrderDetailModal order={selectedOrder} onClose={() => setSelectedOrder(null)} onUpdate={fetchOrders} />
+      <OrderDetailModal
+        order={selectedOrder} 
+        onClose={() => setSelectedOrder(null)} 
+        onUpdate={async () => {
+          await fetchOrders()
+          if (selectedOrder) {
+            const { data } = await supabase
+              .from('orders')
+              .select('*')
+              .eq('id', selectedOrder.id)
+              .single()
+            if (data) {
+              setSelectedOrder(data as any)
+            }
+          }
+        }} 
+      />
       <QuickOrderCard order={quickOrder} onClose={() => setQuickOrder(null)} onDetails={(ord) => setSelectedOrder(ord)} />
     </div>
   )

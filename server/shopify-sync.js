@@ -33,40 +33,70 @@ if (!SHOPIFY_STORE_URL || !SHOPIFY_ACCESS_TOKEN) {
   process.exit(1);
 }
 
-// Payment method normalization (same as frontend)
-const normalizePayment = (paymentGateway, financialStatus) => {
+// Payment method normalization (enhanced to handle gift cards and partial payments)
+const normalizePayment = (paymentGateway, financialStatus, transactions = []) => {
   const gateway = (paymentGateway || '').toLowerCase();
   const status = (financialStatus || '').toLowerCase();
 
+  // Check for gift card payments in transactions
+  const giftCardTransactions = transactions.filter(t => 
+    t.gateway && t.gateway.toLowerCase().includes('gift') ||
+    t.kind === 'gift_card' ||
+    (t.payment_details && t.payment_details.credit_card_company === 'gift_card')
+  );
+
+  // Check for partial payments
+  const isPartiallyPaid = status.includes('partially') || status === 'partially_paid';
+  
+  // Collect all payment methods used
+  const paymentMethods = [];
+  if (giftCardTransactions.length > 0) {
+    paymentMethods.push('gift_card');
+  }
+  
   // Check for Paymob
   if (gateway.includes('paymob') || gateway.includes('pay mob')) {
-    return { method: 'paymob', status: 'paid' };
+    if (!paymentMethods.includes('paymob')) paymentMethods.push('paymob');
   }
   if (gateway.includes('visa') || gateway.includes('credit') || gateway.includes('mastercard')) {
-    return { method: 'paymob', status: 'paid' };
+    if (!paymentMethods.includes('paymob')) paymentMethods.push('paymob');
   }
 
   // Check for ValU
   if (gateway.includes('valu')) {
-    return { method: 'valu', status: 'paid' };
+    if (!paymentMethods.includes('valu')) paymentMethods.push('valu');
   }
 
   // Check for other online payment methods
   if (gateway.includes('card') || gateway.includes('stripe') || gateway.includes('paypal')) {
-    return { method: 'paid', status: 'paid' };
+    if (!paymentMethods.includes('paid')) paymentMethods.push('paid');
   }
 
-  // Check financial status
-  if (status.includes('paid') || status.includes('completed')) {
-    return { method: 'paid', status: 'paid' };
+  // Determine payment status
+  let paymentStatus = 'cod';
+  if (status.includes('paid') && !isPartiallyPaid) {
+    paymentStatus = 'paid';
+  } else if (isPartiallyPaid) {
+    paymentStatus = 'partially_paid';
+  } else if (status.includes('pending') || status.includes('authorized')) {
+    paymentStatus = 'pending';
   }
 
-  if (status.includes('pending') || status.includes('authorized')) {
-    return { method: 'cash', status: 'pending' };
+  // Determine primary payment method
+  let primaryMethod = 'cash';
+  if (paymentMethods.length > 0) {
+    primaryMethod = paymentMethods[0];
+  } else if (status.includes('paid') && !isPartiallyPaid) {
+    primaryMethod = 'paid';
   }
 
-  // Default to COD
-  return { method: 'cash', status: 'cod' };
+  return { 
+    method: primaryMethod, 
+    status: paymentStatus,
+    paymentMethods: paymentMethods, // Array of all payment methods used
+    hasGiftCard: giftCardTransactions.length > 0,
+    isPartiallyPaid: isPartiallyPaid
+  };
 };
 
 // Fetch a single page of orders from Shopify with automatic API version fallback
@@ -82,7 +112,8 @@ async function fetchShopifyOrdersPage(limit = 250, sinceId = null, apiVersion = 
   for (const version of versionsToTry) {
     try {
       // Request complete order data including line items, customer, addresses, etc.
-      let url = `https://${storeUrl}/admin/api/${version}/orders.json?limit=${limit}&status=any&fields=id,order_number,name,email,created_at,updated_at,cancelled_at,closed_at,cancel_reason,financial_status,fulfillment_status,gateway,payment_gateway_names,total_price,subtotal_price,total_tax,total_discounts,total_shipping_price_set,currency,tags,note,customer_note,line_items,shipping_address,billing_address,customer,fulfillments,shipping_lines,refunds,total_outstanding`;
+      // We explicitly include current_* fields to handle edited orders correctly
+      let url = `https://${storeUrl}/admin/api/${version}/orders.json?limit=${limit}&status=any&fields=id,order_number,name,email,created_at,updated_at,cancelled_at,closed_at,cancel_reason,financial_status,fulfillment_status,gateway,payment_gateway_names,total_price,subtotal_price,total_tax,total_discounts,total_shipping_price_set,currency,tags,note,customer_note,line_items,shipping_address,billing_address,customer,fulfillments,shipping_lines,refunds,total_outstanding,current_total_price,current_subtotal_price,current_total_tax,current_total_discounts,current_total_duties,payment_transactions`;
       
       if (sinceId) {
         url += `&since_id=${sinceId}`;
@@ -435,10 +466,14 @@ async function fetchProductImages(productIds, variantIds) {
 }
 
 // Convert Shopify order to database format (COMPLETE DATA)
-async function convertShopifyOrderToDB(shopifyOrder, imageMap = {}) {
+async function convertShopifyOrderToDB(shopifyOrder, imageMap = {}, existingOrder = null) {
+  // Get payment transactions (for gift cards and partial payments)
+  const transactions = shopifyOrder.payment_transactions || [];
+  
   const paymentInfo = normalizePayment(
     shopifyOrder.gateway || shopifyOrder.payment_gateway_names?.[0],
-    shopifyOrder.financial_status
+    shopifyOrder.financial_status,
+    transactions
   );
 
   // Get addresses
@@ -469,8 +504,6 @@ async function convertShopifyOrderToDB(shopifyOrder, imageMap = {}) {
       } catch (error) {
         console.warn('⚠️ Error fetching product images:', error.message);
       }
-    } else {
-      console.warn('⚠️ No product IDs found in line_items');
     }
   }
 
@@ -478,21 +511,13 @@ async function convertShopifyOrderToDB(shopifyOrder, imageMap = {}) {
   const productImages = (shopifyOrder.line_items || []).map(item => {
     let imageUrl = null;
     
-    console.log(`🔍 Looking for image for item "${item.title}": variant_id=${item.variant_id} (${typeof item.variant_id}), product_id=${item.product_id} (${typeof item.product_id})`);
-    console.log(`🔍 ImageMap has ${Object.keys(productImageMap).length} entries. Sample keys: ${Object.keys(productImageMap).slice(0, 5).join(', ')}`);
-    
-    // PRIORITY 1: Try to get image from line item data FIRST (most reliable for newer orders)
-    // Shopify sometimes includes images directly in line_items
+    // PRIORITY 1: Try to get image from line item data FIRST
     if (!imageUrl && item.image) {
       const img = item.image;
       if (typeof img === 'string' && img.trim() !== '' && img !== 'null') {
         imageUrl = img;
-        console.log(`✅ Found image from item.image (string): ${imageUrl?.substring(0, 60)}...`);
       } else if (typeof img === 'object' && img !== null) {
         imageUrl = img.src || img.url || img.original_src || null;
-        if (imageUrl) {
-          console.log(`✅ Found image from item.image (object): ${imageUrl?.substring(0, 60)}...`);
-        }
       }
     }
     
@@ -501,108 +526,23 @@ async function convertShopifyOrderToDB(shopifyOrder, imageMap = {}) {
       const img = item.variant.image;
       if (typeof img === 'string' && img.trim() !== '' && img !== 'null') {
         imageUrl = img;
-        console.log(`✅ Found image from item.variant.image (string): ${imageUrl?.substring(0, 60)}...`);
       } else if (typeof img === 'object' && img !== null) {
         imageUrl = img.src || img.url || img.original_src || null;
-        if (imageUrl) {
-          console.log(`✅ Found image from item.variant.image (object): ${imageUrl?.substring(0, 60)}...`);
-        }
       }
     }
     
-    // Check variant featured_image
-    if (!imageUrl && item.variant?.featured_image) {
-      const img = item.variant.featured_image;
-      if (typeof img === 'string' && img.trim() !== '' && img !== 'null') {
-        imageUrl = img;
-        console.log(`✅ Found image from item.variant.featured_image (string): ${imageUrl?.substring(0, 60)}...`);
-      } else if (typeof img === 'object' && img !== null) {
-        imageUrl = img.src || img.url || img.original_src || null;
-        if (imageUrl) {
-          console.log(`✅ Found image from item.variant.featured_image (object): ${imageUrl?.substring(0, 60)}...`);
-        }
-      }
-    }
-    
-    // Check item.images array
-    if (!imageUrl && item.images && Array.isArray(item.images) && item.images.length > 0) {
-      const firstImg = item.images[0];
-      if (typeof firstImg === 'string' && firstImg.trim() !== '' && firstImg !== 'null') {
-        imageUrl = firstImg;
-        console.log(`✅ Found image from item.images[0] (string): ${imageUrl?.substring(0, 60)}...`);
-      } else if (typeof firstImg === 'object' && firstImg !== null) {
-        imageUrl = firstImg.src || firstImg.url || firstImg.original_src || null;
-        if (imageUrl) {
-          console.log(`✅ Found image from item.images[0] (object): ${imageUrl?.substring(0, 60)}...`);
-        }
-      }
-    }
-    
-    // Check product.images array
-    if (!imageUrl && item.product?.images && Array.isArray(item.product.images) && item.product.images.length > 0) {
-      const firstImg = item.product.images[0];
-      if (typeof firstImg === 'string' && firstImg.trim() !== '' && firstImg !== 'null') {
-        imageUrl = firstImg;
-        console.log(`✅ Found image from item.product.images[0] (string): ${imageUrl?.substring(0, 60)}...`);
-      } else if (typeof firstImg === 'object' && firstImg !== null) {
-        imageUrl = firstImg.src || firstImg.url || firstImg.original_src || null;
-        if (imageUrl) {
-          console.log(`✅ Found image from item.product.images[0] (object): ${imageUrl?.substring(0, 60)}...`);
-        }
-      }
-    }
-    
-    // PRIORITY 2: Try fetched image map (from Products API) - try variant_id first, then product_id
+    // PRIORITY 2: Try fetched image map
     if (!imageUrl && item.variant_id != null) {
-      // Try as number
-      if (productImageMap[Number(item.variant_id)]) {
-        imageUrl = productImageMap[Number(item.variant_id)];
-        console.log(`✅ Found image for variant ${item.variant_id} (as number): ${imageUrl?.substring(0, 60)}...`);
-      }
-      // Try as string
-      else if (productImageMap[String(item.variant_id)]) {
-        imageUrl = productImageMap[String(item.variant_id)];
-        console.log(`✅ Found image for variant ${item.variant_id} (as string): ${imageUrl?.substring(0, 60)}...`);
-      }
-      // Try direct lookup (in case it's stored with exact type)
-      else if (productImageMap[item.variant_id]) {
-        imageUrl = productImageMap[item.variant_id];
-        console.log(`✅ Found image for variant ${item.variant_id} (direct): ${imageUrl?.substring(0, 60)}...`);
-      }
+      imageUrl = productImageMap[Number(item.variant_id)] || productImageMap[String(item.variant_id)] || productImageMap[item.variant_id];
     }
     
-    // Fallback to product_id if variant_id didn't work
     if (!imageUrl && item.product_id != null) {
-      // Try as number
-      if (productImageMap[Number(item.product_id)]) {
-        imageUrl = productImageMap[Number(item.product_id)];
-        console.log(`✅ Found image for product ${item.product_id} (as number): ${imageUrl?.substring(0, 60)}...`);
-      }
-      // Try as string
-      else if (productImageMap[String(item.product_id)]) {
-        imageUrl = productImageMap[String(item.product_id)];
-        console.log(`✅ Found image for product ${item.product_id} (as string): ${imageUrl?.substring(0, 60)}...`);
-      }
-      // Try direct lookup
-      else if (productImageMap[item.product_id]) {
-        imageUrl = productImageMap[item.product_id];
-        console.log(`✅ Found image for product ${item.product_id} (direct): ${imageUrl?.substring(0, 60)}...`);
-      }
+      imageUrl = productImageMap[Number(item.product_id)] || productImageMap[String(item.product_id)] || productImageMap[item.product_id];
     }
     
-    if (!imageUrl) {
-      console.warn(`❌ NO IMAGE FOUND for item: "${item.title}" (variant: ${item.variant_id}, product: ${item.product_id})`);
-    }
-    
-    // Ensure imageUrl is a valid string or null
-    if (imageUrl && (imageUrl === 'null' || imageUrl === 'undefined' || imageUrl.trim() === '')) {
-      imageUrl = null;
-    }
-    
-    // Normalize URL - ensure it's absolute
+    // Normalize URL
     if (imageUrl && !imageUrl.startsWith('http') && !imageUrl.startsWith('data:')) {
       imageUrl = `https://cdn.shopify.com${imageUrl.startsWith('/') ? '' : '/'}${imageUrl}`;
-      console.log(`📸 Normalized relative URL to: ${imageUrl.substring(0, 60)}...`);
     }
     
     return {
@@ -611,9 +551,94 @@ async function convertShopifyOrderToDB(shopifyOrder, imageMap = {}) {
       image: imageUrl,
       title: item.title,
     };
-  }); // Include ALL items, even without images (removed filter)
+  });
+
+  // Collect ALL unique items from Shopify payload (active + refunded)
+  const lineItemsMap = new Map();
   
-  console.log(`📸 Product images for order ${shopifyOrder.name || shopifyOrder.id}:`, productImages);
+  // 1. Add current active line items
+  (shopifyOrder.line_items || []).forEach(item => {
+    lineItemsMap.set(String(item.id), {
+      ...item,
+      is_removed: item.quantity === 0 || item.fulfillment_status === 'removed' || (item.properties && item.properties._is_removed)
+    });
+  });
+
+  // 2. Add items from fulfillments (to catch items that might be missing from line_items)
+  (shopifyOrder.fulfillments || []).forEach(fulfillment => {
+    (fulfillment.line_items || []).forEach(li => {
+      if (!lineItemsMap.has(String(li.id))) {
+        lineItemsMap.set(String(li.id), {
+          ...li,
+          fulfillment_status: fulfillment.status || li.fulfillment_status,
+          is_removed: false // If it's in a fulfillment, it's not removed
+        });
+      }
+    });
+  });
+
+  // 3. Add items from refunds (to catch removed items)
+  (shopifyOrder.refunds || []).forEach(refund => {
+    (refund.refund_line_items || []).forEach(rli => {
+      const li = rli.line_item;
+      if (li && !lineItemsMap.has(String(li.id))) {
+        lineItemsMap.set(String(li.id), {
+          ...li,
+          quantity: 0,
+          is_removed: true,
+          fulfillment_status: 'removed',
+          properties: { ...(li.properties || {}), _is_removed: true }
+        });
+      } else if (li && lineItemsMap.has(String(li.id))) {
+        // If it exists but is fully refunded, mark as removed
+        const existing = lineItemsMap.get(String(li.id));
+        if (rli.quantity >= existing.quantity) {
+          existing.is_removed = true;
+          existing.fulfillment_status = 'removed';
+        }
+      }
+    });
+  });
+
+  // 3. Merge with existing items in our DB to ensure nothing is lost
+  if (existingOrder && existingOrder.line_items) {
+    let existingItems = [];
+    try {
+      existingItems = typeof existingOrder.line_items === 'string' 
+        ? JSON.parse(existingOrder.line_items) 
+        : existingOrder.line_items;
+    } catch (e) {
+      existingItems = [];
+    }
+
+    if (Array.isArray(existingItems)) {
+      existingItems.forEach(oldItem => {
+        const id = oldItem.id || oldItem.shopify_line_item_id;
+        if (id && !lineItemsMap.has(String(id))) {
+          lineItemsMap.set(String(id), {
+            ...oldItem,
+            quantity: 0,
+            is_removed: true,
+            fulfillment_status: 'removed',
+            properties: { ...(oldItem.properties || {}), _is_removed: true }
+          });
+        }
+      });
+    }
+  }
+
+  const finalLineItems = Array.from(lineItemsMap.values());
+
+  // LOG PRICES FOR DEBUGGING
+  console.log(`💰 Order ${shopifyOrder.name} Price Sync:`, {
+    total_price: shopifyOrder.total_price,
+    current_total_price: shopifyOrder.current_total_price,
+    total_outstanding: shopifyOrder.total_outstanding,
+    subtotal_price: shopifyOrder.subtotal_price,
+    current_subtotal_price: shopifyOrder.current_subtotal_price,
+    total_discounts: shopifyOrder.total_discounts,
+    current_total_discounts: shopifyOrder.current_total_discounts
+  });
 
   // Prepare order data with ALL Shopify information
   return {
@@ -642,21 +667,24 @@ async function convertShopifyOrderToDB(shopifyOrder, imageMap = {}) {
     shipping_zip: shippingAddress.zip || null,
     
     // Financial information (complete)
-    total_order_fees: parseFloat(shopifyOrder.total_price || 0),
-    subtotal_price: parseFloat(shopifyOrder.subtotal_price || 0),
-    total_tax: parseFloat(shopifyOrder.total_tax || 0),
-    total_discounts: parseFloat(shopifyOrder.total_discounts || 0),
+    // CRITICAL: current_total_price is the one that reflects edits!
+    total_order_fees: parseFloat(shopifyOrder.current_total_price || shopifyOrder.total_price || 0),
+    subtotal_price: parseFloat(shopifyOrder.current_subtotal_price || shopifyOrder.subtotal_price || 0),
+    total_tax: parseFloat(shopifyOrder.current_total_tax || shopifyOrder.total_tax || 0),
+    total_discounts: parseFloat(shopifyOrder.current_total_discounts || shopifyOrder.total_discounts || 0),
     total_shipping_price: parseFloat(shopifyOrder.total_shipping_price_set?.shop_money?.amount || shopifyOrder.total_shipping_price_set?.amount || 0),
     currency: shopifyOrder.currency || 'EGP',
     balance: parseFloat(shopifyOrder.total_outstanding || 0),
-    total_price: parseFloat(shopifyOrder.total_price || 0),
-    total_paid: parseFloat(shopifyOrder.total_price || 0) - parseFloat(shopifyOrder.total_outstanding || 0),
+    total_price: parseFloat(shopifyOrder.current_total_price || shopifyOrder.total_price || 0),
+    total_paid: parseFloat(shopifyOrder.current_total_price || shopifyOrder.total_price || 0) - parseFloat(shopifyOrder.total_outstanding || 0),
     
     // Payment information
     payment_method: paymentInfo.method,
     payment_status: paymentInfo.status,
     financial_status: shopifyOrder.financial_status || paymentInfo.status,
     payment_gateway_names: shopifyOrder.payment_gateway_names || [],
+    // Store payment transactions for gift cards and partial payments
+    payment_transactions: transactions.length > 0 ? JSON.stringify(transactions) : null,
     
     // Shipping information
     shipping_method: shopifyOrder.shipping_lines?.[0]?.title || null,
@@ -665,7 +693,7 @@ async function convertShopifyOrderToDB(shopifyOrder, imageMap = {}) {
     tracking_url: shopifyOrder.fulfillments?.[0]?.tracking_url || null,
     
     // Order items/products (stored as JSON)
-    line_items: shopifyOrder.line_items || [],
+    line_items: finalLineItems,
     product_images: productImages,
     
     // Order metadata
@@ -675,20 +703,19 @@ async function convertShopifyOrderToDB(shopifyOrder, imageMap = {}) {
     notes: shopifyOrder.note || shopifyOrder.customer_note || '',
     
     // Status - check if order is canceled in Shopify
-    status: shopifyOrder.cancelled_at ? 'canceled' : 'pending', // Set to 'canceled' if order is canceled in Shopify
+    status: shopifyOrder.cancelled_at ? 'canceled' : 'pending',
     
     // Archived - check if order is archived in Shopify
-    // In Shopify, archived orders typically have closed_at set (when order is closed/archived)
-    archived: shopifyOrder.closed_at ? true : false, // Archive if order is closed in Shopify
+    archived: shopifyOrder.closed_at ? true : false,
     
     // Shopify timestamps
     shopify_created_at: shopifyOrder.created_at ? new Date(shopifyOrder.created_at).toISOString() : null,
     shopify_updated_at: shopifyOrder.updated_at ? new Date(shopifyOrder.updated_at).toISOString() : null,
     shopify_cancelled_at: shopifyOrder.cancelled_at ? new Date(shopifyOrder.cancelled_at).toISOString() : null,
-    shopify_closed_at: shopifyOrder.closed_at ? new Date(shopifyOrder.closed_at).toISOString() : null, // For archived orders
+    shopify_closed_at: shopifyOrder.closed_at ? new Date(shopifyOrder.closed_at).toISOString() : null,
     cancelled_reason: shopifyOrder.cancel_reason || null,
     cancel_reason: shopifyOrder.cancel_reason || null,
-    archived_at: shopifyOrder.closed_at ? new Date(shopifyOrder.closed_at).toISOString() : null, // Set archived_at if order is closed in Shopify
+    archived_at: shopifyOrder.closed_at ? new Date(shopifyOrder.closed_at).toISOString() : null,
     
     // Raw Shopify data (for reference/debugging)
     shopify_raw_data: shopifyOrder,
@@ -700,105 +727,175 @@ async function convertShopifyOrderToDB(shopifyOrder, imageMap = {}) {
 }
 
 // Sync order items (products) to order_items table
-async function syncOrderItems(orderId, lineItems, refunds = []) {
+async function syncOrderItems(orderId, lineItems, refunds = [], fulfillments = []) {
   if (!lineItems) return;
 
-  // 1. Process active line items
-  const itemsToInsert = lineItems.map(item => ({
-    order_id: orderId,
-    shopify_line_item_id: item.id,
-    product_id: item.product_id,
-    variant_id: item.variant_id,
-    title: item.title || '',
-    variant_title: item.variant_title || null,
-    quantity: item.quantity || 1,
-    price: parseFloat(item.price || 0),
-    total_discount: parseFloat(item.total_discount || 0),
-    sku: item.sku || null,
-    vendor: item.vendor || null,
-    product_type: item.product_type || null,
-    requires_shipping: item.requires_shipping !== false,
-    taxable: item.taxable !== false,
-    fulfillment_status: item.fulfillment_status || null,
-    image_url: item.image || item.variant?.image || null,
-    image_alt: item.name || item.title || null,
-    properties: item.properties || null,
-    shopify_raw_data: item,
-    is_removed: false,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  }));
+  // 1. Fetch current items in DB for this order
+  const { data: existingItemsDB } = await supabase
+    .from('order_items')
+    .select('*')
+    .eq('order_id', orderId);
 
-  // 2. Process removed/refunded items from refunds array
-  // This helps show "Removed" items in the UI
-  if (refunds && Array.isArray(refunds)) {
-    refunds.forEach(refund => {
-      if (refund.refund_line_items) {
-        refund.refund_line_items.forEach(rli => {
-          const item = rli.line_item;
-          if (item) {
-            // Check if this item is already in our list (partially refunded)
-            // Or if it's completely gone from line_items (fully removed)
-            const existingActive = itemsToInsert.find(i => i.shopify_line_item_id === rli.line_item_id);
-            
-            if (existingActive) {
-              // Mark as partially refunded in metadata if needed
-              existingActive.refunded_quantity = (existingActive.refunded_quantity || 0) + rli.quantity;
-            } else {
-              // This item was fully removed/refunded and is no longer in line_items
-              itemsToInsert.push({
-                order_id: orderId,
-                shopify_line_item_id: rli.line_item_id,
-                product_id: item.product_id,
-                variant_id: item.variant_id,
-                title: item.title || '',
-                variant_title: item.variant_title || null,
-                quantity: rli.quantity,
-                price: parseFloat(item.price || 0),
-                total_discount: parseFloat(item.total_discount || 0),
-                sku: item.sku || null,
-                vendor: item.vendor || null,
-                product_type: item.product_type || null,
-                requires_shipping: item.requires_shipping !== false,
-                taxable: item.taxable !== false,
-                fulfillment_status: 'removed',
-                image_url: item.image || item.variant?.image || null,
-                image_alt: item.name || item.title || null,
-                is_removed: true,
-                properties: { ...(item.properties || {}), _is_removed: true },
-                shopify_raw_data: item,
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-              });
-            }
+  const existingItemsMap = new Map();
+  (existingItemsDB || []).forEach(item => {
+    const key = item.shopify_line_item_id ? String(item.shopify_line_item_id) : `db-${item.id}`;
+    existingItemsMap.set(key, item);
+  });
+
+  // 2. Collect ALL items from Shopify (active + refunded + fulfilled)
+  const finalItemsMap = new Map();
+
+  // Add currently active line items
+  lineItems.forEach(item => {
+    const isRemovedInShopify = item.quantity === 0 || item.fulfillment_status === 'removed';
+    
+    // Find fulfillment status for this specific line item
+    let fulfillmentStatus = item.fulfillment_status;
+    if (fulfillments && Array.isArray(fulfillments)) {
+      fulfillments.forEach(f => {
+        if (f.line_items && Array.isArray(f.line_items)) {
+          const match = f.line_items.find(fli => String(fli.id) === String(item.id));
+          if (match) {
+            fulfillmentStatus = 'fulfilled'; // If it's in a fulfillment, mark as fulfilled
           }
-        });
-      }
+        }
+      });
+    }
+
+    finalItemsMap.set(String(item.id), {
+      order_id: orderId,
+      shopify_line_item_id: String(item.id),
+      product_id: item.product_id,
+      variant_id: item.variant_id,
+      title: item.title || '',
+      variant_title: item.variant_title || null,
+      quantity: item.quantity || 0,
+      price: parseFloat(item.price || 0),
+      total_discount: parseFloat(item.total_discount || 0),
+      sku: item.sku || null,
+      vendor: item.vendor || null,
+      product_type: item.product_type || null,
+      requires_shipping: item.requires_shipping !== false,
+      taxable: item.taxable !== false,
+      fulfillment_status: fulfillmentStatus || (isRemovedInShopify ? 'removed' : null),
+      image_url: item.image || item.variant?.image || null,
+      image_alt: item.name || item.title || null,
+      properties: item.properties || null,
+      shopify_raw_data: { ...item, fulfillment_status: fulfillmentStatus },
+      is_removed: isRemovedInShopify,
+      updated_at: new Date().toISOString(),
+    });
+  });
+
+  // Add items from fulfillments that might be missing from line_items
+  if (fulfillments && Array.isArray(fulfillments)) {
+    fulfillments.forEach(f => {
+      (f.line_items || []).forEach(li => {
+        if (!finalItemsMap.has(String(li.id))) {
+          finalItemsMap.set(String(li.id), {
+            order_id: orderId,
+            shopify_line_item_id: String(li.id),
+            product_id: li.product_id,
+            variant_id: li.variant_id,
+            title: li.title || '',
+            variant_title: li.variant_title || null,
+            quantity: li.quantity || 0,
+            price: parseFloat(li.price || 0),
+            total_discount: 0,
+            sku: li.sku || null,
+            vendor: li.vendor || null,
+            fulfillment_status: 'fulfilled',
+            is_removed: false,
+            shopify_raw_data: { ...li, fulfillment_status: 'fulfilled' },
+            updated_at: new Date().toISOString(),
+          });
+        }
+      });
     });
   }
 
-  console.log(`🧹 Clearing and re-syncing ${itemsToInsert.length} items for order ${orderId} (including ${itemsToInsert.filter(i => i.is_removed).length} removed)`);
+  // Add items from refunds
+  (refunds || []).forEach(refund => {
+    (refund.refund_line_items || []).forEach(rli => {
+      const li = rli.line_item;
+      if (li && !finalItemsMap.has(String(li.id))) {
+        finalItemsMap.set(String(li.id), {
+          order_id: orderId,
+          shopify_line_item_id: String(li.id),
+          product_id: li.product_id,
+          variant_id: li.variant_id,
+          title: li.title || '',
+          variant_title: li.variant_title || null,
+          quantity: 0,
+          price: parseFloat(li.price || 0),
+          total_discount: parseFloat(li.total_discount || 0),
+          sku: li.sku || null,
+          vendor: li.vendor || null,
+          is_removed: true,
+          fulfillment_status: 'removed',
+          properties: { ...(li.properties || {}), _is_removed: true },
+          shopify_raw_data: li,
+          updated_at: new Date().toISOString(),
+        });
+      }
+    });
+  });
 
-  // Delete existing items for this order and insert new ones
-  const { error: deleteError } = await supabase
+  // Merge with existing DB items to ensure history is kept
+  // IMPORTANT: Preserve manually removed items (items that exist in Shopify but were manually marked as removed)
+  existingItemsMap.forEach((dbItem, key) => {
+    if (!finalItemsMap.has(key)) {
+      // Item doesn't exist in Shopify anymore - mark as removed
+      finalItemsMap.set(key, {
+        ...dbItem,
+        is_removed: true,
+        quantity: 0,
+        fulfillment_status: 'removed',
+        properties: { ...(dbItem.properties || {}), _is_removed: true },
+        updated_at: new Date().toISOString()
+      });
+    } else {
+      // Item exists in Shopify - check if it was manually removed in DB
+      const shopifyItem = finalItemsMap.get(key);
+      const wasManuallyRemoved = dbItem.is_removed === true && 
+                                  shopifyItem.quantity > 0 && 
+                                  !shopifyItem.is_removed;
+      
+      if (wasManuallyRemoved) {
+        // Preserve manual removal - item exists in Shopify but admin removed it
+        console.log(`🔒 Preserving manually removed item: ${dbItem.title} (Shopify ID: ${key})`);
+        finalItemsMap.set(key, {
+          ...shopifyItem,
+          is_removed: true,
+          quantity: 0,
+          fulfillment_status: 'removed',
+          properties: { ...(shopifyItem.properties || {}), _is_removed: true },
+          updated_at: new Date().toISOString()
+        });
+      }
+    }
+  });
+
+  const allItems = Array.from(finalItemsMap.values());
+
+  console.log(`🧹 Syncing ${allItems.length} total items for order ${orderId} (${allItems.filter(i => i.is_removed).length} marked as removed)`);
+
+  // 6. Delete existing items for this order and insert everything fresh
+  await supabase
     .from('order_items')
     .delete()
     .eq('order_id', orderId);
 
-  if (deleteError) {
-    console.error(`❌ Error deleting old items for order ${orderId}:`, deleteError);
-    return;
-  }
-
-  if (itemsToInsert.length > 0) {
+  if (allItems.length > 0) {
     const { error: insertError } = await supabase
       .from('order_items')
-      .insert(itemsToInsert);
+      .insert(allItems.map(i => {
+        const { id, created_at, ...rest } = i;
+        return rest;
+      }));
 
     if (insertError) {
-      console.error(`❌ Error inserting new items for order ${orderId}:`, insertError);
-    } else {
-      console.log(`✅ Successfully synced ${itemsToInsert.length} items for order ${orderId}`);
+      console.error(`❌ Error inserting items for order ${orderId}:`, insertError);
     }
   }
 }
@@ -870,31 +967,32 @@ async function syncShopifyOrders(updatedAtMin = null) {
       if (processedCount % 50 === 0 || processedCount === totalOrders) {
         console.log(`📊 Progress: ${processedCount}/${totalOrders} orders processed (${Math.round(processedCount / totalOrders * 100)}%)`);
       }
-      const dbOrder = await convertShopifyOrderToDB(shopifyOrder, globalImageMap);
-      
-      // Check if order already exists (by shopify_order_id or order_id)
-      // Try shopify_order_id first (most reliable), then order_id
+
+      // 1. First, check if order already exists in our database
       let existing = null;
       
-      if (dbOrder.shopify_order_id) {
-        const { data } = await supabase
-          .from('orders')
-          .select('id, shopify_order_id, order_id, status, payment_method, payment_status, financial_status')
-          .eq('shopify_order_id', dbOrder.shopify_order_id)
-          .maybeSingle();
-        existing = data;
-      }
+      // Try to find by shopify_order_id (most reliable)
+      const { data: byShopifyId } = await supabase
+        .from('orders')
+        .select('id, shopify_order_id, order_id, status, payment_method, payment_status, financial_status, line_items')
+        .eq('shopify_order_id', shopifyOrder.id)
+        .maybeSingle();
       
-      // If not found by shopify_order_id, try order_id
-      if (!existing && dbOrder.order_id) {
-        const { data } = await supabase
+      existing = byShopifyId;
+      
+      // If not found, try by order name/id string
+      if (!existing && (shopifyOrder.name || shopifyOrder.order_number)) {
+        const { data: byName } = await supabase
           .from('orders')
-          .select('id, shopify_order_id, order_id, status, payment_method, payment_status, financial_status')
-          .eq('order_id', dbOrder.order_id)
+          .select('id, shopify_order_id, order_id, status, payment_method, payment_status, financial_status, line_items')
+          .eq('order_id', shopifyOrder.name || shopifyOrder.order_number.toString())
           .maybeSingle();
-        existing = data;
+        existing = byName;
       }
 
+      // 2. Now convert the Shopify data, passing the existing record to handle merged items correctly
+      const dbOrder = await convertShopifyOrderToDB(shopifyOrder, globalImageMap, existing);
+      
       if (existing) {
         // Update existing order with ALL data
         const { data: updatedOrder, error } = await supabase
@@ -925,15 +1023,27 @@ async function syncShopifyOrders(updatedAtMin = null) {
             shipping_zip: dbOrder.shipping_zip,
             
             // Financial
-            total_order_fees: dbOrder.total_order_fees,
+            // IMPORTANT: Preserve manually edited total_order_fees if it differs from Shopify
+            // This prevents overwriting admin edits (removed items, price changes)
+            total_order_fees: (() => {
+              const existingTotal = existing.total_order_fees || 0
+              const shopifyTotal = dbOrder.total_order_fees || 0
+              const difference = Math.abs(existingTotal - shopifyTotal)
+              // If difference is significant (> 0.01), assume it was manually edited and preserve it
+              if (difference > 0.01 && existingTotal > 0) {
+                console.log(`🔒 Preserving manually edited total for order ${dbOrder.order_id}: ${existingTotal} (Shopify: ${shopifyTotal})`)
+                return existingTotal
+              }
+              return dbOrder.total_order_fees
+            })(),
             subtotal_price: dbOrder.subtotal_price,
             total_tax: dbOrder.total_tax,
             total_discounts: dbOrder.total_discounts,
             total_shipping_price: dbOrder.total_shipping_price,
             currency: dbOrder.currency,
-            balance: parseFloat(shopifyOrder.total_outstanding || 0),
-            total_price: parseFloat(shopifyOrder.total_price || 0),
-            total_paid: parseFloat(shopifyOrder.total_price || 0) - parseFloat(shopifyOrder.total_outstanding || 0),
+            balance: dbOrder.balance,
+            total_price: dbOrder.total_price,
+            total_paid: dbOrder.total_paid,
             
             // Payment
             // IMPORTANT: Protect payment info if order is already handled by courier
@@ -980,7 +1090,7 @@ async function syncShopifyOrders(updatedAtMin = null) {
             // Raw data
             shopify_raw_data: dbOrder.shopify_raw_data,
             
-            updated_at: dbOrder.updated_at,
+            updated_at: new Date().toISOString(),
           })
           .eq('id', existing.id)
           .select()
@@ -988,8 +1098,8 @@ async function syncShopifyOrders(updatedAtMin = null) {
 
         if (!error && updatedOrder) {
           updated++;
-          // Sync order items including refunds to track removed items
-          await syncOrderItems(updatedOrder.id, shopifyOrder.line_items, shopifyOrder.refunds);
+          // Sync order items including refunds and fulfillments to track removed items and item status
+          await syncOrderItems(updatedOrder.id, shopifyOrder.line_items, shopifyOrder.refunds, shopifyOrder.fulfillments);
         } else {
           console.error(`❌ Error updating order ${dbOrder.order_id}:`, error);
         }
@@ -1023,7 +1133,7 @@ async function syncShopifyOrders(updatedAtMin = null) {
         );
         
         if (originalShopifyOrder && originalShopifyOrder.line_items) {
-          await syncOrderItems(insertedOrder.id, originalShopifyOrder.line_items, originalShopifyOrder.refunds);
+          await syncOrderItems(insertedOrder.id, originalShopifyOrder.line_items, originalShopifyOrder.refunds, originalShopifyOrder.fulfillments);
         }
       }
     }
@@ -1115,6 +1225,110 @@ app.get('/api/shopify/test', async (req, res) => {
       '4. Try the test endpoint: http://localhost:3002/api/shopify/find-store',
     ],
   });
+});
+
+// Manual sync endpoint for a single order
+app.post('/api/shopify/sync-order/:shopifyId', async (req, res) => {
+  const { shopifyId } = req.params;
+  console.log(`\n🔄 Manual sync requested for Shopify order ID: ${shopifyId}`);
+  
+  try {
+    const storeUrl = SHOPIFY_STORE_URL.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const url = `https://${storeUrl}/admin/api/${SHOPIFY_API_VERSION}/orders/${shopifyId}.json`;
+    
+    const response = await fetch(url, {
+      headers: {
+        'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return res.status(response.status).json({ 
+        success: false, 
+        error: `Shopify API error: ${response.status}`,
+        details: errorText 
+      });
+    }
+
+    const data = await response.json();
+    const shopifyOrder = data.order;
+
+    if (!shopifyOrder) {
+      return res.status(404).json({ success: false, error: 'Order not found in Shopify' });
+    }
+
+    // Find existing order in DB
+    const { data: existing } = await supabase
+      .from('orders')
+      .select('id, status, payment_method, payment_status, financial_status, total_order_fees, line_items')
+      .eq('shopify_order_id', shopifyId)
+      .maybeSingle();
+
+    // Convert to DB format - use empty object for imageMap as it will fetch individually if needed
+    const dbOrder = await convertShopifyOrderToDB(shopifyOrder, {}, existing);
+
+    let updatedOrder;
+    if (existing) {
+      // Update existing
+      const { data: result, error } = await supabase
+        .from('orders')
+        .update({
+          ...dbOrder,
+          // Protect status and payment info if already handled, 
+          // BUT ALWAYS update the total if it changed in Shopify
+          status: dbOrder.status === 'canceled' 
+            ? 'canceled' 
+            : (existing.status === 'pending' || !existing.status ? 'pending' : existing.status),
+          payment_method: (existing.status === 'pending' || !existing.status) ? dbOrder.payment_method : existing.payment_method,
+          payment_status: (existing.status === 'pending' || !existing.status) ? dbOrder.payment_status : existing.payment_status,
+          // IMPORTANT: Preserve manually edited total_order_fees if it differs from Shopify
+          total_order_fees: (() => {
+            const existingTotal = existing.total_order_fees || 0
+            const shopifyTotal = dbOrder.total_order_fees || 0
+            const difference = Math.abs(existingTotal - shopifyTotal)
+            // If difference is significant (> 0.01), assume it was manually edited and preserve it
+            if (difference > 0.01 && existingTotal > 0) {
+              console.log(`🔒 Preserving manually edited total for order ${dbOrder.order_id}: ${existingTotal} (Shopify: ${shopifyTotal})`)
+              return existingTotal
+            }
+            return dbOrder.total_order_fees
+          })(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', existing.id)
+        .select()
+        .single();
+        
+      if (error) throw error;
+      updatedOrder = result;
+    } else {
+      // Insert new
+      const { data: result, error } = await supabase
+        .from('orders')
+        .insert([dbOrder])
+        .select()
+        .single();
+        
+      if (error) throw error;
+      updatedOrder = result;
+    }
+
+    // Sync items including fulfillments
+    await syncOrderItems(updatedOrder.id, shopifyOrder.line_items, shopifyOrder.refunds, shopifyOrder.fulfillments);
+
+    console.log(`✅ Manual sync successful for order ${dbOrder.order_id}`);
+    res.json({ 
+      success: true, 
+      message: `Order ${dbOrder.order_id} synced successfully`,
+      order: updatedOrder 
+    });
+
+  } catch (error) {
+    console.error('❌ Error in manual sync:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
 });
 
 // Diagnostic endpoint to help find the correct store URL

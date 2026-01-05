@@ -52,6 +52,11 @@ interface OrderItem {
   image_url?: string | null
   vendor?: string | null
   product_type?: string | null
+  is_removed?: boolean
+  properties?: any
+  fulfillment_status?: string
+  shopify_raw_data?: any
+  shopify_line_item_id?: string
 }
 
 interface Order {
@@ -77,6 +82,8 @@ interface Order {
   updated_at: string
   order_proofs?: OrderProof[]
   // Shopify/Extended fields
+  shopify_order_id?: string | number
+  shopify_raw_data?: any
   customer_email?: string | null
   customer_phone?: string | null
   billing_address?: any
@@ -90,6 +97,7 @@ interface Order {
   order_items?: OrderItem[]
   order_note?: string | null
   customer_note?: string | null
+  receive_piece_or_exchange?: string | null
 }
 
 const statusLabels: Record<string, { label: string; icon: React.ComponentType<any>; color: string; bgColor: string }> =
@@ -251,8 +259,43 @@ const OrdersList: React.FC = () => {
   const [selectedImage, setSelectedImage] = useState<string | null>(null)
   const [imageModalOpen, setImageModalOpen] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [isSyncing, setIsSyncing] = useState<string | null>(null)
   const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null)
   const [duplicatingOrderId, setDuplicatingOrderId] = useState<string | null>(null)
+
+  const handleManualSync = async (shopifyId: string, orderId: string) => {
+    if (!shopifyId) return
+    
+    setIsSyncing(orderId)
+    try {
+      const response = await fetch(`/api/shopify/sync-order/${shopifyId}`, {
+        method: 'POST'
+      })
+      
+      if (response.ok) {
+        // Subtle success indicator
+        console.log(`✅ Order ${orderId} synced successfully`)
+        // Refresh the list to get updated data
+        await fetchOrders(false, false)
+        
+        // If modal is open and this is the selected order, update it
+        if (modalOpen && selectedOrder && selectedOrder.id === orderId) {
+          const { data } = await supabase
+            .from('orders')
+            .select('*, order_items(*)')
+            .eq('id', orderId)
+            .single()
+          if (data) {
+            setSelectedOrder(data as any)
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Sync error:", e)
+    } finally {
+      setIsSyncing(null)
+    }
+  }
   
   const cardPositionRef = useRef<{ top: number; left: number; width: number; height: number } | null>(null)
   // Track orders we just updated to prevent real-time subscription from causing double updates
@@ -284,10 +327,34 @@ const OrdersList: React.FC = () => {
 
   const { user } = useAuth()
 
+  // Re-fetch items when the order is updated (catch Shopify sync changes)
+  useEffect(() => {
+    if (modalOpen && selectedOrder?.id) {
+      const fetchNewItems = async () => {
+        const { data: newItems } = await supabase
+          .from("order_items")
+          .select("id, order_id, title, variant_title, quantity, price, sku, image_url, vendor, product_type, is_removed, properties, fulfillment_status, shopify_raw_data, shopify_line_item_id")
+          .eq("order_id", selectedOrder.id)
+        
+        if (newItems) {
+          setSelectedOrder(prev => {
+            if (!prev || prev.id !== selectedOrder.id) return prev
+            return { ...prev, order_items: newItems as any }
+          })
+        }
+      }
+      fetchNewItems()
+    }
+  }, [selectedOrder?.updated_at, modalOpen])
+
+  // Track if user is actively editing to prevent overwriting their changes
+  const [isUserEditing, setIsUserEditing] = useState(false)
+
   // Sync updateData with selectedOrder when it changes from real-time updates
   // This ensures admin edits appear to the courier even if they have the modal open
+  // BUT: Don't sync if user is actively editing to prevent overwriting their changes
   useEffect(() => {
-    if (modalOpen && selectedOrder) {
+    if (modalOpen && selectedOrder && !isUserEditing) {
       // Only update if values are different to avoid input cursor jumps
       setUpdateData(prev => {
         const hasChanges = 
@@ -312,7 +379,7 @@ const OrdersList: React.FC = () => {
         return prev
       })
     }
-  }, [selectedOrder, modalOpen])
+  }, [selectedOrder, modalOpen, isUserEditing])
 
   // Close image modal on ESC key
   useEffect(() => {
@@ -332,6 +399,7 @@ const OrdersList: React.FC = () => {
       if (e.key === 'Escape' && modalOpen) {
         setModalOpen(false)
         setSelectedOrder(null)
+        setIsUserEditing(false)
         if (cardPositionRef.current) {
           cardPositionRef.current = null
         }
@@ -758,7 +826,7 @@ const OrdersList: React.FC = () => {
         // Fetch order items (products)
         const { data: orderItems, error: itemsError } = await supabase
           .from("order_items")
-          .select("id, order_id, title, variant_title, quantity, price, sku, image_url, vendor, product_type")
+          .select("id, order_id, title, variant_title, quantity, price, sku, image_url, vendor, product_type, is_removed, properties, fulfillment_status, shopify_raw_data, shopify_line_item_id")
           .in("order_id", orderIds)
 
         if (itemsError) {
@@ -779,7 +847,12 @@ const OrdersList: React.FC = () => {
               sku: item.sku,
               image_url: item.image_url,
               vendor: item.vendor,
-              product_type: item.product_type
+              product_type: item.product_type,
+              is_removed: item.is_removed,
+              properties: item.properties,
+              fulfillment_status: item.fulfillment_status,
+              shopify_raw_data: item.shopify_raw_data,
+              shopify_line_item_id: item.shopify_line_item_id
             })
           })
           allOrders.forEach(order => {
@@ -816,17 +889,9 @@ const OrdersList: React.FC = () => {
 
       setOrders(sortedData)
 
-      // Derive edited orders from data: any order that is not "assigned" 
-      // was likely edited by the courier during their shift
-      setEditedOrderIds(prev => {
-        const next = new Set(prev)
-        sortedData.forEach((order: Order) => {
-          if (order.status !== "assigned") {
-            next.add(order.id)
-          }
-        })
-        return next
-      })
+      // Don't automatically mark orders as edited based on status
+      // Only mark as edited when courier actually makes changes through the update modal
+      // This prevents showing "معدل" when orders are just assigned
     } catch (error: any) {
       console.error("Error fetching orders:", error)
       const errorMessage = error?.message || "حدث خطأ غير معروف"
@@ -903,6 +968,7 @@ const OrdersList: React.FC = () => {
     }
 
     setSelectedOrder(order)
+    setIsUserEditing(false) // Reset editing flag when opening a new order
     setUpdateData({
       status: order.status,
       delivery_fee: initialDeliveryFee,
@@ -1140,7 +1206,72 @@ const OrdersList: React.FC = () => {
       return safePartial
     }
 
-    return order.total_order_fees
+    // PRIORITY 1: Use total_order_fees from database if it exists
+    // This ensures admin edits (like removing items) are reflected immediately
+    const raw = (order as any).shopify_raw_data || {}
+    const dbTotal = order.total_order_fees
+    const shopifyTotal = parseFloat(raw.current_total_price || "0")
+    
+    // If database total exists and differs from Shopify (manually edited), use database value
+    if (dbTotal && dbTotal > 0) {
+      const isManuallyEdited = Math.abs(dbTotal - shopifyTotal) > 0.01
+      if (isManuallyEdited || shopifyTotal === 0) {
+        // Use database total (from admin edit)
+        return dbTotal
+      }
+    }
+
+    // PRIORITY 2: Calculate total from FULFILLED items only (exclude unfulfilled and removed)
+    const items = (order as any).order_items || []
+    const lineItems = order.line_items 
+      ? (typeof order.line_items === 'string' ? JSON.parse(order.line_items) : order.line_items)
+      : []
+    const allItems = items.length > 0 ? items : lineItems
+    
+    if (allItems.length > 0) {
+      // Filter to only fulfilled items
+      const fulfilledItems = allItems.filter((item: any) => {
+        const isRemoved = item.is_removed === true || 
+                         item.is_removed === 'true' ||
+                         (item.properties && typeof item.properties === 'object' && (item.properties._is_removed === true || item.properties._is_removed === 'true')) ||
+                         parseFloat(String(item.quantity || 0)) === 0 ||
+                         item.fulfillment_status === 'removed'
+        const isFulfilled = item.fulfillment_status === 'fulfilled' ||
+                           item.shopify_raw_data?.fulfillment_status === 'fulfilled' ||
+                           (item as any).fulfillment_status === 'fulfilled'
+        return !isRemoved && isFulfilled && parseFloat(String(item.quantity || 0)) > 0
+      })
+      
+      if (fulfilledItems.length > 0) {
+        // Calculate subtotal from fulfilled items
+        const fulfilledSubtotal = fulfilledItems.reduce((sum: number, item: any) => {
+          const itemPrice = parseFloat(String(item.price || 0))
+          const itemQty = parseFloat(String(item.quantity || 0))
+          const itemDiscount = parseFloat(String(item.total_discount || item.discount || 0))
+          return sum + (itemPrice * itemQty - itemDiscount)
+        }, 0)
+        
+        // Get tax, discount, shipping from Shopify raw data
+        const tax = parseFloat(raw.current_total_tax || (order as any).total_tax || 0)
+        const discounts = parseFloat(raw.current_total_discounts || (order as any).total_discounts || 0)
+        const shipping = parseFloat(raw.total_shipping_price_set?.shop_money?.amount || (order as any).total_shipping_price || 0)
+        
+        // Total = fulfilled subtotal + tax - discounts + shipping
+        const calculatedTotal = fulfilledSubtotal + tax - discounts + shipping
+        
+        // If database total exists, prefer it (it may have been manually edited)
+        if (dbTotal && dbTotal > 0) {
+          return dbTotal
+        }
+        
+        return calculatedTotal
+      }
+    }
+
+    // PRIORITY 3: Fallback to Shopify's current_total_price or database total_order_fees
+    const currentTotal = parseFloat(raw.current_total_price || dbTotal?.toString() || "0")
+
+    return currentTotal
   }
 
   const handleSaveUpdate = async () => {
@@ -1148,33 +1279,32 @@ const OrdersList: React.FC = () => {
 
     setSaving(true)
     
-    
     // Store original order for rollback
     const originalOrder = { ...selectedOrder }
     
-          try {
-            const method = normalizeMethod(selectedOrder.payment_method)
-            const isOrderOriginallyPaidOnline = isOrderPaid(selectedOrder)
-            const isOrderUnpaid = !isOrderPaid(selectedOrder)
+    try {
+      const method = normalizeMethod(selectedOrder.payment_method)
+      const isOrderOriginallyPaidOnline = isOrderPaid(selectedOrder)
+      const isOrderUnpaid = !isOrderPaid(selectedOrder)
 
-            const updatePayload: any = {
-              status: updateData.status,
-              updated_at: new Date().toISOString(),
-            }
+      const updatePayload: any = {
+        status: updateData.status,
+        updated_at: new Date().toISOString(),
+      }
 
-            let fee = Number.parseFloat(updateData.delivery_fee) || 0
-            let partial = Math.abs(Number.parseFloat(updateData.partial_paid_amount) || 0)
+      let fee = Number.parseFloat(updateData.delivery_fee) || 0
+      let partial = Math.abs(Number.parseFloat(updateData.partial_paid_amount) || 0)
 
-            const isReturnStatus = updateData.status === "return"
-            const isHandToHandWithNoFees = updateData.status === "hand_to_hand" && fee === 0 && partial === 0
-            const isCanceledWithNoFees = updateData.status === "canceled" && fee === 0 && partial === 0
+      const isReturnStatus = updateData.status === "return"
+      const isHandToHandWithNoFees = updateData.status === "hand_to_hand" && fee === 0 && partial === 0
+      const isCanceledWithNoFees = updateData.status === "canceled" && fee === 0 && partial === 0
 
-            if (isReturnStatus || (updateData.status === "receiving_part" && fee === 0 && partial === 0) || isHandToHandWithNoFees || isCanceledWithNoFees) {
-              fee = 0
-              partial = 0
-              updatePayload.collected_by = null
-              updatePayload.payment_sub_type = null
-            }
+      if (isReturnStatus || (updateData.status === "receiving_part" && fee === 0 && partial === 0) || isHandToHandWithNoFees || isCanceledWithNoFees) {
+        fee = 0
+        partial = 0
+        updatePayload.collected_by = null
+        updatePayload.payment_sub_type = null
+      }
 
       updatePayload.delivery_fee = fee
       updatePayload.partial_paid_amount = partial
@@ -1411,6 +1541,7 @@ const OrdersList: React.FC = () => {
       // Success - close modal and clear anchors
       setModalOpen(false)
       setSelectedOrder(null)
+      setIsUserEditing(false) // Reset editing flag after successful save
       
       if (cardPositionRef.current) {
         cardPositionRef.current = null
@@ -1994,9 +2125,13 @@ const deleteDuplicatedOrder = async (order: Order) => {
                   className={`relative rounded-2xl overflow-hidden transition-all active:scale-[0.98] cursor-pointer border-2 ${
                     editedOrderIds.has(order.id)
                       ? "border-red-500 bg-red-50/70 shadow-red-200/70 ring-2 ring-red-200"
-                      : order.order_id.includes("(نسخة)") ? "border-green-300 bg-green-50 shadow-lg hover:shadow-xl" : 
-                        order.status === "assigned" ? "border-blue-300 bg-blue-50 shadow-lg hover:shadow-xl" :
-                        "border-gray-200 bg-white shadow-lg hover:shadow-xl"
+                      : order.receive_piece_or_exchange === "receive_piece" 
+                        ? "border-blue-400 bg-blue-100 shadow-lg hover:shadow-xl ring-2 ring-blue-200"
+                        : order.receive_piece_or_exchange === "exchange"
+                        ? "border-orange-400 bg-orange-100 shadow-lg hover:shadow-xl ring-2 ring-orange-200"
+                        : order.order_id.includes("(نسخة)") ? "border-green-300 bg-green-50 shadow-lg hover:shadow-xl" : 
+                          order.status === "assigned" ? "border-blue-300 bg-blue-50 shadow-lg hover:shadow-xl" :
+                          "border-gray-200 bg-white shadow-lg hover:shadow-xl"
                   }`}
                   style={{
                     ...(editedOrderIds.has(order.id) ? {
@@ -2015,6 +2150,8 @@ const deleteDuplicatedOrder = async (order: Order) => {
                   )}
                   {/* Status Indicator Bar */}
                   <div className={`h-1 relative z-0 ${
+                    order.receive_piece_or_exchange === "receive_piece" ? "bg-blue-500" :
+                    order.receive_piece_or_exchange === "exchange" ? "bg-orange-500" :
                     order.order_id.includes("(نسخة)") ? "bg-green-500" : 
                     order.status === "assigned" ? "bg-blue-500" :
                     statusInfo.bgColor.replace("bg-", "bg-").replace("border-", "")
@@ -2028,6 +2165,16 @@ const deleteDuplicatedOrder = async (order: Order) => {
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2 flex-wrap">
                           <h3 className="text-lg font-bold text-gray-900">#{order.order_id}</h3>
+                          {order.receive_piece_or_exchange === "receive_piece" && (
+                            <span className="px-2 py-1 bg-blue-600 text-white text-xs rounded-full font-medium whitespace-nowrap border-2 border-blue-300">
+                              استلام قطعه
+                            </span>
+                          )}
+                          {order.receive_piece_or_exchange === "exchange" && (
+                            <span className="px-2 py-1 bg-orange-600 text-white text-xs rounded-full font-medium whitespace-nowrap border-2 border-orange-300">
+                              تبديل
+                            </span>
+                          )}
                           {order.order_id.includes("(نسخة)") && (
                             <span className="px-2 py-1 bg-green-600 text-white text-xs rounded-full font-medium whitespace-nowrap">
                               نسخة
@@ -2054,6 +2201,31 @@ const deleteDuplicatedOrder = async (order: Order) => {
                           {isPaid ? <CheckCircle className="w-4 h-4" /> : <DollarSign className="w-4 h-4" />}
                           <span>{isPaid ? "مدفوع" : "غير مدفوع"}</span>
                         </div>
+                        {/* Show removed items indicator */}
+                        {(() => {
+                          const items = order.order_items || []
+                          const lineItems = order.line_items 
+                            ? (typeof order.line_items === 'string' ? JSON.parse(order.line_items) : order.line_items)
+                            : []
+                          const allItems = items.length > 0 ? items : lineItems
+                          const removedCount = allItems.filter((item: any) => 
+                            item.is_removed === true || 
+                            item.is_removed === 'true' ||
+                            (item.properties && typeof item.properties === 'object' && (item.properties._is_removed === true || item.properties._is_removed === 'true')) ||
+                            parseFloat(String(item.quantity || 0)) === 0 ||
+                            item.fulfillment_status === 'removed'
+                          ).length
+                          
+                          if (removedCount > 0) {
+                            return (
+                              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-100 text-red-700 border border-red-300">
+                                <X className="w-4 h-4" />
+                                <span>{removedCount} محذوف</span>
+                              </div>
+                            )
+                          }
+                          return null
+                        })()}
                       </div>
                     </div>
 
@@ -2088,6 +2260,35 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         <p className="text-sm font-semibold text-blue-800">{getDisplayPaymentMethod(order)}</p>
                       </div>
                     </div>
+
+                    {/* Warning if paid = balance (balance = 0) - Don't collect money */}
+                    {(() => {
+                      const raw = (order as any).shopify_raw_data || {}
+                      const totalPaid = parseFloat(String((order as any).total_paid || raw.total_paid || 0))
+                      const balance = parseFloat(String((order as any).balance || raw.total_outstanding || (totalAmount - totalPaid)))
+                      
+                      // Check if paid equals total (balance = 0) or if explicitly marked as paid
+                      const isFullyPaid = Math.abs(balance) < 0.01 || // Balance is effectively 0
+                                        (totalPaid > 0 && Math.abs(totalPaid - totalAmount) < 0.01) || // Paid equals total
+                                        (order as any).payment_status === 'paid' || 
+                                        (order as any).financial_status === 'paid' ||
+                                        raw.financial_status === 'paid'
+                      
+                      if (isFullyPaid) {
+                        return (
+                          <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-3 border-green-400 rounded-xl p-3 shadow-md">
+                            <div className="flex items-start gap-2">
+                              <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                              <div className="flex-1">
+                                <p className="text-sm font-black text-green-800 mb-1">⚠️ لا تحصل أي مبلغ من العميل</p>
+                                <p className="text-xs text-green-700 font-semibold">الطلب مدفوع بالكامل في Shopify</p>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      }
+                      return null
+                    })()}
 
                     {/* Phone & Actions Row - Modern Design */}
                     <div className="grid grid-cols-2 gap-3">
@@ -2323,6 +2524,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
               if (e.target === e.currentTarget && !saving && !imageUploading) {
                 setModalOpen(false)
                 setSelectedOrder(null)
+                setIsUserEditing(false)
                 
                 cardPositionRef.current = null
               }
@@ -2453,6 +2655,13 @@ const deleteDuplicatedOrder = async (order: Order) => {
                               const itemTitle = item.title || item.name || 'منتج'
                               const itemVariant = item.variant_title || item.variant?.title || ''
                               const itemSku = item.sku || ''
+                              
+                              // Check if item is removed - check multiple sources
+                              const isRemoved = item.is_removed === true || 
+                                               item.is_removed === 'true' ||
+                                               (item.properties && typeof item.properties === 'object' && (item.properties._is_removed === true || item.properties._is_removed === 'true')) ||
+                                               parseFloat(String(item.quantity || 0)) === 0 ||
+                                               item.fulfillment_status === 'removed'
                               
                               // Get product image from multiple possible sources
                               let itemImage = null
@@ -2614,21 +2823,27 @@ const deleteDuplicatedOrder = async (order: Order) => {
                               return (
                                 <div 
                                   key={idx}
-                                  className="bg-white rounded-lg sm:rounded-xl border-2 border-gray-100 p-2 sm:p-4 hover:border-blue-300 transition-all duration-300 hover:shadow-md"
+                                  className={`rounded-lg sm:rounded-xl border-2 p-2 sm:p-4 transition-all duration-300 ${
+                                    isRemoved 
+                                      ? 'bg-red-50 border-red-300 opacity-60 grayscale hover:border-red-400' 
+                                      : 'bg-white border-gray-100 hover:border-blue-300 hover:shadow-md'
+                                  }`}
                                 >
                                   <div className="flex gap-2 sm:gap-4">
                                     {/* Product Image - Clickable */}
                                     <div 
-                                      className={`w-14 h-14 sm:w-24 sm:h-24 bg-gray-100 rounded-lg sm:rounded-xl overflow-hidden border-2 border-gray-200 flex-shrink-0 relative ${
-                                        itemImage && itemImage !== 'data:image/svg+xml' && !itemImage.includes('placeholder') 
-                                          ? 'cursor-pointer hover:border-blue-400 hover:shadow-md transition-all' 
-                                          : ''
+                                      className={`w-14 h-14 sm:w-24 sm:h-24 rounded-lg sm:rounded-xl overflow-hidden border-2 flex-shrink-0 relative ${
+                                        isRemoved 
+                                          ? 'border-red-200 bg-red-50' 
+                                          : itemImage && itemImage !== 'data:image/svg+xml' && !itemImage.includes('placeholder') 
+                                            ? 'border-gray-200 cursor-pointer hover:border-blue-400 hover:shadow-md transition-all' 
+                                            : 'border-gray-200 bg-gray-100'
                                       }`}
                                       onClick={(e) => {
                                         // Stop card click from opening the order modal; just show the image viewer
                                         e.preventDefault()
                                         e.stopPropagation()
-                                        if (itemImage && itemImage !== 'data:image/svg+xml' && !itemImage.includes('placeholder')) {
+                                        if (itemImage && itemImage !== 'data:image/svg+xml' && !itemImage.includes('placeholder') && !isRemoved) {
                                           setSelectedImage(itemImage)
                                           setImageModalOpen(true)
                                         }
@@ -2657,30 +2872,92 @@ const deleteDuplicatedOrder = async (order: Order) => {
                                     
                                     {/* Product Details */}
                                     <div className="flex-1 min-w-0">
-                                      <h5 className="font-bold text-gray-900 text-xs sm:text-base mb-0.5 sm:mb-1 line-clamp-2">
-                                        {itemTitle}
-                                      </h5>
+                                      <div className="flex items-center justify-between gap-2 mb-0.5 sm:mb-1">
+                                        <div className="flex items-center gap-1.5 flex-wrap flex-1 min-w-0">
+                                          <h5 className={`font-bold text-xs sm:text-base line-clamp-1 ${
+                                            isRemoved ? 'text-red-600 line-through' : 'text-gray-900'
+                                          }`}>
+                                            {itemTitle}
+                                          </h5>
+                                          {isRemoved && (
+                                            <span className="px-2 py-0.5 bg-red-600 text-white text-[9px] sm:text-[11px] font-bold rounded-full uppercase whitespace-nowrap shadow-sm">
+                                              تمت الإزالة
+                                            </span>
+                                          )}
+                                          {(() => {
+                                            if (isRemoved) return null
+                                            
+                                            // Check fulfillment status from multiple sources
+                                            const itemRaw = item.shopify_raw_data || {}
+                                            const orderRaw = (selectedOrder as any).shopify_raw_data || {}
+                                            
+                                            // Check item's direct fulfillment_status
+                                            let isFulfilled = item.fulfillment_status === 'fulfilled' || 
+                                                             itemRaw.fulfillment_status === 'fulfilled' ||
+                                                             (item as any).fulfillment_status === 'fulfilled'
+                                            
+                                            // Also check if item is in any fulfillment from order's fulfillments array
+                                            if (!isFulfilled && orderRaw.fulfillments && Array.isArray(orderRaw.fulfillments)) {
+                                              const itemId = itemRaw.id || item.id || item.shopify_line_item_id
+                                              for (const fulfillment of orderRaw.fulfillments) {
+                                                if (fulfillment.line_items && Array.isArray(fulfillment.line_items)) {
+                                                  const found = fulfillment.line_items.find((li: any) => 
+                                                    String(li.id) === String(itemId) || 
+                                                    String(li.line_item_id) === String(itemId)
+                                                  )
+                                                  if (found) {
+                                                    isFulfilled = true
+                                                    break
+                                                  }
+                                                }
+                                              }
+                                            }
+                                            
+                                            if (isFulfilled) {
+                                              return (
+                                                <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[9px] sm:text-[11px] font-bold rounded-full uppercase border border-blue-300 whitespace-nowrap shadow-sm">
+                                                  مكتمل
+                                                </span>
+                                              )
+                                            } else {
+                                              return (
+                                                <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-[9px] sm:text-[11px] font-bold rounded-full uppercase border border-yellow-300 whitespace-nowrap shadow-sm">
+                                                  غير مكتمل
+                                                </span>
+                                              )
+                                            }
+                                          })()}
+                                        </div>
+                                      </div>
                                       {itemVariant && (
-                                        <p className="text-[10px] sm:text-sm text-gray-600 mb-0.5 sm:mb-1">
+                                        <p className={`text-[10px] sm:text-sm mb-0.5 sm:mb-1 ${
+                                          isRemoved ? 'text-red-400 line-through' : 'text-gray-600'
+                                        }`}>
                                           {itemVariant}
                                         </p>
                                       )}
                                       {itemSku && (
-                                        <p className="text-[9px] sm:text-xs text-gray-500 font-mono mb-1 sm:mb-2">
+                                        <p className={`text-[9px] sm:text-xs font-mono mb-1 sm:mb-2 ${
+                                          isRemoved ? 'text-red-300' : 'text-gray-500'
+                                        }`}>
                                           SKU: {itemSku}
                                         </p>
                                       )}
                                       <div className="flex items-center justify-between mt-1 sm:mt-2">
-                                        <span className="text-[10px] sm:text-sm text-gray-600">
-                                          الكمية: <span className="font-semibold text-gray-800">{itemQuantity}</span>
+                                        <span className={`text-[10px] sm:text-sm ${
+                                          isRemoved ? 'text-red-400 line-through' : 'text-gray-600'
+                                        }`}>
+                                          الكمية: <span className={`font-semibold ${isRemoved ? 'text-red-500' : 'text-gray-800'}`}>{itemQuantity}</span>
                                         </span>
                                         <div className="text-right">
-                                          {itemDiscount > 0 && (
+                                          {itemDiscount > 0 && !isRemoved && (
                                             <div className="text-[9px] sm:text-xs text-red-600 mb-0.5">
                                               خصم: -{itemDiscount.toFixed(2)} ج.م
                                             </div>
                                           )}
-                                          <span className="text-xs sm:text-base font-bold text-blue-600">
+                                          <span className={`text-xs sm:text-base font-bold ${
+                                            isRemoved ? 'text-red-500 line-through' : 'text-blue-600'
+                                          }`}>
                                             {itemTotal.toFixed(2)} ج.م
                                           </span>
                                         </div>
@@ -2703,8 +2980,22 @@ const deleteDuplicatedOrder = async (order: Order) => {
                       <div className="w-7 h-7 sm:w-10 sm:h-10 bg-gradient-to-br from-amber-500 to-orange-500 rounded-lg sm:rounded-xl flex items-center justify-center shadow-md">
                         <CreditCard className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-white" />
                       </div>
-                      <h4 className="text-sm sm:text-lg font-bold text-gray-800">تفاصيل الدفع</h4>
-                      {selectedOrder.payment_status && (
+                            <h4 className="text-sm sm:text-lg font-bold text-gray-800">تفاصيل الدفع</h4>
+                            {(selectedOrder as any).shopify_order_id && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleManualSync((selectedOrder as any).shopify_order_id, selectedOrder.id)
+                                }}
+                                disabled={!!isSyncing}
+                                className={`flex items-center gap-1.5 px-2 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-full text-[10px] sm:text-xs font-bold transition-all shadow-sm ${isSyncing === selectedOrder.id ? 'animate-pulse opacity-70' : ''}`}
+                                title="تحديث من شوبيفاي"
+                              >
+                                <RefreshCw className={`w-3 h-3 ${isSyncing === selectedOrder.id ? 'animate-spin' : ''}`} />
+                                {isSyncing === selectedOrder.id ? 'جاري التحديث...' : 'تحديث من شوبيفاي'}
+                              </button>
+                            )}
+                            {selectedOrder.payment_status && (
                         <span className={`px-1.5 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold ${
                           selectedOrder.payment_status === 'paid' 
                             ? 'bg-green-100 text-green-700' 
@@ -2714,80 +3005,158 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         </span>
                       )}
                     </div>
-                    <div className="space-y-1.5 sm:space-y-2.5 bg-white rounded-lg sm:rounded-xl p-2 sm:p-4 border border-amber-100">
-                      <div className="flex justify-between items-center py-1 sm:py-1.5 border-b border-gray-100">
-                        <span className="text-xs sm:text-sm text-gray-600">عدد المنتجات:</span>
-                        <span className="font-semibold text-xs sm:text-sm text-gray-800">
-                          {(() => {
-                            const items = selectedOrder.order_items || []
-                            const lineItems = selectedOrder.line_items 
-                              ? (typeof selectedOrder.line_items === 'string' 
-                                  ? JSON.parse(selectedOrder.line_items) 
-                                  : selectedOrder.line_items)
-                              : []
-                            const allItems = items.length > 0 ? items : lineItems
-                            const totalQty = allItems.reduce((sum: number, item: any) => sum + (parseInt(item.quantity || 1)), 0)
-                            return totalQty || 1
-                          })()} منتج
-                        </span>
-                      </div>
-                      {selectedOrder.subtotal_price !== undefined && (
-                        <div className="flex justify-between items-center py-1 sm:py-1.5 border-b border-gray-100">
-                          <span className="text-xs sm:text-sm text-gray-600">المجموع الفرعي:</span>
-                          <span className="font-semibold text-xs sm:text-sm text-gray-800">
-                            {selectedOrder.subtotal_price.toFixed(2)} ج.م
-                          </span>
-                        </div>
-                      )}
-                      {(() => {
-                        // Calculate total discount from order items if available
-                        const items = selectedOrder.order_items || []
-                        const lineItems = selectedOrder.line_items 
-                          ? (typeof selectedOrder.line_items === 'string' 
-                              ? JSON.parse(selectedOrder.line_items) 
-                              : selectedOrder.line_items)
-                          : []
-                        const allItems = items.length > 0 ? items : lineItems
-                        const totalItemDiscounts = allItems.reduce((sum: number, item: any) => {
-                          return sum + (parseFloat(item.total_discount || item.discount || 0))
-                        }, 0)
-                        const orderDiscount = selectedOrder.total_discounts || 0
-                        const totalDiscount = totalItemDiscounts > 0 ? totalItemDiscounts : orderDiscount
-                        
-                        if (totalDiscount > 0) {
+                      <div className="space-y-1.5 sm:space-y-2.5 bg-white rounded-lg sm:rounded-xl p-2 sm:p-4 border border-amber-100">
+                        {(() => {
+                          const raw = (selectedOrder as any).shopify_raw_data || {}
+                          
+                          // Get all items
+                          const items = selectedOrder.order_items || []
+                          const lineItems = selectedOrder.line_items 
+                            ? (typeof selectedOrder.line_items === 'string' 
+                                ? JSON.parse(selectedOrder.line_items) 
+                                : selectedOrder.line_items)
+                            : []
+                          const allItems = items.length > 0 ? items : lineItems
+                          
+                          // Filter to only FULFILLED items (exclude unfulfilled and removed)
+                          const fulfilledItems = allItems.filter((item: any) => {
+                            const isRemoved = item.is_removed === true || 
+                                             item.is_removed === 'true' ||
+                                             (item.properties && typeof item.properties === 'object' && (item.properties._is_removed === true || item.properties._is_removed === 'true')) ||
+                                             parseFloat(String(item.quantity || 0)) === 0 ||
+                                             item.fulfillment_status === 'removed'
+                            const isFulfilled = item.fulfillment_status === 'fulfilled' ||
+                                               item.shopify_raw_data?.fulfillment_status === 'fulfilled' ||
+                                               (item as any).fulfillment_status === 'fulfilled'
+                            return !isRemoved && isFulfilled && parseFloat(String(item.quantity || 0)) > 0
+                          })
+                          
+                          // Calculate subtotal from fulfilled items only
+                          const fulfilledSubtotal = fulfilledItems.reduce((sum: number, item: any) => {
+                            const itemPrice = parseFloat(String(item.price || 0))
+                            const itemQty = parseFloat(String(item.quantity || 0))
+                            const itemDiscount = parseFloat(String(item.total_discount || item.discount || 0))
+                            return sum + (itemPrice * itemQty - itemDiscount)
+                          }, 0)
+                          
+                          // Use fulfilled subtotal if we have fulfilled items, otherwise use Shopify's subtotal
+                          const displaySubtotal = fulfilledItems.length > 0 
+                            ? fulfilledSubtotal 
+                            : parseFloat(raw.current_subtotal_price || selectedOrder.subtotal_price || 0)
+                          
+                          const displayDiscount = parseFloat(raw.current_total_discounts || selectedOrder.total_discounts || 0)
+                          const displayTax = parseFloat(raw.current_total_tax || selectedOrder.total_tax || 0)
+                          const displayShipping = parseFloat(raw.total_shipping_price_set?.shop_money?.amount || (selectedOrder as any).total_shipping_price || 0)
+                          
+                          // Total = subtotal (fulfilled items) + tax - discounts + shipping
+                          const displayTotal = displaySubtotal + displayTax - displayDiscount + displayShipping
+
                           return (
-                            <div className="flex justify-between items-center py-1 sm:py-1.5 border-b border-gray-100 bg-red-50 -mx-2 sm:-mx-4 px-2 sm:px-4 rounded-lg">
-                              <div className="flex items-center gap-1 sm:gap-2">
-                                <span className="text-xs sm:text-sm font-semibold text-red-700">الخصم:</span>
-                                {orderDiscount > 0 && totalItemDiscounts === 0 && (
-                                  <span className="text-[9px] sm:text-xs text-red-600 bg-red-100 px-1 sm:px-2 py-0.5 rounded">من الطلب</span>
-                                )}
-                                {totalItemDiscounts > 0 && (
-                                  <span className="text-[9px] sm:text-xs text-red-600 bg-red-100 px-1 sm:px-2 py-0.5 rounded">من المنتجات</span>
-                                )}
+                            <>
+                              <div className="flex justify-between items-center py-1 sm:py-1.5 border-b border-gray-100">
+                                <span className="text-xs sm:text-sm text-gray-600">عدد المنتجات المكتملة:</span>
+                                <span className="font-semibold text-xs sm:text-sm text-gray-800">
+                                  {fulfilledItems.length} {fulfilledItems.length === 1 ? 'منتج' : 'منتجات'}
+                                </span>
                               </div>
-                              <span className="font-bold text-red-600 text-xs sm:text-base">
-                                -{totalDiscount.toFixed(2)} ج.م
-                              </span>
-                            </div>
+                              
+                              {displaySubtotal > 0 && (
+                                <div className="flex justify-between items-center py-1 sm:py-1.5 border-b border-gray-100">
+                                  <span className="text-xs sm:text-sm text-gray-600">المجموع الفرعي (مكتمل):</span>
+                                  <span className="font-semibold text-xs sm:text-sm text-gray-800">
+                                    {displaySubtotal.toFixed(2)} ج.م
+                                  </span>
+                                </div>
+                              )}
+
+                              {displayDiscount > 0 && (
+                                <div className="flex justify-between items-center py-1 sm:py-1.5 border-b border-gray-100 bg-red-50 -mx-2 sm:-mx-4 px-2 sm:px-4 rounded-lg">
+                                  <span className="text-xs sm:text-sm font-semibold text-red-700">الخصم:</span>
+                                  <span className="font-bold text-red-600 text-xs sm:text-base">
+                                    -{displayDiscount.toFixed(2)} ج.م
+                                  </span>
+                                </div>
+                              )}
+
+                              {displayShipping > 0 && (
+                                <div className="flex justify-between items-center py-1 sm:py-1.5 border-b border-gray-100">
+                                  <span className="text-xs sm:text-sm text-gray-600">الشحن:</span>
+                                  <span className="font-semibold text-xs sm:text-sm text-gray-800">
+                                    {displayShipping.toFixed(2)} ج.م
+                                  </span>
+                                </div>
+                              )}
+
+                              {displayTax > 0 && (
+                                <div className="flex justify-between items-center py-1 sm:py-1.5 border-b border-gray-100">
+                                  <span className="text-xs sm:text-sm text-gray-600">الضريبة:</span>
+                                  <span className="font-semibold text-xs sm:text-sm text-gray-800">
+                                    {displayTax.toFixed(2)} ج.م
+                                  </span>
+                                </div>
+                              )}
+
+                              <div className="flex justify-between items-center pt-1.5 sm:pt-2 mt-1.5 sm:mt-2 border-t-2 border-gray-300">
+                                <span className="text-sm sm:text-base font-bold text-gray-800">الإجمالي (مكتمل فقط):</span>
+                                <span className="text-base sm:text-xl font-bold text-green-600">
+                                  {displayTotal.toFixed(2)} ج.م
+                                </span>
+                              </div>
+
+                              {/* Shopify Balance Detail */}
+                              <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
+                                <div className="flex justify-between items-center">
+                                  <span className="text-[10px] sm:text-xs text-gray-500">تم دفعه (Shopify):</span>
+                                  <span className="text-[10px] sm:text-xs font-semibold text-green-600">
+                                    {(parseFloat(String((selectedOrder as any).total_paid || 0))).toFixed(2)} ج.م
+                                  </span>
+                                </div>
+                                <div className="flex justify-between items-center bg-amber-50 p-2 rounded-lg border border-amber-100">
+                                  <span className="text-xs sm:text-sm font-bold text-amber-800">المتبقي (Balance):</span>
+                                  <span className="text-sm sm:text-base font-black text-amber-900">
+                                    {(parseFloat(String((selectedOrder as any).balance || (displayTotal - ((selectedOrder as any).total_paid || 0))))).toFixed(2)} ج.م
+                                  </span>
+                                </div>
+                                
+                                {/* Warning if paid = balance (balance = 0) - Don't collect money */}
+                                {(() => {
+                                  const raw = (selectedOrder as any).shopify_raw_data || {}
+                                  const totalPaid = parseFloat(String((selectedOrder as any).total_paid || (raw.total_paid || 0)))
+                                  const balance = parseFloat(String((selectedOrder as any).balance || raw.total_outstanding || (displayTotal - totalPaid)))
+                                  
+                                  // Check if paid equals total (balance = 0) or if explicitly marked as paid
+                                  const isFullyPaid = Math.abs(balance) < 0.01 || // Balance is effectively 0 (accounting for floating point)
+                                                    (totalPaid > 0 && Math.abs(totalPaid - displayTotal) < 0.01) || // Paid equals total
+                                                    (selectedOrder as any).payment_status === 'paid' || 
+                                                    (selectedOrder as any).financial_status === 'paid' ||
+                                                    (raw.financial_status === 'paid')
+                                  
+                                  if (isFullyPaid) {
+                                    return (
+                                      <div className="mt-3 p-4 bg-gradient-to-r from-green-50 to-emerald-50 border-3 border-green-400 rounded-xl shadow-lg">
+                                        <div className="flex items-start gap-3">
+                                          <CheckCircle className="w-6 h-6 text-green-600 flex-shrink-0 mt-0.5" />
+                                          <div className="flex-1">
+                                            <h5 className="text-base sm:text-lg font-black text-green-800 mb-2">
+                                              ⚠️ تحذير مهم: لا تحصل أي مبلغ من العميل
+                                            </h5>
+                                            <div className="space-y-1 text-sm sm:text-base text-green-700 font-semibold">
+                                              <p>• الطلب مدفوع بالكامل في Shopify</p>
+                                              <p>• المبلغ المدفوع: {totalPaid.toFixed(2)} ج.م</p>
+                                              <p>• المتبقي: {balance.toFixed(2)} ج.م</p>
+                                              <p className="text-green-800 font-black mt-2">⚠️ لا تأخذ أي نقود من العميل</p>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )
+                                  }
+                                  return null
+                                })()}
+                              </div>
+                            </>
                           )
-                        }
-                        return null
-                      })()}
-                      {selectedOrder.total_tax !== undefined && selectedOrder.total_tax > 0 && (
-                        <div className="flex justify-between items-center py-1 sm:py-1.5 border-b border-gray-100">
-                          <span className="text-xs sm:text-sm text-gray-600">الضريبة:</span>
-                          <span className="font-semibold text-xs sm:text-sm text-gray-800">
-                            {selectedOrder.total_tax.toFixed(2)} ج.م
-                          </span>
-                        </div>
-                      )}
-                      <div className="flex justify-between items-center pt-1.5 sm:pt-2 mt-1.5 sm:mt-2 border-t-2 border-gray-300">
-                        <span className="text-sm sm:text-base font-bold text-gray-800">الإجمالي:</span>
-                        <span className="text-base sm:text-xl font-bold text-green-600">
-                          {selectedOrder.total_order_fees.toFixed(2)} ج.م
-                        </span>
-                      </div>
+                        })()}
                       {selectedOrder.payment_gateway_names && selectedOrder.payment_gateway_names.length > 0 && (
                         <div className="mt-2 sm:mt-3 pt-2 sm:pt-3 border-t border-gray-200">
                           <p className="text-[10px] sm:text-xs text-gray-600 mb-0.5 sm:mb-1">بوابة الدفع:</p>
@@ -2908,9 +3277,16 @@ const deleteDuplicatedOrder = async (order: Order) => {
                     <div className="bg-white/80 backdrop-blur-sm rounded-xl p-4 space-y-3 border border-white/50">
                       <div className="flex justify-between items-center py-2 px-3 bg-gray-50 rounded-lg">
                         <span className="text-sm text-gray-600 font-medium">قيمة الطلب الأساسية:</span>
-                        <span className="font-bold text-gray-900 text-base">
-                          {selectedOrder.total_order_fees.toFixed(2)} ج.م
-                        </span>
+                        <div className="text-right">
+                          <span className="font-bold text-gray-900 text-base">
+                            {selectedOrder.total_order_fees.toFixed(2)} ج.م
+                          </span>
+                          {(selectedOrder as any).balance > 0 && (
+                            <p className="text-[10px] text-amber-600 font-bold">
+                              المتبقي في شوبيفاي: {(selectedOrder as any).balance.toFixed(2)} ج.م
+                            </p>
+                          )}
+                        </div>
                       </div>
                       <div className="flex justify-between items-center py-2 px-3 bg-amber-50 rounded-lg border border-amber-100">
                         <span className="text-sm text-gray-700 font-medium">رسوم التوصيل:</span>
@@ -2960,6 +3336,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                     <select
                       value={updateData.status}
                       onChange={(e) => {
+                        setIsUserEditing(true)
                         setUpdateData({ ...updateData, status: e.target.value })
                       }}
                       className="w-full rounded-xl border-2 border-gray-300 px-4 py-3.5 text-base font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white hover:border-blue-400 transition-colors shadow-sm"
@@ -2990,6 +3367,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         onChange={(e) => {
                           const val = e.target.value
                           if (val === "" || /^[0-9]*\.?[0-9]*$/.test(val)) {
+                            setIsUserEditing(true)
                             setUpdateData({ ...updateData, delivery_fee: val })
                           }
                         }}
@@ -3162,6 +3540,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                                   onChange={(e) => {
                                     const selectedValue = e.target.value
                                     console.log('Payment method selected:', selectedValue)
+                                    setIsUserEditing(true)
                                     setUpdateData({ ...updateData, payment_sub_type: selectedValue })
                                   }}
                                   className="w-full rounded-xl border-2 border-gray-300 px-4 py-3.5 text-base font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white hover:border-indigo-400 transition-colors shadow-sm"
@@ -3201,6 +3580,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                               onChange={(e) => {
                                 const val = e.target.value
                                 if (val === "" || /^[0-9]*\.?[0-9]*$/.test(val)) {
+                                  setIsUserEditing(true)
                                   setUpdateData({ ...updateData, partial_paid_amount: val })
                                 }
                               }}
@@ -3244,6 +3624,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                       rows={4}
                       value={updateData.internal_comment}
                       onChange={(e) => {
+                        setIsUserEditing(true)
                         setUpdateData({ ...updateData, internal_comment: e.target.value })
                       }}
                       className="w-full rounded-xl border-2 border-gray-300 px-4 py-3 text-base font-medium focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-gray-500 bg-white hover:border-gray-400 transition-colors shadow-sm resize-none"
