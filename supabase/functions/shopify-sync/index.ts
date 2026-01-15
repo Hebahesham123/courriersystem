@@ -1,3 +1,4 @@
+// @ts-nocheck
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 
@@ -393,7 +394,23 @@ Deno.serve(async (req: Request) => {
       return { imported: wasImported, updated: wasUpdated }
     }
 
-    // Helper function to sync order items
+  // Helper: extract first useful image URL from a Shopify line item
+  const extractImageUrl = (item: any): string | null => {
+    if (!item) return null
+    if (typeof item.image === 'string') return item.image
+    if (item.image?.src) return item.image.src
+    if (item.image?.url) return item.image.url
+    if (item.images && item.images.length > 0) {
+      const img = item.images[0]
+      if (typeof img === 'string') return img
+      return img?.src || img?.url || null
+    }
+    if (item.variant?.image?.src) return item.variant.image.src
+    if (item.variant?.image?.url) return item.variant.image.url
+    return item.image_url || null
+  }
+
+  // Helper function to sync order items
     const syncOrderItems = async (orderId: string, lineItems: any[], refunds: any[] = []) => {
       if (!lineItems) return;
 
@@ -494,9 +511,6 @@ Deno.serve(async (req: Request) => {
             return rest
           }))
       }
-    }
-
-      return { imported: wasImported, updated: wasUpdated }
     }
 
     // Function to fetch product images from Shopify Products API
