@@ -243,6 +243,7 @@ const OrdersList: React.FC = () => {
     }
     return false
   })
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
   const cardPositionRef = useRef<{ top: number; left: number; width: number; height: number } | null>(null)
   const modalContainerRef = useRef<HTMLDivElement | null>(null)
   const windowScrollRef = useRef<number>(0)
@@ -1164,6 +1165,14 @@ const OrdersList: React.FC = () => {
       e.target.value = ""
     }
   }
+
+  const triggerFileInput = useCallback(() => {
+    if (imageUploading) return
+    const inputEl = fileInputRef.current || (document.getElementById("image-upload") as HTMLInputElement | null)
+    if (inputEl) {
+      inputEl.click()
+    }
+  }, [imageUploading])
 
   const calculateTotalAmount = (order: Order, deliveryFee: number, partialAmount: number, currentStatus: string) => {
     if (currentStatus === "hand_to_hand" && deliveryFee === 0 && partialAmount === 0) {
@@ -3446,7 +3455,17 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         </span>
                       )}
                     </label>
-                    <div className="border-2 border-dashed border-gray-300 rounded-xl p-4 sm:p-6 text-center hover:border-green-400 transition-colors bg-gradient-to-br from-gray-50 to-white">
+                    <label
+                      htmlFor="image-upload"
+                      className="relative border-2 border-dashed border-gray-300 rounded-xl p-4 sm:p-6 text-center hover:border-green-400 transition-colors bg-gradient-to-br from-gray-50 to-white cursor-pointer block"
+                      onClick={() => triggerFileInput()}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          triggerFileInput()
+                        }
+                      }}
+                      tabIndex={0}
+                    >
                       <div className="space-y-3">
                         <div className="w-16 h-16 bg-gradient-to-br from-green-100 to-emerald-100 rounded-full flex items-center justify-center mx-auto">
                           {imageUploading ? (
@@ -3461,13 +3480,14 @@ const deleteDuplicatedOrder = async (order: Order) => {
                             accept="image/*"
                             multiple
                             capture="environment"
+                            ref={fileInputRef}
                             onChange={handleImageChange}
                             disabled={imageUploading}
-                            className="hidden"
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                            style={{ overflow: "hidden", zIndex: 5 }}
                             id="image-upload"
                           />
-                          <label
-                            htmlFor="image-upload"
+                          <div
                             className={`inline-block px-5 py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-xl font-bold text-sm transition-all active:scale-95 shadow-lg ${
                               imageUploading ? "opacity-50 cursor-not-allowed" : "cursor-pointer"
                             }`}
@@ -3483,7 +3503,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                                 اختر أو التقط صور (واحد أو أكثر)
                               </span>
                             )}
-                          </label>
+                          </div>
                           <p className="text-xs text-gray-500 mt-2 flex items-center justify-center gap-1.5">
                             <AlertCircle className="w-3.5 h-3.5" />
                             يمكنك اختيار عدة صور من المعرض أو التقاطها من الكاميرا
@@ -3506,7 +3526,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                           )}
                         </div>
                       </div>
-                    </div>
+                    </label>
                   </div>
 
                   {/* Current Images - Enhanced with Better Removal */}
@@ -3543,7 +3563,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                                 }}
                               />
                               {/* Overlay on hover */}
-                              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all flex items-center justify-center">
+                              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all flex items-center justify-center pointer-events-none">
                                 <Eye className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-lg" />
                               </div>
                               {/* Remove button - Always visible on mobile, on hover on desktop */}
