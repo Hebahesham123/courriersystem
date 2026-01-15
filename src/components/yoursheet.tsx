@@ -79,7 +79,7 @@ const YourSheet: React.FC = () => {
         }).format(new Date(ts));
       };
 
-      const filtered = (data ?? [])
+      let filtered = (data ?? [])
         .filter((o: any) => {
           const ts = o.assigned_at || o.created_at;
           return toCairoYMD(ts) === targetDate;
