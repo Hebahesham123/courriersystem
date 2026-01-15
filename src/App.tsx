@@ -240,6 +240,16 @@ const AppRoutes: React.FC = () => {
             }
           />
           <Route
+            path="/courier/orders/:orderId"
+            element={
+              <ProtectedRoute allowedRoles={["courier"]}>
+                <AppLayout>
+                  <OrdersList />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/courier/yoursheet"
             element={
               <ProtectedRoute allowedRoles={["courier"]}>

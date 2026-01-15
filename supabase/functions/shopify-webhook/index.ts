@@ -168,12 +168,14 @@ Deno.serve(async (req: Request) => {
     }
 
     // Prepare order data
+    const isCanceled = !!shopifyOrder.cancelled_at
+
     const orderData = {
       shopify_order_id: shopifyOrder.id,
       order_id: shopifyOrder.name || shopifyOrder.order_number?.toString() || shopifyOrder.id?.toString(),
       order_name: shopifyOrder.name,
       order_number: shopifyOrder.order_number?.toString(),
-      status: 'pending',
+      status: isCanceled ? 'canceled' : 'pending',
       financial_status: shopifyOrder.financial_status || paymentInfo.status,
       fulfillment_status: shopifyOrder.fulfillment_status,
       // Use current_total_price for edited orders, fallback to total_price
@@ -337,6 +339,10 @@ Deno.serve(async (req: Request) => {
         shopify_updated_at: orderData.shopify_updated_at,
         shopify_cancelled_at: orderData.shopify_cancelled_at,
         financial_status: orderData.financial_status,
+        payment_status: orderData.payment_status,
+        payment_method: orderData.payment_method,
+        payment_gateway_names: orderData.payment_gateway_names,
+        fulfillment_status: orderData.fulfillment_status,
         // IMPORTANT: Preserve manually edited total_order_fees if it differs from Shopify
         total_order_fees: (() => {
           const existingTotal = existingMain.total_order_fees || 0

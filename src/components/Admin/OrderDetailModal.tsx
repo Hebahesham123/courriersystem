@@ -1080,6 +1080,18 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
     return 0;
   });
 
+  const statusLower = (order.status || '').toLowerCase()
+  const paymentLower = (order.payment_status || '').toLowerCase()
+  const financialLower = (order.financial_status || '').toLowerCase()
+  const isCanceled =
+    statusLower === 'canceled' ||
+    statusLower === 'cancelled' ||
+    paymentLower === 'cancelled' ||
+    paymentLower === 'canceled' ||
+    paymentLower === 'voided' ||
+    financialLower === 'void' ||
+    financialLower === 'voided'
+
   return createPortal(
     <div 
       className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4 overflow-hidden"
@@ -1097,17 +1109,26 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
       }}
     >
       <div 
-        className="bg-white rounded-xl shadow-2xl max-w-5xl w-full max-h-[94vh] overflow-hidden flex flex-col mx-auto my-auto"
+        className={`bg-white rounded-xl shadow-2xl max-w-5xl w-full max-h-[94vh] overflow-hidden flex flex-col mx-auto my-auto ${
+          isCanceled ? 'border-2 border-red-300 border-dashed bg-red-50/70 shadow-red-200' : ''
+        }`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6 rounded-t-xl">
+        <div className={`bg-gradient-to-r ${isCanceled ? 'from-red-700 to-red-600' : 'from-blue-600 to-blue-700'} text-white p-6 rounded-t-xl`}>
           <div className="flex justify-between items-start">
             <div className="flex-1">
               <div className="flex items-center gap-3 mb-2">
-                <h2 className="text-2xl font-bold">Order #{order.order_id}</h2>
+                <h2 className={`text-2xl font-bold ${isCanceled ? 'line-through opacity-80' : ''}`}>
+                  Order #{order.order_id}
+                </h2>
                 {order.shopify_order_name && (
                   <span className="text-blue-200 text-sm">({order.shopify_order_name})</span>
+                )}
+                {isCanceled && (
+                  <span className="px-3 py-1 text-xs font-semibold bg-white/20 border border-white/50 border-dashed rounded-full">
+                    Cancelled / ملغي
+                  </span>
                 )}
               </div>
               <div className="flex items-center gap-4 mt-2 flex-wrap">

@@ -268,6 +268,9 @@ Deno.serve(async (req: Request) => {
         order_id: shopifyOrder.name || shopifyOrder.order_number?.toString() || shopifyOrder.id?.toString(),
         status: shopifyOrder.cancelled_at ? 'canceled' : 'pending',
         financial_status: shopifyOrder.financial_status || paymentInfo.status,
+        payment_status: paymentInfo.status,
+        payment_method: paymentInfo.method,
+        payment_gateway_names: shopifyOrder.payment_gateway_names || [],
         fulfillment_status: shopifyOrder.fulfillment_status,
         // Use current_total_price for edited orders, fallback to total_price
         total_order_fees: parseFloat(shopifyOrder.current_total_price || shopifyOrder.total_price || 0),

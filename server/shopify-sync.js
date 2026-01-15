@@ -1028,6 +1028,12 @@ async function syncShopifyOrders(updatedAtMin = null) {
             total_order_fees: (() => {
               const existingTotal = existing.total_order_fees || 0
               const shopifyTotal = dbOrder.total_order_fees || 0
+
+              // If Shopify cancelled the order, force Shopify total (usually 0)
+              if (dbOrder.status === 'canceled' || dbOrder.shopify_cancelled_at) {
+                return shopifyTotal
+              }
+
               const difference = Math.abs(existingTotal - shopifyTotal)
               // If difference is significant (> 0.01), assume it was manually edited and preserve it
               if (difference > 0.01 && existingTotal > 0) {
@@ -1046,10 +1052,16 @@ async function syncShopifyOrders(updatedAtMin = null) {
             total_paid: dbOrder.total_paid,
             
             // Payment
-            // IMPORTANT: Protect payment info if order is already handled by courier
-            payment_method: (existing.status === 'pending' || !existing.status) ? dbOrder.payment_method : (existing.payment_method || dbOrder.payment_method),
-            payment_status: (existing.status === 'pending' || !existing.status) ? dbOrder.payment_status : (existing.payment_status || dbOrder.payment_status),
-            financial_status: (existing.status === 'pending' || !existing.status) ? dbOrder.financial_status : (existing.financial_status || dbOrder.financial_status),
+            // Always take Shopify payment fields when canceled; otherwise protect if courier already handled
+            payment_method: (dbOrder.status === 'canceled')
+              ? dbOrder.payment_method
+              : ((existing.status === 'pending' || !existing.status) ? dbOrder.payment_method : (existing.payment_method || dbOrder.payment_method)),
+            payment_status: (dbOrder.status === 'canceled')
+              ? (dbOrder.payment_status || 'cancelled')
+              : ((existing.status === 'pending' || !existing.status) ? dbOrder.payment_status : (existing.payment_status || dbOrder.payment_status)),
+            financial_status: (dbOrder.status === 'canceled')
+              ? (dbOrder.financial_status || 'voided')
+              : ((existing.status === 'pending' || !existing.status) ? dbOrder.financial_status : (existing.financial_status || dbOrder.financial_status)),
             payment_gateway_names: dbOrder.payment_gateway_names,
             
             // Shipping

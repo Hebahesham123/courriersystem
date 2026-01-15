@@ -47,26 +47,70 @@ const AdminCouriersSheet: React.FC = () => {
     fetchCouriers();
   }, [user]);
 
-  // Fetch orders for selected courier and date
+  // Fetch orders for selected courier and date (Cairo-based day, prioritize assigned_at; fallback created_at)
   useEffect(() => {
     if (!selectedCourier) return;
     setLoadingOrders(true);
     const fetchOrders = async () => {
-      const { data } = await supabase
+      // Build a small window to safely cover timezone shifts, then filter in-memory by Cairo date
+      const targetDate = date; // YYYY-MM-DD
+      const startWindow = new Date(`${date}T00:00:00Z`);
+      startWindow.setDate(startWindow.getDate() - 1);
+      const endWindow = new Date(`${date}T23:59:59.999Z`);
+      endWindow.setDate(endWindow.getDate() + 1);
+
+      // Primary: assigned_at within window for this courier
+      const { data: assignedData, error: assignedErr } = await supabase
         .from("orders")
-        .select("id, order_id, customer_name, address, mobile_number, created_at, updated_at")
+        .select("id, order_id, customer_name, address, mobile_number, created_at, assigned_at")
         .eq("assigned_courier_id", selectedCourier.id)
-        .gte("updated_at", `${date}T00:00:00`)
-        .lte("updated_at", `${date}T23:59:59`)
-        .order("updated_at", { ascending: true });
-      let filtered = (data ?? []).map((o: any) => ({
-        id: o.id,
-        order_id: o.order_id,
-        name: o.customer_name,
-        address: o.address,
-        phone: o.mobile_number,
-        created_at: o.created_at,
-      }));
+        .not("assigned_at", "is", null)
+        .gte("assigned_at", startWindow.toISOString())
+        .lte("assigned_at", endWindow.toISOString());
+
+      // Fallback: legacy rows without assigned_at, use created_at window
+      const { data: createdData, error: createdErr } = await supabase
+        .from("orders")
+        .select("id, order_id, customer_name, address, mobile_number, created_at, assigned_at")
+        .eq("assigned_courier_id", selectedCourier.id)
+        .is("assigned_at", null)
+        .gte("created_at", startWindow.toISOString())
+        .lte("created_at", endWindow.toISOString());
+
+      if (assignedErr) console.warn("Admin sheet assigned_at fetch error:", assignedErr.message);
+      if (createdErr) console.warn("Admin sheet created_at fetch error:", createdErr.message);
+
+      const data = [...(assignedData || []), ...(createdData || [])];
+
+      const toCairoYMD = (ts: string | null) => {
+        if (!ts) return "";
+        return new Intl.DateTimeFormat("en-CA", {
+          timeZone: "Africa/Cairo",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).format(new Date(ts));
+      };
+
+      let filtered = (data ?? [])
+        .filter((o: any) => {
+          const ts = o.assigned_at || o.created_at;
+          return toCairoYMD(ts) === targetDate;
+        })
+        .sort((a: any, b: any) => {
+          const aTs = a.assigned_at || a.created_at || "";
+          const bTs = b.assigned_at || b.created_at || "";
+          return aTs.localeCompare(bTs);
+        })
+        .map((o: any) => ({
+          id: o.id,
+          order_id: o.order_id,
+          name: o.customer_name,
+          address: o.address,
+          phone: o.mobile_number,
+          created_at: o.created_at,
+          assigned_at: o.assigned_at,
+        }));
       // If custom sort numbers exist for this date, apply them
       const savedSort = localStorage.getItem(`${LOCAL_STORAGE_KEY}-sortnums-${date}-admin-${selectedCourier.id}`);
       let sortNums: { [id: string]: number } = {};

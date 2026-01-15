@@ -453,14 +453,9 @@ const OrdersManagement: React.FC = () => {
         }
       }
       
-      // Only apply date filter if user has explicitly selected a date range
-      // AND there's no search query AND not filtering by specific status
-      // When filtering by "Canceled" or "Archived", show all matching orders regardless of date (like Shopify)
-      if (startOfDay && endOfDay && !debouncedSearch && !isFilteringByCanceled && !isFilteringByArchived) {
-        query = query
-          .gte("created_at", startOfDay)
-          .lte("created_at", endOfDay)
-      }
+      // Note: We apply date filtering in-memory using both shopify_created_at and created_at
+      // to avoid missing orders due to timezone shifts. Do not constrain the DB query here.
+      // This ensures the date picker always matches the UI filter results.
       
       // Apply sorting
       const ascending = sortField.direction === 'asc'
@@ -579,31 +574,27 @@ const OrdersManagement: React.FC = () => {
           
           if (isNaN(utcDate.getTime())) return false
           
-          // Convert to Egypt timezone to get the actual date
+          // Convert to Egypt timezone (Africa/Cairo) to get the calendar date there
           const egyptTimezone = 'Africa/Cairo'
-          const formatter = new Intl.DateTimeFormat('en-US', {
+          const formatter = new Intl.DateTimeFormat('en-CA', {
             timeZone: egyptTimezone,
             year: 'numeric',
-            month: 'numeric',
-            day: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
           })
           
-          const parts = formatter.formatToParts(utcDate)
-          const orderYear = parseInt(parts.find(p => p.type === 'year')?.value || '0')
-          const orderMonth = parseInt(parts.find(p => p.type === 'month')?.value || '0')
-          const orderDay = parseInt(parts.find(p => p.type === 'day')?.value || '0')
+          const formatted = formatter.format(utcDate) // YYYY-MM-DD in Cairo time
+          const [orderYear, orderMonth, orderDay] = formatted.split('-').map(Number)
           
-          // Get selected date range (dateRange is already checked for null in the if condition above)
+          // Get selected date range
           const [startYear, startMonth, startDay] = dateRange.from.split('-').map(Number)
           const [endYear, endMonth, endDay] = dateRange.to.split('-').map(Number)
           
-          // Compare dates in Egypt timezone
-          // Create date objects for comparison (using date components only, no time)
           const orderDateOnly = new Date(orderYear, orderMonth - 1, orderDay)
           const startDateOnly = new Date(startYear, startMonth - 1, startDay)
           const endDateOnly = new Date(endYear, endMonth - 1, endDay)
           
-          // Compare dates (set time to 0 for accurate date-only comparison)
+          // Normalize times
           orderDateOnly.setHours(0, 0, 0, 0)
           startDateOnly.setHours(0, 0, 0, 0)
           endDateOnly.setHours(0, 0, 0, 0)
@@ -3426,18 +3417,32 @@ const OrdersManagement: React.FC = () => {
                     const edited = orderEdits[order.id] || {}
                     const isEditing = editingOrder === order.id
                     const assigned = isOrderAssigned(order)
+                    const statusLower = (order.status || '').toLowerCase()
+                    const paymentLower = (order.payment_status || '').toLowerCase()
+                    const financialLower = (order.financial_status || '').toLowerCase()
+                    const isCanceled =
+                      statusLower === 'canceled' ||
+                      statusLower === 'cancelled' ||
+                      paymentLower === 'cancelled' ||
+                      paymentLower === 'canceled' ||
+                      paymentLower === 'voided' ||
+                      financialLower === 'void' ||
+                      financialLower === 'voided' ||
+                      !!order.shopify_cancelled_at
 
                     return (
                       <React.Fragment key={`${order.id}-fragment`}>
                       <tr
                         key={order.id}
-                        className={`transition-colors border-b border-gray-100 ${
-                          assigned ? "bg-green-50/50 hover:bg-green-50" : "bg-white hover:bg-gray-50"
-                        }`}
+                        className={`transition-colors border-b ${
+                          isCanceled
+                            ? "bg-red-50/70 hover:bg-red-50 border-red-200 border-dashed"
+                            : "border-gray-100"
+                        } ${assigned && !isCanceled ? "bg-green-50/50 hover:bg-green-50" : !isCanceled ? "bg-white hover:bg-gray-50" : ""}`}
                       >
                         <td
                           className={`sticky left-0 z-10 px-3 py-2.5 border-r border-gray-200 ${
-                            assigned ? "bg-green-50/50" : "bg-white"
+                            isCanceled ? "bg-red-50/70" : assigned ? "bg-green-50/50" : "bg-white"
                           }`}
                         >
                           <input
@@ -3449,10 +3454,19 @@ const OrdersManagement: React.FC = () => {
                         </td>
                         <td
                           className={`sticky left-8 z-10 px-3 py-2.5 border-r border-gray-200 ${
-                            assigned ? "bg-green-50/50" : "bg-white"
+                            isCanceled ? "bg-red-50/70" : assigned ? "bg-green-50/50" : "bg-white"
                           }`}
                         >
-                          <span className="text-sm font-semibold text-gray-900">#{order.order_id}</span>
+                          <div className="flex items-center gap-2">
+                            <span className={`text-sm font-semibold ${isCanceled ? "text-red-700 line-through" : "text-gray-900"}`}>
+                              #{order.order_id}
+                            </span>
+                            {isCanceled && (
+                              <span className="px-2 py-0.5 text-[11px] font-semibold text-red-700 bg-red-100 border border-red-300 border-dashed rounded-full">
+                                ملغي
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-3 py-2.5">
                           {/* Notes Icon - Only show icon, never show notes text in table */}
@@ -3543,12 +3557,14 @@ const OrdersManagement: React.FC = () => {
                           ) : (
                             <div className="flex items-center gap-2">
                               <User className="w-4 h-4 text-gray-400" />
-                              <span className="text-sm text-gray-900">{order.customer_name}</span>
+                              <span className={`text-sm ${isCanceled ? "text-red-700 line-through" : "text-gray-900"}`}>
+                                {order.customer_name}
+                              </span>
                             </div>
                           )}
                         </td>
                         <td className="px-3 py-2.5">
-                          <span className="text-sm text-gray-900">
+                          <span className={`text-sm ${isCanceled ? "text-red-700 line-through" : "text-gray-900"}`}>
                             {formatShopifyDate(order.shopify_created_at || order.created_at || '')}
                           </span>
                         </td>
@@ -3562,7 +3578,7 @@ const OrdersManagement: React.FC = () => {
                               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                             />
                           ) : (
-                            <span className="text-sm font-semibold text-gray-900">
+                            <span className={`text-sm font-semibold ${isCanceled ? "text-red-700 line-through" : "text-gray-900"}`}>
                               {order.currency || 'EGP'} {parseFloat(String(order.total_order_fees || 0)).toFixed(2)}
                             </span>
                           )}
@@ -3584,11 +3600,19 @@ const OrdersManagement: React.FC = () => {
                               // Payment status badge (Shopify-style with dot)
                               const paymentStatus = order.payment_status || 'pending'
                               const isPaid = paymentStatus === 'paid'
+                              const isPaymentCanceled =
+                                paymentStatus === 'cancelled' ||
+                                paymentStatus === 'canceled' ||
+                                paymentStatus === 'voided' ||
+                                financialLower === 'void' ||
+                                financialLower === 'voided'
                               return (
                                 <div className="flex items-center gap-1.5">
-                                  <div className={`w-2 h-2 rounded-full ${isPaid ? 'bg-gray-500' : 'bg-orange-500'}`}></div>
-                                  <span className="text-sm text-gray-900">
-                                    {isPaid ? 'Paid' : 'Payment pending'}
+                                  <div className={`w-2 h-2 rounded-full ${
+                                    isPaymentCanceled ? 'bg-red-500' : isPaid ? 'bg-gray-500' : 'bg-orange-500'
+                                  }`}></div>
+                                  <span className={`text-sm ${isCanceled || isPaymentCanceled ? 'text-red-700' : 'text-gray-900'}`}>
+                                    {isPaymentCanceled ? 'Cancelled' : isPaid ? 'Paid' : 'Payment pending'}
                                   </span>
                                 </div>
                               )

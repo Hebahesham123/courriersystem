@@ -1,7 +1,7 @@
 "use client"
 import type React from "react"
-import { useState, useEffect, useCallback, useRef } from "react"
-import { createPortal } from "react-dom"
+import { useState, useEffect, useCallback, useRef, useMemo } from "react"
+import { useNavigate, useParams } from "react-router-dom"
 import {
   Edit,
   Phone,
@@ -31,10 +31,12 @@ import {
   CheckCircle,
   DollarSign,
   Trash2,
+  UserCheck,
   Copy,
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
 import { useAuth } from "../../contexts/AuthContext"
+import { useModalScrollPreserve } from "../../lib/useModalScrollPreserve"
 
 
 interface OrderProof {
@@ -54,9 +56,6 @@ interface OrderItem {
   product_type?: string | null
   is_removed?: boolean
   properties?: any
-  fulfillment_status?: string
-  shopify_raw_data?: any
-  shopify_line_item_id?: string
 }
 
 interface Order {
@@ -76,14 +75,11 @@ interface Order {
   internal_comment: string | null
   collected_by: string | null
   assigned_courier_id: string | null
-  assigned_at?: string | null
   notes?: string | null
   created_at: string
   updated_at: string
   order_proofs?: OrderProof[]
   // Shopify/Extended fields
-  shopify_order_id?: string | number
-  shopify_raw_data?: any
   customer_email?: string | null
   customer_phone?: string | null
   billing_address?: any
@@ -97,7 +93,6 @@ interface Order {
   order_items?: OrderItem[]
   order_note?: string | null
   customer_note?: string | null
-  receive_piece_or_exchange?: string | null
 }
 
 const statusLabels: Record<string, { label: string; icon: React.ComponentType<any>; color: string; bgColor: string }> =
@@ -144,13 +139,12 @@ const statusLabels: Record<string, { label: string; icon: React.ComponentType<an
       color: "text-indigo-700",
       bgColor: "bg-indigo-50 border-indigo-200",
     },
-    pending: {
-      label: "معلق",
-      icon: Clock,
-      color: "text-gray-600",
-      bgColor: "bg-gray-100 border-gray-300",
-    },
   }
+
+// Modified collection methods for courier's choice in modal
+const collectionMethodsForCourier: Record<string, string> = {
+  courier: "المندوب",
+}
 
 // Modified payment sub-types for courier's choice in modal
 const paymentSubTypesForCourier: Record<string, string> = {
@@ -234,74 +228,59 @@ const renderNotesWithLinks = (notes: string, isInModal: boolean = false) => {
 const OrdersList: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
-  const [isInitialLoad, setIsInitialLoad] = useState(true)
-  const [editedOrderIds, setEditedOrderIds] = useState<Set<string>>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('courier_edited_orders')
-      return saved ? new Set(JSON.parse(saved)) : new Set()
-    }
-    return new Set()
-  })
-
-  // Save edited order IDs to localStorage whenever they change
-  useEffect(() => {
-    localStorage.setItem('courier_edited_orders', JSON.stringify(Array.from(editedOrderIds)))
-  }, [editedOrderIds])
-  const [imageUploading, setImageUploading] = useState(false)
-  const [imageUploadSuccess, setImageUploadSuccess] = useState(false)
-  const [uploadingImages, setUploadingImages] = useState<string[]>([]) 
-  
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
   const [phoneOptionsOpen, setPhoneOptionsOpen] = useState(false)
+  const [phonePosition, setPhonePosition] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
   const [selectedPhoneNumber, setSelectedPhoneNumber] = useState<string>("")
   const [selectedImage, setSelectedImage] = useState<string | null>(null)
   const [imageModalOpen, setImageModalOpen] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [isSyncing, setIsSyncing] = useState<string | null>(null)
-  const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null)
-  const [duplicatingOrderId, setDuplicatingOrderId] = useState<string | null>(null)
+  const [cardPosition, setCardPosition] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
+  // Initialize isMobile based on window width (check if window is available for SSR)
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth < 640
+    }
+    return false
+  })
+  const cardPositionRef = useRef<{ top: number; left: number; width: number; height: number } | null>(null)
+  const modalContainerRef = useRef<HTMLDivElement | null>(null)
+  const windowScrollRef = useRef<number>(0)
+  // Track orders we just updated to prevent real-time subscription from causing double updates
+  const recentlyUpdatedOrderIds = useRef<Set<string>>(new Set())
+  // Track orders modified by courier (persisted in localStorage)
+  const storedModifiedOrderIds = useRef<Set<string>>(new Set())
+  // Track which order cards have already been animated to prevent re-animation on updates
+  const animatedOrderIds = useRef<Set<string>>(new Set())
 
-  const handleManualSync = async (shopifyId: string, orderId: string) => {
-    if (!shopifyId) return
-    
-    setIsSyncing(orderId)
+  // Routing helpers
+  const navigate = useNavigate()
+  const { orderId: routeOrderId } = useParams()
+
+  // Track window size for responsive positioning
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 640)
+    }
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
+
+  // Load persisted modified orders
+  useEffect(() => {
     try {
-      const response = await fetch(`/api/shopify/sync-order/${shopifyId}`, {
-        method: 'POST'
-      })
-      
-      if (response.ok) {
-        // Subtle success indicator
-        console.log(`✅ Order ${orderId} synced successfully`)
-        // Refresh the list to get updated data
-        await fetchOrders(false, false)
-        
-        // If modal is open and this is the selected order, update it
-        if (modalOpen && selectedOrder && selectedOrder.id === orderId) {
-          const { data } = await supabase
-            .from('orders')
-            .select('*, order_items(*)')
-            .eq('id', orderId)
-            .single()
-          if (data) {
-            setSelectedOrder(data as any)
-          }
+      const raw = localStorage.getItem("courierModifiedOrders")
+      if (raw) {
+        const arr = JSON.parse(raw)
+        if (Array.isArray(arr)) {
+          storedModifiedOrderIds.current = new Set(arr.map(String))
         }
       }
     } catch (e) {
-      console.error("Sync error:", e)
-    } finally {
-      setIsSyncing(null)
+      console.warn("Failed to load courierModifiedOrders from localStorage", e)
     }
-  }
-  
-  const cardPositionRef = useRef<{ top: number; left: number; width: number; height: number } | null>(null)
-  // Track orders we just updated to prevent real-time subscription from causing double updates
-  const recentlyUpdatedOrderIds = useRef<Set<string>>(new Set())
-  // Track which order cards have already been animated to prevent re-animation on updates
-  const animatedOrderIds = useRef<Set<string>>(new Set())
+  }, [])
 
   // Body scroll lock disabled for stability on mobile
 
@@ -324,62 +303,36 @@ const OrdersList: React.FC = () => {
     payment_sub_type: "",
     collected_by: "",
   })
+  const [imageUploading, setImageUploading] = useState(false)
+  const [uploadingImages, setUploadingImages] = useState<string[]>([]) // Track which images are uploading
+  const [saving, setSaving] = useState(false)
+  const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null)
+  const [duplicatingOrderId, setDuplicatingOrderId] = useState<string | null>(null)
+  const [imageUploadSuccess, setImageUploadSuccess] = useState(false)
+  const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
+  const [isInitialLoad, setIsInitialLoad] = useState(true)
 
   const { user } = useAuth()
 
-  // Re-fetch items when the order is updated (catch Shopify sync changes)
-  useEffect(() => {
-    if (modalOpen && selectedOrder?.id) {
-      const fetchNewItems = async () => {
-        const { data: newItems } = await supabase
-          .from("order_items")
-          .select("id, order_id, title, variant_title, quantity, price, sku, image_url, vendor, product_type, is_removed, properties, fulfillment_status, shopify_raw_data, shopify_line_item_id")
-          .eq("order_id", selectedOrder.id)
-        
-        if (newItems) {
-          setSelectedOrder(prev => {
-            if (!prev || prev.id !== selectedOrder.id) return prev
-            return { ...prev, order_items: newItems as any }
-          })
-        }
-      }
-      fetchNewItems()
-    }
-  }, [selectedOrder?.updated_at, modalOpen])
+  // Scroll preservation disabled for mobile stability
+  const modalScroll = useMemo(() => ({
+    restoreScroll: () => {},
+    saveScroll: () => {},
+    hasSavedPosition: () => false,
+    containerRef: { current: null } as any,
+  }), [])
 
-  // Track if user is actively editing to prevent overwriting their changes
-  const [isUserEditing, setIsUserEditing] = useState(false)
-
-  // Sync updateData with selectedOrder when it changes from real-time updates
-  // This ensures admin edits appear to the courier even if they have the modal open
-  // BUT: Don't sync if user is actively editing to prevent overwriting their changes
-  useEffect(() => {
-    if (modalOpen && selectedOrder && !isUserEditing) {
-      // Only update if values are different to avoid input cursor jumps
-      setUpdateData(prev => {
-        const hasChanges = 
-          prev.delivery_fee !== (selectedOrder.delivery_fee?.toString() || "") ||
-          prev.partial_paid_amount !== (selectedOrder.partial_paid_amount?.toString() || "") ||
-          prev.status !== selectedOrder.status ||
-          prev.internal_comment !== (selectedOrder.internal_comment || "") ||
-          prev.payment_sub_type !== (selectedOrder.payment_sub_type || "") ||
-          prev.collected_by !== (selectedOrder.collected_by || "")
-
-        if (hasChanges) {
-          console.log('🔄 Syncing modal data with updated order from server')
-          return {
-            status: selectedOrder.status,
-            delivery_fee: selectedOrder.delivery_fee?.toString() || "",
-            partial_paid_amount: selectedOrder.partial_paid_amount?.toString() || "",
-            internal_comment: selectedOrder.internal_comment || "",
-            payment_sub_type: selectedOrder.payment_sub_type || "",
-            collected_by: selectedOrder.collected_by || "",
-          }
-        }
-        return prev
-      })
-    }
-  }, [selectedOrder, modalOpen, isUserEditing])
+  // Compute a top padding for the modal so it appears close to the clicked card
+  const modalTopOffset = useMemo(() => {
+    if (!cardPosition || typeof window === 'undefined') return 24
+    const viewportTop = cardPosition.top - window.scrollY
+    const viewportHeight = window.innerHeight || 0
+    // Keep the modal within viewport while staying near the card
+    const minOffset = 16
+    const maxOffset = Math.max(viewportHeight - 360, 24)
+    return Math.min(Math.max(viewportTop - 12, minOffset), maxOffset)
+  }, [cardPosition])
 
   // Close image modal on ESC key
   useEffect(() => {
@@ -393,39 +346,124 @@ const OrdersList: React.FC = () => {
     return () => window.removeEventListener('keydown', handleEscape)
   }, [imageModalOpen])
 
-  // Modal ESC handler
+  // Close order modal on ESC key
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && modalOpen) {
         setModalOpen(false)
         setSelectedOrder(null)
-        setIsUserEditing(false)
+        setCardPosition(null)
         if (cardPositionRef.current) {
           cardPositionRef.current = null
         }
+        // Restore body scroll
+        const scrollY = document.body.style.top
+        document.body.style.position = ''
+        document.body.style.top = ''
+        document.body.style.width = ''
+        document.body.style.overflow = ''
+        document.documentElement.style.overflow = ''
+        if (scrollY) {
+          const savedScrollY = parseInt(scrollY.replace('px', '') || '0') * -1
+          window.scrollTo(0, savedScrollY)
+        }
       }
     }
-
     if (modalOpen) {
       window.addEventListener('keydown', handleEscape)
     }
-
-    return () => {
-      window.removeEventListener('keydown', handleEscape)
-    }
+    return () => window.removeEventListener('keydown', handleEscape)
   }, [modalOpen])
 
-  // When modal opens, ensure its own scroll position starts at top (viewport stays where it is)
+  // Helper: initialize selected order and form data
+  const initializeOrderState = (order: Order) => {
+    const method = normalizeMethod(order.payment_method)
+    const isOrderOriginallyPaidOnline = isOrderPaid(order)
+
+    let initialDeliveryFee = order.delivery_fee?.toString() || ""
+    let initialPartialPaidAmount = order.partial_paid_amount?.toString() || ""
+    let initialCollectedBy = order.collected_by || ""
+    let initialPaymentSubType = order.payment_sub_type || ""
+
+    if (
+      order.status === "return" ||
+      (order.status === "receiving_part" && !order.delivery_fee && !order.partial_paid_amount)
+    ) {
+      initialDeliveryFee = "0"
+      initialPartialPaidAmount = "0"
+      initialCollectedBy = ""
+      initialPaymentSubType = ""
+    } else if (isOrderOriginallyPaidOnline && !order.delivery_fee && !order.partial_paid_amount) {
+      initialCollectedBy = method
+      initialPaymentSubType = ""
+    } else if (!isOrderOriginallyPaidOnline && !isOrderPaid(order) && order.status !== "canceled") {
+      initialCollectedBy = "courier"
+    } else if (order.status === "canceled" && (order.delivery_fee || order.partial_paid_amount)) {
+      initialCollectedBy = "courier"
+    } else if (order.status === "canceled" && !order.delivery_fee && !order.partial_paid_amount) {
+      initialCollectedBy = ""
+      initialPaymentSubType = ""
+    }
+
+    setSelectedOrder(order)
+    setUpdateData({
+      status: order.status,
+      delivery_fee: initialDeliveryFee,
+      partial_paid_amount: initialPartialPaidAmount,
+      internal_comment: order.internal_comment || "",
+      collected_by: initialCollectedBy,
+      payment_sub_type: initialPaymentSubType,
+    })
+  }
+
+  // When modal opens, position it EXACTLY at card location
   useEffect(() => {
-    if (modalOpen) {
+    if (modalOpen && (cardPositionRef.current || cardPosition)) {
+      // Use multiple RAFs to ensure DOM is fully ready
       requestAnimationFrame(() => {
-        const container = document.querySelector('[data-modal-container]') as HTMLElement | null
-        if (container) container.scrollTop = 0
-        const content = document.querySelector('[data-modal-content]') as HTMLElement | null
-        if (content) content.scrollTop = 0
+        requestAnimationFrame(() => {
+          const container = modalContainerRef.current || document.querySelector('[data-modal-container]') as HTMLElement | null
+          if (container) {
+            container.scrollTop = 0
+            
+            const pos = cardPositionRef.current || cardPosition
+            if (pos && typeof window !== 'undefined') {
+              // Use absolute coordinates (relative to page scroll) and place container absolutely inside backdrop
+              const finalTop = pos.top
+              container.style.top = `${finalTop}px`
+              container.style.left = '50%'
+              container.style.transform = 'translateX(-50%)'
+              container.style.position = 'absolute'
+              container.style.maxHeight = '90vh'
+              container.style.width = 'calc(100% - 16px)'
+              container.style.maxWidth = '768px'
+              container.style.zIndex = '1000'
+              container.style.marginBottom = '24px'
+              container.style.backgroundColor = 'white'
+              container.style.borderRadius = '1rem'
+              container.style.boxShadow = '0 25px 50px -12px rgba(0, 0, 0, 0.25)'
+              container.style.border = '1px solid #e5e7eb'
+              container.style.overflow = 'hidden'
+              container.style.display = 'flex'
+              container.style.flexDirection = 'column'
+              // Auto-scroll the backdrop so the modal is in view
+              const backdrop = container.parentElement
+              if (backdrop) {
+                const targetScroll = Math.max(0, finalTop - 24)
+                backdrop.scrollTop = targetScroll
+              }
+              console.log('🎯 Modal positioned:', {
+                cardTop: pos.top,
+                finalTop: finalTop
+              })
+            }
+          }
+          const content = document.querySelector('[data-modal-content]') as HTMLElement | null
+          if (content) content.scrollTop = 0
+        })
       })
     }
-  }, [modalOpen])
+  }, [modalOpen, cardPosition])
 
   // COMPLETELY DISABLED - Do not scroll modal to top at all
   // This was causing the modal to scroll up when interacting with form elements
@@ -448,6 +486,18 @@ const OrdersList: React.FC = () => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, selectedDate])
+
+  // If we land on /courier/orders/:orderId, auto-open that order (fallback position near top)
+  useEffect(() => {
+    if (!routeOrderId || orders.length === 0) return
+    const target = orders.find((o) => o.id === routeOrderId)
+    if (target) {
+      cardPositionRef.current = { top: 16, left: 0, width: 0, height: 0 }
+      setCardPosition(cardPositionRef.current)
+      initializeOrderState(target)
+      setModalOpen(true)
+    }
+  }, [routeOrderId, orders])
 
   // Mark orders as animated after they render (prevent re-animation on updates)
   useEffect(() => {
@@ -477,7 +527,8 @@ const OrdersList: React.FC = () => {
         {
           event: '*',
           schema: 'public',
-          table: 'orders'
+          table: 'orders',
+          filter: `assigned_courier_id=eq.${user.id}`
         },
         (payload) => {
           console.log('Order change detected:', payload)
@@ -498,40 +549,50 @@ const OrdersList: React.FC = () => {
               const orderIndex = prevOrders.findIndex(o => o.id === payload.new.id)
               if (orderIndex >= 0) {
                 const currentOrder = prevOrders[orderIndex]
-                
-                // Special check for selectedOrder to update the modal if it's open
-                if (modalOpen && selectedOrder && selectedOrder.id === payload.new.id) {
-                  setSelectedOrder(prev => prev ? { ...prev, ...payload.new } : null)
-                }
-
-                // Only update if there are actual changes
+                // Only update if there are actual changes to prevent unnecessary re-renders
                 const hasChanges = Object.keys(payload.new).some(key => {
                   const newValue = payload.new[key]
                   const currentValue = currentOrder[key as keyof Order]
+                  // Compare values, handling dates and nulls
                   if (newValue === null && currentValue === null) return false
                   if (newValue === currentValue) return false
+                  // For dates, compare timestamps
+                  if (key === 'updated_at' || key === 'created_at') {
+                    const newTime = new Date(newValue).getTime()
+                    const currentTime = new Date(currentValue as string).getTime()
+                    // Ignore if difference is less than 1 second (likely same update)
+                    return Math.abs(newTime - currentTime) > 1000
+                  }
                   return true
                 })
                 
-                if (!hasChanges) return prevOrders
+                if (!hasChanges) {
+                  console.log('No changes detected, skipping update for order:', orderId)
+                  return prevOrders
+                }
                 
+                // Update existing order smoothly without causing visual glitches
                 const updatedOrders = [...prevOrders]
                 updatedOrders[orderIndex] = { ...currentOrder, ...payload.new }
                 return updatedOrders
               }
               // If order not found and it's assigned to this courier, add it
               if (payload.new.assigned_courier_id === user.id) {
-                return [payload.new as Order, ...prevOrders]
+                return [...prevOrders, payload.new as Order]
               }
               return prevOrders
             })
           } else if (payload.eventType === 'INSERT' && payload.new && payload.new.assigned_courier_id === user.id) {
             // Add new order if it's assigned to this courier
             setOrders(prevOrders => {
-              if (prevOrders.some(o => o.id === payload.new.id)) return prevOrders
+              // Check if order already exists
+              if (prevOrders.some(o => o.id === payload.new.id)) {
+                return prevOrders
+              }
               return [payload.new as Order, ...prevOrders]
             })
           } else if (payload.eventType === 'DELETE') {
+            // Remove deleted order
             setOrders(prevOrders => prevOrders.filter(o => o.id !== payload.old.id))
           }
         }
@@ -541,7 +602,7 @@ const OrdersList: React.FC = () => {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [user?.id, modalOpen, selectedOrder?.id])
+  }, [user?.id])
 
   // Scroll preservation disabled for stability
 
@@ -704,18 +765,16 @@ const OrdersList: React.FC = () => {
     setSelectedDate(getTodayDateString())
   }
 
+  // Helper function to check if order was edited by courier
+  const wasOrderEditedByCourier = (order: Order) => {
+    return order.updated_at !== order.created_at
+  }
+
   // Helper function to extract numeric part from order_id for sorting
   const getOrderNumber = (orderId: string) => {
     const match = orderId.match(/\d+/)
     return match ? Number.parseInt(match[0], 10) : 0
   }
-
-  const courierVisibleStatuses = ["assigned", "partial", "delivered", "canceled", "return", "hand_to_hand", "receiving_part", "pending"]
-
-  useEffect(() => {
-    document.documentElement.dir = "rtl"
-    document.documentElement.lang = "ar"
-  }, [])
 
   const fetchOrders = useCallback(async (showRefreshing = false, showFullLoading = true) => {
     if (!user?.id) {
@@ -737,34 +796,36 @@ const OrdersList: React.FC = () => {
       const endDate = new Date(selectedDate)
       endDate.setHours(23, 59, 59, 999)
 
-      // 1. Get orders where assigned_at is the selected date
-      const { data: assignedAtOrders, error: assignedError } = await supabase
+      // Get orders assigned to this courier on the selected date
+      // Primary filter: assigned_at (when order was assigned to courier)
+      // Fallback: created_at (for legacy rows without assigned_at)
+      
+      // Primary: assigned_at in range
+      const { data: assignedAtOrders, error: assignedAtError } = await supabase
         .from("orders")
         .select("*")
         .eq("assigned_courier_id", user.id)
-        .in("status", courierVisibleStatuses)
         .gte("assigned_at", startDate.toISOString())
         .lte("assigned_at", endDate.toISOString())
+        .order("assigned_at", { ascending: false })
 
-      // 2. ALSO get orders where created_at is the selected date (to catch claimed orders from that day)
-      const { data: createdAtOrders, error: legacyError } = await supabase
+      // Fallback: created_at in range for rows without assigned_at (legacy)
+      const { data: createdAtOrders, error: createdAtError } = await supabase
         .from("orders")
         .select("*")
         .eq("assigned_courier_id", user.id)
-        .in("status", courierVisibleStatuses)
+        .is("assigned_at", null)
         .gte("created_at", startDate.toISOString())
         .lte("created_at", endDate.toISOString())
+        .order("created_at", { ascending: false })
 
-      if (assignedError || legacyError) {
-        const err = assignedError || legacyError
-        console.error("Error fetching courier orders:", err)
-        throw new Error(`خطأ في جلب الطلبات: ${err?.message}`)
-      }
-
-      // Merge both results, removing duplicates
+      // Merge results
       const orderMap = new Map<string, any>()
       for (const order of (assignedAtOrders || [])) {
         orderMap.set(order.id, order)
+      }
+      if (createdAtError) {
+        console.warn("Error fetching created_at fallback orders:", createdAtError)
       }
       for (const order of (createdAtOrders || [])) {
         if (!orderMap.has(order.id)) {
@@ -772,27 +833,7 @@ const OrdersList: React.FC = () => {
         }
       }
 
-      console.log(`Fetched ${orderMap.size} assigned orders for courier ${user.id} on date ${selectedDate}`)
-
-      // Then, get unassigned orders with specific payment methods (cashless) that are assignable
-      // (Keep this logic as is, but it also uses created_at)
-      const { data: unassignedOrders, error: unassignedError } = await supabase
-        .from("orders")
-        .select("*")
-        .is("assigned_courier_id", null)
-        .in("payment_method", ["paymob", "valu"])
-        .in("status", ["assigned", "partial", "pending"]) // Only show assignable statuses for unassigned orders
-        .gte("created_at", startDate.toISOString())
-        .lte("created_at", endDate.toISOString())
-
-      if (unassignedError) {
-        console.warn("Could not fetch unassigned orders:", unassignedError)
-      } else {
-        console.log(`Fetched ${unassignedOrders?.length || 0} assignable unassigned orders`)
-      }
-
-      // ... rest of the logic
-      const allOrders = [...Array.from(orderMap.values()), ...(unassignedOrders || [])]
+      const allOrders = Array.from(orderMap.values())
 
       // Fetch order_proofs and order_items separately for all order IDs
       if (allOrders.length > 0) {
@@ -826,7 +867,7 @@ const OrdersList: React.FC = () => {
         // Fetch order items (products)
         const { data: orderItems, error: itemsError } = await supabase
           .from("order_items")
-          .select("id, order_id, title, variant_title, quantity, price, sku, image_url, vendor, product_type, is_removed, properties, fulfillment_status, shopify_raw_data, shopify_line_item_id")
+          .select("id, order_id, title, variant_title, quantity, price, sku, image_url, vendor, product_type, is_removed, properties")
           .in("order_id", orderIds)
 
         if (itemsError) {
@@ -850,9 +891,6 @@ const OrdersList: React.FC = () => {
               product_type: item.product_type,
               is_removed: item.is_removed,
               properties: item.properties,
-              fulfillment_status: item.fulfillment_status,
-              shopify_raw_data: item.shopify_raw_data,
-              shopify_line_item_id: item.shopify_line_item_id
             })
           })
           allOrders.forEach(order => {
@@ -861,37 +899,22 @@ const OrdersList: React.FC = () => {
         }
       }
 
-      // Filter to date window using primarily assigned_at
-      const withinDay = (d: Date) => d >= startDate && d <= endDate
-      const assignedOnly = allOrders.filter((o: Order) => {
-        // Only include visible statuses
-        if (!courierVisibleStatuses.includes(o.status)) return false
-
-        // If assigned_at exists, use it as the definitive date for matching
-        if (o.assigned_at) {
-          return withinDay(new Date(o.assigned_at))
-        }
-        
-        // Legacy fallback: for orders without assigned_at, use created_at
-        if (o.created_at) {
-          return withinDay(new Date(o.created_at))
-        }
-        
-        return false
-      })
-
       // Sort by order number (numeric part of order_id)
-      const sortedData = assignedOnly.sort((a: Order, b: Order) => {
+      const sortedData = allOrders.sort((a: Order, b: Order) => {
+        const isAAssigned = a.status === "assigned"
+        const isBAssigned = b.status === "assigned"
+
+        // First priority: assigned orders go to top
+        if (isAAssigned && !isBAssigned) return -1
+        if (!isAAssigned && isBAssigned) return 1
+
+        // Second priority: sort by order number (ascending - lowest numbers first)
         const orderNumA = getOrderNumber(a.order_id)
         const orderNumB = getOrderNumber(b.order_id)
         return orderNumA - orderNumB
       })
 
       setOrders(sortedData)
-
-      // Don't automatically mark orders as edited based on status
-      // Only mark as edited when courier actually makes changes through the update modal
-      // This prevents showing "معدل" when orders are just assigned
     } catch (error: any) {
       console.error("Error fetching orders:", error)
       const errorMessage = error?.message || "حدث خطأ غير معروف"
@@ -902,8 +925,20 @@ const OrdersList: React.FC = () => {
     }
   }, [user?.id, selectedDate])
 
-  const handlePhoneClick = (phoneNumber: string) => {
+  const handlePhoneClick = (phoneNumber: string, sourceEvent?: React.MouseEvent) => {
     setSelectedPhoneNumber(phoneNumber)
+    if (typeof window !== 'undefined' && sourceEvent?.currentTarget) {
+      const el = sourceEvent.currentTarget as HTMLElement
+      const rect = el.getBoundingClientRect()
+      setPhonePosition({
+        top: rect.top + window.scrollY,
+        left: rect.left + window.scrollX,
+        width: rect.width,
+        height: rect.height,
+      })
+    } else {
+      setPhonePosition(null)
+    }
     setPhoneOptionsOpen(true)
   }
 
@@ -920,63 +955,36 @@ const OrdersList: React.FC = () => {
   }
 
   const openModal = (order: Order, sourceEvent?: React.MouseEvent | { currentTarget?: any }) => {
-    // Capture the card position so we can anchor the modal near where the user clicked
+    // FIRST: Capture the card's EXACT viewport position BEFORE opening modal
+    let capturedPosition: { top: number; left: number; width: number; height: number } | null = null
+    
     if (typeof window !== 'undefined') {
       const eventTarget = sourceEvent && 'currentTarget' in sourceEvent ? (sourceEvent as any).currentTarget as HTMLElement | null : null
       const cardElement = eventTarget?.closest?.('[data-order-card]') as HTMLElement | null
       if (cardElement) {
+        // Get the card's position INCLUDING scroll offset (absolute position in document)
         const rect = cardElement.getBoundingClientRect()
-        const position = {
-          top: rect.top + window.scrollY,
+        capturedPosition = {
+          top: rect.top + window.scrollY, // Add scroll offset for absolute position
           left: rect.left + window.scrollX,
           width: rect.width,
           height: rect.height,
         }
-        cardPositionRef.current = position
-        
+        // Store position immediately in ref (synchronous)
+        cardPositionRef.current = capturedPosition
+        // Also set in state (async, but ref is already set)
+        setCardPosition(capturedPosition)
+        console.log('✅ Card position captured (with scroll):', capturedPosition, 'scrollY:', window.scrollY)
       } else {
         cardPositionRef.current = null
-        
+        setCardPosition(null)
       }
     } else {
       cardPositionRef.current = null
-      
+      setCardPosition(null)
     }
 
-    const method = normalizeMethod(order.payment_method)
-    const isOrderOriginallyPaidOnline = isOrderPaid(order)
-
-    let initialDeliveryFee = order.delivery_fee?.toString() || ""
-    let initialPartialPaidAmount = order.partial_paid_amount?.toString() || ""
-    let initialCollectedBy = order.collected_by || ""
-    let initialPaymentSubType = order.payment_sub_type || ""
-
-    if (
-      order.status === "return" ||
-      (order.status === "receiving_part" && !order.delivery_fee && !order.partial_paid_amount)
-    ) {
-      initialDeliveryFee = "0"
-      initialPartialPaidAmount = "0"
-      initialCollectedBy = ""
-      initialPaymentSubType = ""
-    } else if (isOrderOriginallyPaidOnline && !order.delivery_fee && !order.partial_paid_amount) {
-      initialCollectedBy = method
-      initialPaymentSubType = ""
-    } else {
-      // Default to courier for most updates if not already set
-      initialCollectedBy = order.collected_by || "courier"
-    }
-
-    setSelectedOrder(order)
-    setIsUserEditing(false) // Reset editing flag when opening a new order
-    setUpdateData({
-      status: order.status,
-      delivery_fee: initialDeliveryFee,
-      partial_paid_amount: initialPartialPaidAmount,
-      internal_comment: order.internal_comment || "",
-      collected_by: initialCollectedBy,
-      payment_sub_type: initialPaymentSubType,
-    })
+    initializeOrderState(order)
     // Open modal - ensure it happens
     console.log('Opening modal for order:', order.order_id)
     setModalOpen(true)
@@ -988,93 +996,69 @@ const OrdersList: React.FC = () => {
       if (container) container.scrollTop = 0
       if (content) content.scrollTop = 0
     })
-    
-    // DO NOT force scroll here - let the useEffect handle it once on open
   }
+    // DO NOT force scroll here - let the useEffect handle it once on open
+  
 
   // Compress a single image
   const compressImage = async (file: File): Promise<File> => {
-    return new Promise((resolve) => {
-      // Use URL.createObjectURL instead of FileReader for better mobile memory management
-      const objectUrl = URL.createObjectURL(file)
-      const img = new Image()
-      
-      // Removed crossOrigin as it's not needed for local files and can cause issues on mobile
-      
-      img.onload = () => {
-        // Revoke the object URL immediately to free up memory
-        URL.revokeObjectURL(objectUrl)
-        
-        const canvas = document.createElement("canvas")
-        const MAX_WIDTH = 1024 // Increased slightly for better quality
-        const MAX_HEIGHT = 1024
-        
-        let width = img.width
-        let height = img.height
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = (event) => {
+        const img = new Image()
+        img.crossOrigin = "anonymous"
+        img.onload = () => {
+          const canvas = document.createElement("canvas")
+          const MAX_WIDTH = 720
+          const MAX_HEIGHT = 540
 
-        // Check if image is valid
-        if (width === 0 || height === 0) {
-          console.error("Image has no dimensions")
-          resolve(file)
-          return
-        }
+          let width = img.width
+          let height = img.height
 
-        if (width > height) {
-          if (width > MAX_WIDTH) {
-            height *= MAX_WIDTH / width
-            width = MAX_WIDTH
-          }
-        } else {
-          if (height > MAX_HEIGHT) {
-            width *= MAX_HEIGHT / height
-            height = MAX_HEIGHT
-          }
-        }
-
-        canvas.width = width
-        canvas.height = height
-
-        const ctx = canvas.getContext("2d")
-        if (!ctx) {
-          console.error("Failed to get canvas context")
-          resolve(file)
-          return
-        }
-
-        // Use white background for JPEGs to prevent transparency issues
-        ctx.fillStyle = "#FFFFFF"
-        ctx.fillRect(0, 0, width, height)
-        
-        // Draw the image
-        try {
-          ctx.drawImage(img, 0, 0, width, height)
-        } catch (e) {
-          console.error("Error drawing image to canvas:", e)
-          resolve(file)
-          return
-        }
-
-        canvas.toBlob(
-          (blob) => {
-            if (blob) {
-              resolve(new File([blob], file.name, { type: "image/jpeg", lastModified: Date.now() }))
-            } else {
-              console.error("Canvas toBlob returned null")
-              resolve(file)
+          if (width > height) {
+            if (width > MAX_WIDTH) {
+              height *= MAX_WIDTH / width
+              width = MAX_WIDTH
             }
-          },
-          "image/jpeg",
-          0.7, // Increased quality slightly
-        )
+          } else {
+            if (height > MAX_HEIGHT) {
+              width *= MAX_HEIGHT / height
+              height = MAX_HEIGHT
+            }
+          }
+
+          canvas.width = width
+          canvas.height = height
+
+          const ctx = canvas.getContext("2d")
+          if (!ctx) {
+            reject(new Error("Failed to get canvas context"))
+            return
+          }
+
+          ctx.drawImage(img, 0, 0, width, height)
+
+          canvas.toBlob(
+            (blob) => {
+              if (blob) {
+                resolve(new File([blob], file.name, { type: "image/jpeg", lastModified: Date.now() }))
+              } else {
+                resolve(file)
+              }
+            },
+            "image/jpeg",
+            0.5,
+          )
+        }
+        img.onerror = () => {
+          reject(new Error("Failed to load image for compression"))
+        }
+        img.src = event.target?.result as string
       }
-      
-      img.onerror = () => {
-        URL.revokeObjectURL(objectUrl)
-        console.error("Failed to load image for compression")
-        resolve(file) // Fallback to original file on error
+      reader.onerror = () => {
+        reject(new Error("Failed to read file"))
       }
-      
-      img.src = objectUrl
+      reader.readAsDataURL(file)
     })
   }
 
@@ -1137,10 +1121,7 @@ const OrdersList: React.FC = () => {
         // Use functional update to preserve reference stability
         setSelectedOrder((prev) => {
           if (!prev) return prev
-          const newProofs = uploadedUrls.map(url => ({ 
-            id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 11), 
-            image_data: url 
-          }))
+          const newProofs = uploadedUrls.map(url => ({ id: crypto.randomUUID(), image_data: url }))
           // Only create new object if order_proofs actually changed
           const existingProofs = prev.order_proofs || []
           if (newProofs.length === 0) return prev
@@ -1157,10 +1138,7 @@ const OrdersList: React.FC = () => {
                   ...o,
                   order_proofs: [
                     ...(o.order_proofs || []),
-                    ...uploadedUrls.map(url => ({ 
-                      id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 11), 
-                      image_data: url 
-                    })),
+                    ...uploadedUrls.map(url => ({ id: crypto.randomUUID(), image_data: url })),
                   ],
                 }
               : o,
@@ -1188,96 +1166,29 @@ const OrdersList: React.FC = () => {
   }
 
   const calculateTotalAmount = (order: Order, deliveryFee: number, partialAmount: number, currentStatus: string) => {
-    const safePartial = Math.abs(partialAmount)
-    const safeDelivery = deliveryFee
-
     if (currentStatus === "hand_to_hand" && deliveryFee === 0 && partialAmount === 0) {
       return 0
     }
 
     if (["canceled", "return", "hand_to_hand", "receiving_part"].includes(currentStatus)) {
-      if (safeDelivery === 0 && safePartial === 0) {
+      if (deliveryFee === 0 && partialAmount === 0) {
         return 0
       }
-      return safeDelivery + safePartial
+      return deliveryFee + partialAmount
     }
 
     if (currentStatus === "partial") {
-      return safePartial
+      return partialAmount > 0 ? partialAmount : 0
     }
 
-    // PRIORITY 1: Use total_order_fees from database if it exists
-    // This ensures admin edits (like removing items) are reflected immediately
-    const raw = (order as any).shopify_raw_data || {}
-    const dbTotal = order.total_order_fees
-    const shopifyTotal = parseFloat(raw.current_total_price || "0")
-    
-    // If database total exists and differs from Shopify (manually edited), use database value
-    if (dbTotal && dbTotal > 0) {
-      const isManuallyEdited = Math.abs(dbTotal - shopifyTotal) > 0.01
-      if (isManuallyEdited || shopifyTotal === 0) {
-        // Use database total (from admin edit)
-        return dbTotal
-      }
-    }
-
-    // PRIORITY 2: Calculate total from FULFILLED items only (exclude unfulfilled and removed)
-    const items = (order as any).order_items || []
-    const lineItems = order.line_items 
-      ? (typeof order.line_items === 'string' ? JSON.parse(order.line_items) : order.line_items)
-      : []
-    const allItems = items.length > 0 ? items : lineItems
-    
-    if (allItems.length > 0) {
-      // Filter to only fulfilled items
-      const fulfilledItems = allItems.filter((item: any) => {
-        const isRemoved = item.is_removed === true || 
-                         item.is_removed === 'true' ||
-                         (item.properties && typeof item.properties === 'object' && (item.properties._is_removed === true || item.properties._is_removed === 'true')) ||
-                         parseFloat(String(item.quantity || 0)) === 0 ||
-                         item.fulfillment_status === 'removed'
-        const isFulfilled = item.fulfillment_status === 'fulfilled' ||
-                           item.shopify_raw_data?.fulfillment_status === 'fulfilled' ||
-                           (item as any).fulfillment_status === 'fulfilled'
-        return !isRemoved && isFulfilled && parseFloat(String(item.quantity || 0)) > 0
-      })
-      
-      if (fulfilledItems.length > 0) {
-        // Calculate subtotal from fulfilled items
-        const fulfilledSubtotal = fulfilledItems.reduce((sum: number, item: any) => {
-          const itemPrice = parseFloat(String(item.price || 0))
-          const itemQty = parseFloat(String(item.quantity || 0))
-          const itemDiscount = parseFloat(String(item.total_discount || item.discount || 0))
-          return sum + (itemPrice * itemQty - itemDiscount)
-        }, 0)
-        
-        // Get tax, discount, shipping from Shopify raw data
-        const tax = parseFloat(raw.current_total_tax || (order as any).total_tax || 0)
-        const discounts = parseFloat(raw.current_total_discounts || (order as any).total_discounts || 0)
-        const shipping = parseFloat(raw.total_shipping_price_set?.shop_money?.amount || (order as any).total_shipping_price || 0)
-        
-        // Total = fulfilled subtotal + tax - discounts + shipping
-        const calculatedTotal = fulfilledSubtotal + tax - discounts + shipping
-        
-        // If database total exists, prefer it (it may have been manually edited)
-        if (dbTotal && dbTotal > 0) {
-          return dbTotal
-        }
-        
-        return calculatedTotal
-      }
-    }
-
-    // PRIORITY 3: Fallback to Shopify's current_total_price or database total_order_fees
-    const currentTotal = parseFloat(raw.current_total_price || dbTotal?.toString() || "0")
-
-    return currentTotal
+    return order.total_order_fees
   }
 
   const handleSaveUpdate = async () => {
     if (!selectedOrder) return
 
     setSaving(true)
+    setUpdatingOrderId(selectedOrder.id)
     
     // Store original order for rollback
     const originalOrder = { ...selectedOrder }
@@ -1290,45 +1201,42 @@ const OrdersList: React.FC = () => {
       const updatePayload: any = {
         status: updateData.status,
         updated_at: new Date().toISOString(),
+        // Preserve paid state/method by default (especially for online paid orders)
+        payment_status: selectedOrder.payment_status || (isOrderOriginallyPaidOnline ? "paid" : selectedOrder.payment_status),
+        payment_method: selectedOrder.payment_method,
       }
 
       let fee = Number.parseFloat(updateData.delivery_fee) || 0
-      let partial = Math.abs(Number.parseFloat(updateData.partial_paid_amount) || 0)
+      let partial = Number.parseFloat(updateData.partial_paid_amount) || 0
 
       const isReturnStatus = updateData.status === "return"
+      const isReceivingPartWithNoFees = updateData.status === "receiving_part" && fee === 0 && partial === 0
       const isHandToHandWithNoFees = updateData.status === "hand_to_hand" && fee === 0 && partial === 0
       const isCanceledWithNoFees = updateData.status === "canceled" && fee === 0 && partial === 0
 
-      if (isReturnStatus || (updateData.status === "receiving_part" && fee === 0 && partial === 0) || isHandToHandWithNoFees || isCanceledWithNoFees) {
+      if (isReturnStatus || isReceivingPartWithNoFees || isCanceledWithNoFees) {
         fee = 0
         partial = 0
         updatePayload.collected_by = null
         updatePayload.payment_sub_type = null
+        // Keep payment_status as paid if it was originally paid online
+        if (isOrderOriginallyPaidOnline) {
+          updatePayload.payment_status = "paid"
+          updatePayload.payment_method = selectedOrder.payment_method
+        }
       }
 
       updatePayload.delivery_fee = fee
       updatePayload.partial_paid_amount = partial
-      updatePayload.internal_comment = updateData.internal_comment?.trim() || null
 
-      // If order is not assigned yet or assigned to someone else, assign it to the current courier
-      // Also ensure assigned_at is set for legacy orders already assigned to the courier
-      if (user?.id) {
-        if (!selectedOrder.assigned_courier_id || selectedOrder.assigned_courier_id !== user.id) {
-          console.log('Assigning order to current courier:', user.id)
-          updatePayload.assigned_courier_id = user.id
-          if (!selectedOrder.assigned_at) {
-            updatePayload.assigned_at = new Date().toISOString()
-          }
-        } else if (!selectedOrder.assigned_at) {
-          // Fix legacy orders that are assigned but missing assigned_at
-          updatePayload.assigned_at = new Date().toISOString()
-        }
+      if (updateData.internal_comment?.trim()) {
+        updatePayload.internal_comment = updateData.internal_comment.trim()
       }
 
       if (
-        courierVisibleStatuses.includes(updateData.status.toLowerCase())
+        ["partial", "canceled", "delivered", "hand_to_hand", "return", "receiving_part"].includes(updateData.status)
       ) {
-        if (isReturnStatus || (updateData.status === "receiving_part" && fee === 0 && partial === 0) || isCanceledWithNoFees) {
+        if (isReturnStatus || isReceivingPartWithNoFees || isCanceledWithNoFees) {
           // Already handled above
         } else if (isHandToHandWithNoFees) {
           updatePayload.collected_by = null
@@ -1349,31 +1257,23 @@ const OrdersList: React.FC = () => {
               updatePayload.payment_sub_type = null
             }
           } else if (fee > 0 || partial > 0) {
-            // If fees added but no payment method selected, require it
-            if (!updateData.collected_by) {
-              alert("يرجى اختيار طريقة تحصيل للرسوم الإضافية.")
-              setSaving(false)
-              
-              return
-            }
-            if (updateData.collected_by === "courier" && !updateData.payment_sub_type) {
-              alert("يرجى اختيار نوع الدفع الفرعي للمندوب للرسوم الإضافية.")
-              setSaving(false)
-              
-              return
-            }
-            updatePayload.collected_by = updateData.collected_by
-            updatePayload.payment_sub_type = updateData.payment_sub_type
+            // Order is already paid; if courier didn't choose method, default to paymob and keep paid state
+            updatePayload.collected_by = "paymob"
+            updatePayload.payment_sub_type = null
+            updatePayload.payment_method = "paymob"
+            updatePayload.payment_status = "paid"
           } else {
             // Order is paid, no fees, no payment type change - keep original
             updatePayload.collected_by = method
             updatePayload.payment_sub_type = null
+            updatePayload.payment_status = "paid"
+            updatePayload.payment_method = selectedOrder.payment_method
           }
         } else if (updateData.status === "canceled" && fee > 0) {
           if (!updateData.payment_sub_type) {
             alert("يرجى اختيار نوع الدفع الفرعي للمندوب عند إضافة رسوم التوصيل لطلب ملغي.")
             setSaving(false)
-            
+            setUpdatingOrderId(null)
             return
           }
           updatePayload.collected_by = "courier"
@@ -1401,14 +1301,14 @@ const OrdersList: React.FC = () => {
             if (!collected) {
               alert("يرجى اختيار طريقة تحصيل عند إضافة رسوم التوصيل.")
               setSaving(false)
-              
+              setUpdatingOrderId(null)
               return
             }
             if (collected === "courier") {
               if (!updateData.payment_sub_type) {
                 alert("يرجى اختيار نوع الدفع الفرعي للمندوب.")
                 setSaving(false)
-                
+                setUpdatingOrderId(null)
                 return
               }
               updatePayload.collected_by = collected
@@ -1423,14 +1323,14 @@ const OrdersList: React.FC = () => {
             if (!collected) {
               alert("يرجى اختيار طريقة تحصيل عند إضافة رسوم التوصيل.")
               setSaving(false)
-              
+              setUpdatingOrderId(null)
               return
             }
             if (collected === "courier") {
               if (!updateData.payment_sub_type) {
                 alert("يرجى اختيار نوع الدفع الفرعي للمندوب.")
                 setSaving(false)
-                
+                setUpdatingOrderId(null)
                 return
               }
               updatePayload.collected_by = collected
@@ -1494,87 +1394,61 @@ const OrdersList: React.FC = () => {
         )
       })
 
-      // Then update the database
-      console.log('Sending update to Supabase for order:', selectedOrder.id, updatePayload)
-      
-      const { data: updatedRows, error } = await supabase
-        .from("orders")
-        .update(updatePayload)
-        .eq("id", selectedOrder.id)
-        .select()
-
-      if (error) {
-        recentlyUpdatedOrderIds.current.delete(selectedOrder.id)
-        console.error("Supabase update error:", error)
-        throw new Error(error.message)
-      }
-
-      if (!updatedRows || updatedRows.length === 0) {
-        recentlyUpdatedOrderIds.current.delete(selectedOrder.id)
-        console.error("No rows updated. This might be a permission (RLS) issue.")
-        throw new Error("لم يتم تحديث أي بيانات. قد لا تملك الصلاحية لتعديل هذا الطلب أو أن الطلب لم يعد متاحاً.")
-      }
-
-      console.log('Update successful, confirmed data in DB:', updatedRows[0])
-      
-      // Give the database a tiny moment to stabilize and indexes to update
-      await new Promise(resolve => setTimeout(resolve, 300))
-      
-      // Successful update - explicitly refresh from database to ensure everything is in sync
-      await fetchOrders(true, false)
-
-      // Remove from recently updated set after a delay
-      setTimeout(() => {
-        recentlyUpdatedOrderIds.current.delete(selectedOrder.id)
-      }, 2000)
-
-      // Mark visually as edited
-      setEditedOrderIds(prev => {
-        const next = new Set(prev)
-        next.add(selectedOrder.id)
-        return next
-      })
-
-      // Success message for the courier
-      alert(`تم حفظ التغييرات بنجاح للطلب #${selectedOrder.order_id}`)
-
-      // Success - close modal and clear anchors
+      // Close modal immediately for better UX and clear position
       setModalOpen(false)
       setSelectedOrder(null)
-      setIsUserEditing(false) // Reset editing flag after successful save
-      
+      setCardPosition(null)
       if (cardPositionRef.current) {
         cardPositionRef.current = null
       }
-      setSaving(false)
-      
-      // Explicitly refresh after a small delay to ensure DB sync
-      setTimeout(() => {
-        fetchOrders(true, false)
-      }, 500)
+      // Restore body scroll
+      document.body.style.overflow = ''
+      document.documentElement.style.overflow = ''
 
-      return
+      // Then update the database
+      const { error } = await supabase.from("orders").update(updatePayload).eq("id", selectedOrder.id)
+
+      if (error) {
+        // Rollback on error
+        setOrders(prevOrders =>
+          prevOrders.map(order =>
+            order.id === selectedOrder.id ? originalOrder : order
+          )
+        )
+        console.error("Supabase error:", error.message)
+        alert("خطأ في الحفظ: " + error.message)
+        setSaving(false)
+        setUpdatingOrderId(null)
+        return
+      }
+
+      // Persist modified marker locally so it survives reload
+      try {
+        storedModifiedOrderIds.current.add(selectedOrder.id)
+        const arr = Array.from(storedModifiedOrderIds.current)
+        localStorage.setItem("courierModifiedOrders", JSON.stringify(arr))
+      } catch (e) {
+        console.warn("Failed to persist courierModifiedOrders", e)
+      }
+
+      // Success - no need to refetch, already updated optimistically
     } catch (error: any) {
-      console.error('Error in handleSaveUpdate:', error)
       // Rollback on error
       setOrders(prevOrders =>
         prevOrders.map(order =>
           order.id === selectedOrder.id ? originalOrder : order
         )
       )
-      alert("خطأ في الحفظ: " + error.message)
+      alert("خطأ: " + error.message)
     } finally {
-      if (modalOpen) {
-        setSaving(false)
-        
-      }
+      setSaving(false)
+      setUpdatingOrderId(null)
     }
   }
 
   const getStatusInfo = (status: string) => {
-    const statusKey = (status || "assigned").toLowerCase()
     return (
-      statusLabels[statusKey] || {
+      statusLabels[status] || {
         label: status,
         icon: Clock,
         color: "text-gray-700",
@@ -1584,7 +1458,7 @@ const OrdersList: React.FC = () => {
   }
 
   const canEditOrder = (order: Order) => {
-    return ["assigned", "partial", "delivered", "hand_to_hand", "return", "canceled", "receiving_part", "pending"].includes(order.status)
+    return ["assigned", "partial", "delivered", "hand_to_hand", "return", "canceled", "receiving_part"].includes(order.status)
   }
 
   // Helper function to get display payment method
@@ -1824,6 +1698,49 @@ const duplicateOrder = async (order: Order) => {
   }
 };
 
+// Test function to check RLS policies (kept for debugging)
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const testRLSPolicies = async () => {
+  if (!user) return;
+  
+  console.log("Testing RLS policies...");
+  console.log("User ID:", user.id);
+  console.log("User role:", user.role);
+  
+  try {
+    // Test SELECT policy
+    const { data: selectTest, error: selectError } = await supabase
+      .from("orders")
+      .select("id, order_id")
+      .eq("assigned_courier_id", user.id)
+      .limit(1);
+    
+    console.log("SELECT test result:", selectTest, selectError);
+    
+    // Test UPDATE policy
+    const { data: updateTest, error: updateError } = await supabase
+      .from("orders")
+      .update({ internal_comment: "RLS test" })
+      .eq("assigned_courier_id", user.id)
+      .eq("id", orders[0]?.id)
+      .select();
+    
+    console.log("UPDATE test result:", updateTest, updateError);
+    
+    // Test DELETE policy
+    const { data: deleteTest, error: deleteError } = await supabase
+      .from("orders")
+      .delete()
+      .eq("id", "test-id-that-doesnt-exist")
+      .select();
+    
+    console.log("DELETE test result:", deleteTest, deleteError);
+    
+  } catch (error) {
+    console.error("RLS test error:", error);
+  }
+};
+
 // Delete duplicated order function
 const deleteDuplicatedOrder = async (order: Order) => {
   // Only allow deletion of duplicated orders
@@ -1956,7 +1873,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
           transform: none !important;
         }
       `}</style>
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 notranslate" dir="rtl" lang="ar">
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100" dir="rtl">
 
       {/* Header Section - Mobile Optimized */}
       <div className="bg-gradient-to-br from-blue-600 to-blue-700 border-b border-blue-800 z-10 shadow-lg">
@@ -2045,7 +1962,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
       </div>
 
       {/* Main Content - Mobile First List View */}
-      <div className="px-3 sm:px-6 py-4 pb-20 max-w-7xl mx-auto">
+      <div className="px-2 py-3 pb-20">
         {orders.length === 0 ? (
           /* Empty State */
           <div className="text-center py-16 px-4">
@@ -2092,15 +2009,25 @@ const deleteDuplicatedOrder = async (order: Order) => {
             </div>
           </div>
         ) : (
-          // Orders List - Single Column on Mobile, Grid on Tablet/Desktop
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {orders.map((order) => {
+          // Orders List - Two Columns on Mobile and Desktop
+          <div className="grid grid-cols-2 gap-2 sm:gap-3 md:gap-4 lg:grid-cols-3 xl:grid-cols-4">
+            {orders.map((order, index) => {
               const statusInfo = getStatusInfo(order.status)
               const StatusIcon = statusInfo.icon
               const deliveryFee = order.delivery_fee || 0
               const partialAmount = order.partial_paid_amount || 0
               const totalAmount = calculateTotalAmount(order, deliveryFee, partialAmount, order.status)
               const isPaid = isOrderPaid(order)
+              const rawLineItems = order.line_items
+                ? (typeof order.line_items === 'string' ? JSON.parse(order.line_items) : order.line_items)
+                : []
+              const allItems = [...(order.order_items || []), ...(rawLineItems || [])]
+              const isItemRemoved = (i: any) =>
+                i?.is_removed === true ||
+                Number(i?.quantity) === 0 ||
+                i?.properties?._is_removed === true ||
+                i?.properties?._is_removed === 'true'
+              const hasRemovedItems = allItems.some(isItemRemoved)
 
               return (
                 <div
@@ -2113,6 +2040,20 @@ const deleteDuplicatedOrder = async (order: Order) => {
                     }
                     e.preventDefault()
                     e.stopPropagation()
+
+                    const cardElement = e.currentTarget as HTMLElement
+                    if (cardElement && typeof window !== 'undefined') {
+                      const rect = cardElement.getBoundingClientRect()
+                      const position = {
+                        top: rect.top + window.scrollY,
+                        left: rect.left + window.scrollX,
+                        width: rect.width,
+                        height: rect.height,
+                      }
+                      cardPositionRef.current = position
+                      setCardPosition(position)
+                    }
+
                     openModal(order, e)
                   }}
                   onMouseDown={(e) => {
@@ -2122,36 +2063,27 @@ const deleteDuplicatedOrder = async (order: Order) => {
                       e.preventDefault()
                     }
                   }}
-                  className={`relative rounded-2xl overflow-hidden transition-all active:scale-[0.98] cursor-pointer border-2 ${
-                    editedOrderIds.has(order.id)
-                      ? "border-red-500 bg-red-50/70 shadow-red-200/70 ring-2 ring-red-200"
-                      : order.receive_piece_or_exchange === "receive_piece" 
-                        ? "border-blue-400 bg-blue-100 shadow-lg hover:shadow-xl ring-2 ring-blue-200"
-                        : order.receive_piece_or_exchange === "exchange"
-                        ? "border-orange-400 bg-orange-100 shadow-lg hover:shadow-xl ring-2 ring-orange-200"
-                        : order.order_id.includes("(نسخة)") ? "border-green-300 bg-green-50 shadow-lg hover:shadow-xl" : 
-                          order.status === "assigned" ? "border-blue-300 bg-blue-50 shadow-lg hover:shadow-xl" :
-                          "border-gray-200 bg-white shadow-lg hover:shadow-xl"
-                  }`}
-                  style={{
-                    ...(editedOrderIds.has(order.id) ? {
-                      backgroundImage: 'repeating-linear-gradient(135deg, rgba(239,68,68,0.12) 0px, rgba(239,68,68,0.12) 12px, transparent 12px, transparent 24px)'
-                    } : {})
-                  }}
+                  className={`relative bg-white rounded-2xl shadow-lg overflow-hidden transition-all active:scale-[0.98] cursor-pointer hover:shadow-xl border-2 ${
+                    (recentlyUpdatedOrderIds.current.has(order.id) || storedModifiedOrderIds.current.has(order.id))
+                      ? "border-amber-400 border-dashed bg-amber-50"
+                      : order.order_id.includes("(نسخة)")
+                        ? "border-green-300 bg-green-50"
+                        : order.status === "assigned"
+                          ? "border-blue-300 bg-blue-50"
+                          : "border-gray-200"
+                  } ${(recentlyUpdatedOrderIds.current.has(order.id) || storedModifiedOrderIds.current.has(order.id)) ? "line-through decoration-amber-700/70 decoration-2" : ""}`}
+                  style={
+                    (recentlyUpdatedOrderIds.current.has(order.id) || storedModifiedOrderIds.current.has(order.id))
+                      ? {
+                          backgroundImage:
+                            "repeating-linear-gradient(135deg, rgba(251,191,36,0.18) 0, rgba(251,191,36,0.18) 10px, rgba(255,255,255,0.7) 10px, rgba(255,255,255,0.7) 20px)",
+                          backgroundSize: "16px 16px",
+                        }
+                      : undefined
+                  }
                 >
-                  {editedOrderIds.has(order.id) && (
-                    <>
-                      <div className="absolute inset-0 rounded-2xl border-2 border-dashed border-red-400 pointer-events-none z-30"></div>
-                      <div className="absolute top-2 right-2 z-40 flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-red-600 text-white text-xs font-bold shadow pointer-events-none">
-                        <X className="w-4 h-4" />
-                        <span>معدل</span>
-                      </div>
-                    </>
-                  )}
                   {/* Status Indicator Bar */}
                   <div className={`h-1 relative z-0 ${
-                    order.receive_piece_or_exchange === "receive_piece" ? "bg-blue-500" :
-                    order.receive_piece_or_exchange === "exchange" ? "bg-orange-500" :
                     order.order_id.includes("(نسخة)") ? "bg-green-500" : 
                     order.status === "assigned" ? "bg-blue-500" :
                     statusInfo.bgColor.replace("bg-", "bg-").replace("border-", "")
@@ -2165,16 +2097,6 @@ const deleteDuplicatedOrder = async (order: Order) => {
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2 flex-wrap">
                           <h3 className="text-lg font-bold text-gray-900">#{order.order_id}</h3>
-                          {order.receive_piece_or_exchange === "receive_piece" && (
-                            <span className="px-2 py-1 bg-blue-600 text-white text-xs rounded-full font-medium whitespace-nowrap border-2 border-blue-300">
-                              استلام قطعه
-                            </span>
-                          )}
-                          {order.receive_piece_or_exchange === "exchange" && (
-                            <span className="px-2 py-1 bg-orange-600 text-white text-xs rounded-full font-medium whitespace-nowrap border-2 border-orange-300">
-                              تبديل
-                            </span>
-                          )}
                           {order.order_id.includes("(نسخة)") && (
                             <span className="px-2 py-1 bg-green-600 text-white text-xs rounded-full font-medium whitespace-nowrap">
                               نسخة
@@ -2201,31 +2123,12 @@ const deleteDuplicatedOrder = async (order: Order) => {
                           {isPaid ? <CheckCircle className="w-4 h-4" /> : <DollarSign className="w-4 h-4" />}
                           <span>{isPaid ? "مدفوع" : "غير مدفوع"}</span>
                         </div>
-                        {/* Show removed items indicator */}
-                        {(() => {
-                          const items = order.order_items || []
-                          const lineItems = order.line_items 
-                            ? (typeof order.line_items === 'string' ? JSON.parse(order.line_items) : order.line_items)
-                            : []
-                          const allItems = items.length > 0 ? items : lineItems
-                          const removedCount = allItems.filter((item: any) => 
-                            item.is_removed === true || 
-                            item.is_removed === 'true' ||
-                            (item.properties && typeof item.properties === 'object' && (item.properties._is_removed === true || item.properties._is_removed === 'true')) ||
-                            parseFloat(String(item.quantity || 0)) === 0 ||
-                            item.fulfillment_status === 'removed'
-                          ).length
-                          
-                          if (removedCount > 0) {
-                            return (
-                              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-100 text-red-700 border border-red-300">
-                                <X className="w-4 h-4" />
-                                <span>{removedCount} محذوف</span>
-                              </div>
-                            )
-                          }
-                          return null
-                        })()}
+                        {hasRemovedItems && (
+                          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-50 text-red-700 border border-red-200">
+                            <Trash2 className="w-4 h-4" />
+                            <span>منتجات محذوفة</span>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -2261,44 +2164,15 @@ const deleteDuplicatedOrder = async (order: Order) => {
                       </div>
                     </div>
 
-                    {/* Warning if paid = balance (balance = 0) - Don't collect money */}
-                    {(() => {
-                      const raw = (order as any).shopify_raw_data || {}
-                      const totalPaid = parseFloat(String((order as any).total_paid || raw.total_paid || 0))
-                      const balance = parseFloat(String((order as any).balance || raw.total_outstanding || (totalAmount - totalPaid)))
-                      
-                      // Check if paid equals total (balance = 0) or if explicitly marked as paid
-                      const isFullyPaid = Math.abs(balance) < 0.01 || // Balance is effectively 0
-                                        (totalPaid > 0 && Math.abs(totalPaid - totalAmount) < 0.01) || // Paid equals total
-                                        (order as any).payment_status === 'paid' || 
-                                        (order as any).financial_status === 'paid' ||
-                                        raw.financial_status === 'paid'
-                      
-                      if (isFullyPaid) {
-                        return (
-                          <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-3 border-green-400 rounded-xl p-3 shadow-md">
-                            <div className="flex items-start gap-2">
-                              <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                              <div className="flex-1">
-                                <p className="text-sm font-black text-green-800 mb-1">⚠️ لا تحصل أي مبلغ من العميل</p>
-                                <p className="text-xs text-green-700 font-semibold">الطلب مدفوع بالكامل في Shopify</p>
-                              </div>
-                            </div>
-                          </div>
-                        )
-                      }
-                      return null
-                    })()}
-
                     {/* Phone & Actions Row - Modern Design */}
                     <div className="grid grid-cols-2 gap-3">
                       <button
                         type="button"
-                        onClick={(e) => {
-                          e.preventDefault()
-                          e.stopPropagation()
-                          handlePhoneClick(order.mobile_number)
-                        }}
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        handlePhoneClick(order.mobile_number, e)
+                      }}
                         onFocus={(e) => {
                           // Prevent scrolling when button gets focus
                           e.preventDefault()
@@ -2364,7 +2238,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                               // CRITICAL: Store in ref FIRST (synchronous, immediate)
                               cardPositionRef.current = position
                               // Then update state (async, but ref is already set)
-                              
+                              setCardPosition(position)
                               
                               console.log('Update button - Position captured:', position)
                               
@@ -2406,7 +2280,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                             e.preventDefault()
                           }}
                           disabled={duplicatingOrderId === order.id}
-                          className="px-3 py-2 sm:py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center flex-shrink-0"
+                          className="px-1.5 sm:px-3 py-1.5 sm:py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-md sm:rounded-xl transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center flex-shrink-0"
                           title="نسخ الطلب"
                         >
                           {duplicatingOrderId === order.id ? (
@@ -2448,8 +2322,22 @@ const deleteDuplicatedOrder = async (order: Order) => {
 
         {/* Phone Options Modal */}
         {phoneOptionsOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4 modal-backdrop">
-            <div className="bg-white rounded-xl shadow-xl max-w-sm w-full modal-content">
+          <div 
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4 modal-backdrop"
+            style={{
+              alignItems: 'flex-start',
+              overflowY: 'auto',
+              paddingTop: phonePosition ? `${Math.max(16, phonePosition.top)}px` : '40px'
+            }}
+          >
+            <div 
+              className="bg-white rounded-xl shadow-xl max-w-sm w-full modal-content"
+              style={{
+                position: 'relative',
+                top: 0,
+                left: 0
+              }}
+            >
               <div className="p-6">
                 <div className="text-center mb-6">
                   <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -2500,45 +2388,60 @@ const deleteDuplicatedOrder = async (order: Order) => {
           </div>
         )}
 
-        {/* Update Order Modal - Full Page from Card Position */}
-        {modalOpen && selectedOrder && typeof document !== 'undefined' && createPortal(
-          (
+        {/* Update Order Modal - Opens at Card Position */}
+        {modalOpen && selectedOrder && (
           <div 
-            className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4"
+            className="fixed inset-0 z-50"
             style={{ 
               position: 'fixed',
               top: '0',
               left: '0',
               right: '0',
               bottom: '0',
-              width: '100vw',
-              height: '100vh',
               pointerEvents: 'auto',
-              backgroundColor: 'rgba(0, 0, 0, 0.6)',
+              backgroundColor: 'rgba(0, 0, 0, 0.5)',
               backdropFilter: 'blur(4px)',
+              overflowY: 'auto',
+              overflowX: 'hidden',
               display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
+              justifyContent: 'center',
+              alignItems: 'flex-start',
+              paddingTop: 0,
             }}
             onClick={(e) => {
-              if (e.target === e.currentTarget && !saving && !imageUploading) {
+              if (e.target === e.currentTarget) {
                 setModalOpen(false)
                 setSelectedOrder(null)
-                setIsUserEditing(false)
-                
+                setCardPosition(null)
                 cardPositionRef.current = null
               }
             }}
           >
             <div 
+              ref={modalContainerRef}
               data-modal-container
-              className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden flex flex-col mx-auto"
+              className="bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden flex flex-col"
               style={{
-                maxHeight: '92vh',
-                margin: 'auto'
+                position: 'fixed',
+                maxHeight: '90vh',
+                width: 'calc(100% - 16px)',
+                maxWidth: '768px',
+                // Initial position - will be overridden by useEffect
+                top: cardPositionRef.current 
+                  ? `${cardPositionRef.current.top}px` 
+                  : (cardPosition 
+                    ? `${cardPosition.top}px` 
+                    : '50%'),
+                left: '50%',
+                transform: (cardPositionRef.current || cardPosition)
+                  ? 'translateX(-50%)'
+                  : 'translate(-50%, -50%)',
+                marginBottom: '24px',
+                zIndex: 1000,
               }}
               onClick={(e) => {
                 e.stopPropagation()
+                e.preventDefault()
               }}
             >
               {/* Modal Header - Ultra Compact Mobile - Always Visible */}
@@ -2549,9 +2452,20 @@ const deleteDuplicatedOrder = async (order: Order) => {
                   onClick={(e) => {
                     e.preventDefault()
                     e.stopPropagation()
+                    // Restore body scroll BEFORE closing
+                    const scrollY = document.body.style.top
+                    document.body.style.position = ''
+                    document.body.style.top = ''
+                    document.body.style.width = ''
+                    document.body.style.overflow = ''
+                    document.documentElement.style.overflow = ''
+                    if (scrollY) {
+                      const savedScrollY = parseInt(scrollY.replace('-', '').replace('px', '') || '0')
+                      window.scrollTo(0, savedScrollY)
+                    }
                     setModalOpen(false)
                     setSelectedOrder(null)
-                    
+                    setCardPosition(null)
                     if (cardPositionRef.current) {
                       cardPositionRef.current = null
                     }
@@ -2585,24 +2499,24 @@ const deleteDuplicatedOrder = async (order: Order) => {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <h3 className="text-sm sm:text-xl font-bold truncate">#{selectedOrder.order_id}</h3>
-                          <p className="text-blue-100 text-[10px] sm:text-sm whitespace-nowrap">{formatTime(selectedOrder.created_at)}</p>
+                          <h3 className="text-xs sm:text-xl font-bold truncate">#{selectedOrder.order_id}</h3>
+                          <p className="text-blue-100 text-[9px] sm:text-sm whitespace-nowrap">{formatTime(selectedOrder.created_at)}</p>
                         </div>
-                        <p className="text-xs sm:text-lg font-semibold truncate mt-0.5">{selectedOrder.customer_name}</p>
+                        <p className="text-[10px] sm:text-lg font-semibold truncate mt-0.5">{selectedOrder.customer_name}</p>
                       </div>
                     </div>
                     {/* Address - Single line truncated on mobile */}
                     <div className="flex items-center gap-1 sm:gap-2 bg-white/10 backdrop-blur-sm rounded-lg px-1.5 py-1 sm:p-2 mb-1 sm:mb-0">
                       <MapPin className="w-3 h-3 sm:w-4 sm:h-4 text-blue-200 flex-shrink-0" />
-                      <p className="text-blue-100 text-[10px] sm:text-sm leading-tight flex-1 line-clamp-1">{selectedOrder.address}</p>
+                      <p className="text-blue-100 text-[9px] sm:text-sm leading-tight flex-1 line-clamp-1">{selectedOrder.address}</p>
                     </div>
                     {/* Admin Notes - Collapsed indicator only on mobile */}
                     {(selectedOrder.notes || selectedOrder.order_note || selectedOrder.customer_note) && (
                       <div className="flex items-center gap-1 sm:gap-2 mt-1 sm:mt-3 px-1.5 py-1 sm:p-3 bg-yellow-500/20 backdrop-blur-sm rounded-lg border border-yellow-400/30">
                         <FileText className="w-3 h-3 sm:w-5 sm:h-5 text-yellow-200 flex-shrink-0" />
-                        <p className="text-yellow-100 text-[10px] sm:text-sm font-bold flex items-center gap-1 sm:gap-2">
+                        <p className="text-yellow-100 text-[9px] sm:text-sm font-bold flex items-center gap-1 sm:gap-2">
                           <span className="truncate">ملاحظات الإدارة:</span>
-                          <span className="bg-yellow-500/30 px-1 sm:px-2 py-0.5 rounded text-[10px] sm:text-xs whitespace-nowrap">مهم</span>
+                          <span className="bg-yellow-500/30 px-1 sm:px-2 py-0.5 rounded text-[8px] sm:text-xs whitespace-nowrap">مهم</span>
                         </p>
                       </div>
                     )}
@@ -2635,7 +2549,13 @@ const deleteDuplicatedOrder = async (order: Order) => {
                           ? JSON.parse(selectedOrder.line_items) 
                           : selectedOrder.line_items)
                       : []
-                    const allItems = items.length > 0 ? items : lineItems
+                    const allItemsRaw = items.length > 0 ? items : lineItems
+                    const isRemoved = (i: any) =>
+                      i?.is_removed === true ||
+                      Number(i?.quantity) === 0 ||
+                      i?.properties?._is_removed === true ||
+                      i?.properties?._is_removed === 'true'
+                    const allItems = (allItemsRaw || []).filter((i: any) => !isRemoved(i))
                     
                     if (allItems && allItems.length > 0) {
                       return (
@@ -2655,13 +2575,6 @@ const deleteDuplicatedOrder = async (order: Order) => {
                               const itemTitle = item.title || item.name || 'منتج'
                               const itemVariant = item.variant_title || item.variant?.title || ''
                               const itemSku = item.sku || ''
-                              
-                              // Check if item is removed - check multiple sources
-                              const isRemoved = item.is_removed === true || 
-                                               item.is_removed === 'true' ||
-                                               (item.properties && typeof item.properties === 'object' && (item.properties._is_removed === true || item.properties._is_removed === 'true')) ||
-                                               parseFloat(String(item.quantity || 0)) === 0 ||
-                                               item.fulfillment_status === 'removed'
                               
                               // Get product image from multiple possible sources
                               let itemImage = null
@@ -2819,31 +2732,31 @@ const deleteDuplicatedOrder = async (order: Order) => {
                               const itemQuantity = parseInt(item.quantity || 1)
                               const itemDiscount = parseFloat(item.total_discount || item.discount || 0)
                               const itemTotal = (itemPrice * itemQuantity) - itemDiscount
+                              const isRemoved =
+                                item.is_removed === true ||
+                                Number(item.quantity) === 0 ||
+                                item?.properties?._is_removed === true ||
+                                item?.properties?._is_removed === 'true'
                               
                               return (
                                 <div 
                                   key={idx}
-                                  className={`rounded-lg sm:rounded-xl border-2 p-2 sm:p-4 transition-all duration-300 ${
-                                    isRemoved 
-                                      ? 'bg-red-50 border-red-300 opacity-60 grayscale hover:border-red-400' 
-                                      : 'bg-white border-gray-100 hover:border-blue-300 hover:shadow-md'
+                                  className={`rounded-lg sm:rounded-xl border-2 p-2 sm:p-4 transition-all duration-300 hover:shadow-md ${
+                                    isRemoved
+                                      ? 'bg-red-50 border-red-200 text-red-700 opacity-90'
+                                      : 'bg-white border-gray-100 hover:border-blue-300'
                                   }`}
                                 >
                                   <div className="flex gap-2 sm:gap-4">
                                     {/* Product Image - Clickable */}
                                     <div 
                                       className={`w-14 h-14 sm:w-24 sm:h-24 rounded-lg sm:rounded-xl overflow-hidden border-2 flex-shrink-0 relative ${
-                                        isRemoved 
-                                          ? 'border-red-200 bg-red-50' 
-                                          : itemImage && itemImage !== 'data:image/svg+xml' && !itemImage.includes('placeholder') 
-                                            ? 'border-gray-200 cursor-pointer hover:border-blue-400 hover:shadow-md transition-all' 
-                                            : 'border-gray-200 bg-gray-100'
+                                        itemImage && itemImage !== 'data:image/svg+xml' && !itemImage.includes('placeholder') 
+                                          ? `cursor-pointer hover:shadow-md transition-all ${isRemoved ? 'border-red-200 bg-red-100' : 'border-gray-200 bg-gray-100 hover:border-blue-400'}`
+                                          : isRemoved ? 'border-red-200 bg-red-100' : 'border-gray-200 bg-gray-100'
                                       }`}
-                                      onClick={(e) => {
-                                        // Stop card click from opening the order modal; just show the image viewer
-                                        e.preventDefault()
-                                        e.stopPropagation()
-                                        if (itemImage && itemImage !== 'data:image/svg+xml' && !itemImage.includes('placeholder') && !isRemoved) {
+                                      onClick={() => {
+                                        if (itemImage && itemImage !== 'data:image/svg+xml' && !itemImage.includes('placeholder')) {
                                           setSelectedImage(itemImage)
                                           setImageModalOpen(true)
                                         }
@@ -2872,96 +2785,50 @@ const deleteDuplicatedOrder = async (order: Order) => {
                                     
                                     {/* Product Details */}
                                     <div className="flex-1 min-w-0">
-                                      <div className="flex items-center justify-between gap-2 mb-0.5 sm:mb-1">
-                                        <div className="flex items-center gap-1.5 flex-wrap flex-1 min-w-0">
-                                          <h5 className={`font-bold text-xs sm:text-base line-clamp-1 ${
-                                            isRemoved ? 'text-red-600 line-through' : 'text-gray-900'
-                                          }`}>
-                                            {itemTitle}
-                                          </h5>
-                                          {isRemoved && (
-                                            <span className="px-2 py-0.5 bg-red-600 text-white text-[9px] sm:text-[11px] font-bold rounded-full uppercase whitespace-nowrap shadow-sm">
-                                              تمت الإزالة
-                                            </span>
-                                          )}
-                                          {(() => {
-                                            if (isRemoved) return null
-                                            
-                                            // Check fulfillment status from multiple sources
-                                            const itemRaw = item.shopify_raw_data || {}
-                                            const orderRaw = (selectedOrder as any).shopify_raw_data || {}
-                                            
-                                            // Check item's direct fulfillment_status
-                                            let isFulfilled = item.fulfillment_status === 'fulfilled' || 
-                                                             itemRaw.fulfillment_status === 'fulfilled' ||
-                                                             (item as any).fulfillment_status === 'fulfilled'
-                                            
-                                            // Also check if item is in any fulfillment from order's fulfillments array
-                                            if (!isFulfilled && orderRaw.fulfillments && Array.isArray(orderRaw.fulfillments)) {
-                                              const itemId = itemRaw.id || item.id || item.shopify_line_item_id
-                                              for (const fulfillment of orderRaw.fulfillments) {
-                                                if (fulfillment.line_items && Array.isArray(fulfillment.line_items)) {
-                                                  const found = fulfillment.line_items.find((li: any) => 
-                                                    String(li.id) === String(itemId) || 
-                                                    String(li.line_item_id) === String(itemId)
-                                                  )
-                                                  if (found) {
-                                                    isFulfilled = true
-                                                    break
-                                                  }
-                                                }
-                                              }
-                                            }
-                                            
-                                            if (isFulfilled) {
-                                              return (
-                                                <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[9px] sm:text-[11px] font-bold rounded-full uppercase border border-blue-300 whitespace-nowrap shadow-sm">
-                                                  مكتمل
-                                                </span>
-                                              )
-                                            } else {
-                                              return (
-                                                <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-[9px] sm:text-[11px] font-bold rounded-full uppercase border border-yellow-300 whitespace-nowrap shadow-sm">
-                                                  غير مكتمل
-                                                </span>
-                                              )
-                                            }
-                                          })()}
-                                        </div>
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <h5 className={`font-bold text-xs sm:text-base mb-0.5 sm:mb-1 line-clamp-2 ${isRemoved ? 'text-red-800' : 'text-gray-900'}`}>
+                                          {itemTitle}
+                                        </h5>
+                                        {isRemoved && (
+                                          <span className="px-2 py-0.5 text-[10px] sm:text-xs font-bold rounded-full bg-red-600 text-white uppercase shadow">
+                                            removed
+                                          </span>
+                                        )}
                                       </div>
                                       {itemVariant && (
-                                        <p className={`text-[10px] sm:text-sm mb-0.5 sm:mb-1 ${
-                                          isRemoved ? 'text-red-400 line-through' : 'text-gray-600'
-                                        }`}>
+                                        <p className={`text-[10px] sm:text-sm mb-0.5 sm:mb-1 ${isRemoved ? 'text-red-700' : 'text-gray-600'}`}>
                                           {itemVariant}
                                         </p>
                                       )}
                                       {itemSku && (
-                                        <p className={`text-[9px] sm:text-xs font-mono mb-1 sm:mb-2 ${
-                                          isRemoved ? 'text-red-300' : 'text-gray-500'
-                                        }`}>
+                                        <p className={`text-[9px] sm:text-xs font-mono mb-1 sm:mb-2 ${isRemoved ? 'text-red-600' : 'text-gray-500'}`}>
                                           SKU: {itemSku}
                                         </p>
                                       )}
                                       <div className="flex items-center justify-between mt-1 sm:mt-2">
-                                        <span className={`text-[10px] sm:text-sm ${
-                                          isRemoved ? 'text-red-400 line-through' : 'text-gray-600'
-                                        }`}>
-                                          الكمية: <span className={`font-semibold ${isRemoved ? 'text-red-500' : 'text-gray-800'}`}>{itemQuantity}</span>
+                                        <span className={`text-[10px] sm:text-sm ${isRemoved ? 'text-red-700' : 'text-gray-600'}`}>
+                                          الكمية:{' '}
+                                          <span className={`font-semibold ${isRemoved ? 'text-red-800 line-through' : 'text-gray-800'}`}>
+                                            {itemQuantity}
+                                          </span>
                                         </span>
                                         <div className="text-right">
-                                          {itemDiscount > 0 && !isRemoved && (
+                                          {itemDiscount > 0 && (
                                             <div className="text-[9px] sm:text-xs text-red-600 mb-0.5">
                                               خصم: -{itemDiscount.toFixed(2)} ج.م
                                             </div>
                                           )}
-                                          <span className={`text-xs sm:text-base font-bold ${
-                                            isRemoved ? 'text-red-500 line-through' : 'text-blue-600'
-                                          }`}>
+                                          <span className={`text-xs sm:text-base font-bold ${isRemoved ? 'text-red-700 line-through' : 'text-blue-600'}`}>
                                             {itemTotal.toFixed(2)} ج.م
                                           </span>
                                         </div>
                                       </div>
+                                      {isRemoved && (
+                                        <div className="mt-2 sm:mt-3 bg-red-100 text-red-800 text-[10px] sm:text-xs px-2 py-1.5 rounded border border-red-200 flex items-center gap-1">
+                                          <AlertCircle className="w-3 h-3 sm:w-4 sm:h-4" />
+                                          <span>تم حذف هذا المنتج من الطلب في Shopify</span>
+                                        </div>
+                                      )}
                                     </div>
                                   </div>
                                 </div>
@@ -2980,22 +2847,8 @@ const deleteDuplicatedOrder = async (order: Order) => {
                       <div className="w-7 h-7 sm:w-10 sm:h-10 bg-gradient-to-br from-amber-500 to-orange-500 rounded-lg sm:rounded-xl flex items-center justify-center shadow-md">
                         <CreditCard className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-white" />
                       </div>
-                            <h4 className="text-sm sm:text-lg font-bold text-gray-800">تفاصيل الدفع</h4>
-                            {(selectedOrder as any).shopify_order_id && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  handleManualSync((selectedOrder as any).shopify_order_id, selectedOrder.id)
-                                }}
-                                disabled={!!isSyncing}
-                                className={`flex items-center gap-1.5 px-2 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-full text-[10px] sm:text-xs font-bold transition-all shadow-sm ${isSyncing === selectedOrder.id ? 'animate-pulse opacity-70' : ''}`}
-                                title="تحديث من شوبيفاي"
-                              >
-                                <RefreshCw className={`w-3 h-3 ${isSyncing === selectedOrder.id ? 'animate-spin' : ''}`} />
-                                {isSyncing === selectedOrder.id ? 'جاري التحديث...' : 'تحديث من شوبيفاي'}
-                              </button>
-                            )}
-                            {selectedOrder.payment_status && (
+                      <h4 className="text-sm sm:text-lg font-bold text-gray-800">تفاصيل الدفع</h4>
+                      {selectedOrder.payment_status && (
                         <span className={`px-1.5 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold ${
                           selectedOrder.payment_status === 'paid' 
                             ? 'bg-green-100 text-green-700' 
@@ -3005,158 +2858,86 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         </span>
                       )}
                     </div>
-                      <div className="space-y-1.5 sm:space-y-2.5 bg-white rounded-lg sm:rounded-xl p-2 sm:p-4 border border-amber-100">
-                        {(() => {
-                          const raw = (selectedOrder as any).shopify_raw_data || {}
-                          
-                          // Get all items
-                          const items = selectedOrder.order_items || []
-                          const lineItems = selectedOrder.line_items 
-                            ? (typeof selectedOrder.line_items === 'string' 
-                                ? JSON.parse(selectedOrder.line_items) 
-                                : selectedOrder.line_items)
-                            : []
-                          const allItems = items.length > 0 ? items : lineItems
-                          
-                          // Filter to only FULFILLED items (exclude unfulfilled and removed)
-                          const fulfilledItems = allItems.filter((item: any) => {
-                            const isRemoved = item.is_removed === true || 
-                                             item.is_removed === 'true' ||
-                                             (item.properties && typeof item.properties === 'object' && (item.properties._is_removed === true || item.properties._is_removed === 'true')) ||
-                                             parseFloat(String(item.quantity || 0)) === 0 ||
-                                             item.fulfillment_status === 'removed'
-                            const isFulfilled = item.fulfillment_status === 'fulfilled' ||
-                                               item.shopify_raw_data?.fulfillment_status === 'fulfilled' ||
-                                               (item as any).fulfillment_status === 'fulfilled'
-                            return !isRemoved && isFulfilled && parseFloat(String(item.quantity || 0)) > 0
-                          })
-                          
-                          // Calculate subtotal from fulfilled items only
-                          const fulfilledSubtotal = fulfilledItems.reduce((sum: number, item: any) => {
-                            const itemPrice = parseFloat(String(item.price || 0))
-                            const itemQty = parseFloat(String(item.quantity || 0))
-                            const itemDiscount = parseFloat(String(item.total_discount || item.discount || 0))
-                            return sum + (itemPrice * itemQty - itemDiscount)
-                          }, 0)
-                          
-                          // Use fulfilled subtotal if we have fulfilled items, otherwise use Shopify's subtotal
-                          const displaySubtotal = fulfilledItems.length > 0 
-                            ? fulfilledSubtotal 
-                            : parseFloat(raw.current_subtotal_price || selectedOrder.subtotal_price || 0)
-                          
-                          const displayDiscount = parseFloat(raw.current_total_discounts || selectedOrder.total_discounts || 0)
-                          const displayTax = parseFloat(raw.current_total_tax || selectedOrder.total_tax || 0)
-                          const displayShipping = parseFloat(raw.total_shipping_price_set?.shop_money?.amount || (selectedOrder as any).total_shipping_price || 0)
-                          
-                          // Total = subtotal (fulfilled items) + tax - discounts + shipping
-                          const displayTotal = displaySubtotal + displayTax - displayDiscount + displayShipping
-
+                    <div className="space-y-1.5 sm:space-y-2.5 bg-white rounded-lg sm:rounded-xl p-2 sm:p-4 border border-amber-100">
+                      <div className="flex justify-between items-center py-1 sm:py-1.5 border-b border-gray-100">
+                        <span className="text-xs sm:text-sm text-gray-600">عدد المنتجات:</span>
+                        <span className="font-semibold text-xs sm:text-sm text-gray-800">
+                          {(() => {
+                            const items = selectedOrder.order_items || []
+                            const lineItems = selectedOrder.line_items 
+                              ? (typeof selectedOrder.line_items === 'string' 
+                                  ? JSON.parse(selectedOrder.line_items) 
+                                  : selectedOrder.line_items)
+                              : []
+                            const allItemsRaw = items.length > 0 ? items : lineItems
+                            const isRemoved = (i: any) =>
+                              i?.is_removed === true ||
+                              Number(i?.quantity) === 0 ||
+                              i?.properties?._is_removed === true ||
+                              i?.properties?._is_removed === 'true'
+                            const allItems = (allItemsRaw || []).filter((i: any) => !isRemoved(i))
+                            const totalQty = allItems.reduce((sum: number, item: any) => sum + (parseInt(item.quantity || 1)), 0)
+                            return totalQty || 0
+                          })()} منتج
+                        </span>
+                      </div>
+                      {selectedOrder.subtotal_price !== undefined && (
+                        <div className="flex justify-between items-center py-1 sm:py-1.5 border-b border-gray-100">
+                          <span className="text-xs sm:text-sm text-gray-600">المجموع الفرعي:</span>
+                          <span className="font-semibold text-xs sm:text-sm text-gray-800">
+                            {selectedOrder.subtotal_price.toFixed(2)} ج.م
+                          </span>
+                        </div>
+                      )}
+                      {(() => {
+                        // Calculate total discount from order items if available
+                        const items = selectedOrder.order_items || []
+                        const lineItems = selectedOrder.line_items 
+                          ? (typeof selectedOrder.line_items === 'string' 
+                              ? JSON.parse(selectedOrder.line_items) 
+                              : selectedOrder.line_items)
+                          : []
+                        const allItems = items.length > 0 ? items : lineItems
+                        const totalItemDiscounts = allItems.reduce((sum: number, item: any) => {
+                          return sum + (parseFloat(item.total_discount || item.discount || 0))
+                        }, 0)
+                        const orderDiscount = selectedOrder.total_discounts || 0
+                        const totalDiscount = totalItemDiscounts > 0 ? totalItemDiscounts : orderDiscount
+                        
+                        if (totalDiscount > 0) {
                           return (
-                            <>
-                              <div className="flex justify-between items-center py-1 sm:py-1.5 border-b border-gray-100">
-                                <span className="text-xs sm:text-sm text-gray-600">عدد المنتجات المكتملة:</span>
-                                <span className="font-semibold text-xs sm:text-sm text-gray-800">
-                                  {fulfilledItems.length} {fulfilledItems.length === 1 ? 'منتج' : 'منتجات'}
-                                </span>
+                            <div className="flex justify-between items-center py-1 sm:py-1.5 border-b border-gray-100 bg-red-50 -mx-2 sm:-mx-4 px-2 sm:px-4 rounded-lg">
+                              <div className="flex items-center gap-1 sm:gap-2">
+                                <span className="text-xs sm:text-sm font-semibold text-red-700">الخصم:</span>
+                                {orderDiscount > 0 && totalItemDiscounts === 0 && (
+                                  <span className="text-[9px] sm:text-xs text-red-600 bg-red-100 px-1 sm:px-2 py-0.5 rounded">من الطلب</span>
+                                )}
+                                {totalItemDiscounts > 0 && (
+                                  <span className="text-[9px] sm:text-xs text-red-600 bg-red-100 px-1 sm:px-2 py-0.5 rounded">من المنتجات</span>
+                                )}
                               </div>
-                              
-                              {displaySubtotal > 0 && (
-                                <div className="flex justify-between items-center py-1 sm:py-1.5 border-b border-gray-100">
-                                  <span className="text-xs sm:text-sm text-gray-600">المجموع الفرعي (مكتمل):</span>
-                                  <span className="font-semibold text-xs sm:text-sm text-gray-800">
-                                    {displaySubtotal.toFixed(2)} ج.م
-                                  </span>
-                                </div>
-                              )}
-
-                              {displayDiscount > 0 && (
-                                <div className="flex justify-between items-center py-1 sm:py-1.5 border-b border-gray-100 bg-red-50 -mx-2 sm:-mx-4 px-2 sm:px-4 rounded-lg">
-                                  <span className="text-xs sm:text-sm font-semibold text-red-700">الخصم:</span>
-                                  <span className="font-bold text-red-600 text-xs sm:text-base">
-                                    -{displayDiscount.toFixed(2)} ج.م
-                                  </span>
-                                </div>
-                              )}
-
-                              {displayShipping > 0 && (
-                                <div className="flex justify-between items-center py-1 sm:py-1.5 border-b border-gray-100">
-                                  <span className="text-xs sm:text-sm text-gray-600">الشحن:</span>
-                                  <span className="font-semibold text-xs sm:text-sm text-gray-800">
-                                    {displayShipping.toFixed(2)} ج.م
-                                  </span>
-                                </div>
-                              )}
-
-                              {displayTax > 0 && (
-                                <div className="flex justify-between items-center py-1 sm:py-1.5 border-b border-gray-100">
-                                  <span className="text-xs sm:text-sm text-gray-600">الضريبة:</span>
-                                  <span className="font-semibold text-xs sm:text-sm text-gray-800">
-                                    {displayTax.toFixed(2)} ج.م
-                                  </span>
-                                </div>
-                              )}
-
-                              <div className="flex justify-between items-center pt-1.5 sm:pt-2 mt-1.5 sm:mt-2 border-t-2 border-gray-300">
-                                <span className="text-sm sm:text-base font-bold text-gray-800">الإجمالي (مكتمل فقط):</span>
-                                <span className="text-base sm:text-xl font-bold text-green-600">
-                                  {displayTotal.toFixed(2)} ج.م
-                                </span>
-                              </div>
-
-                              {/* Shopify Balance Detail */}
-                              <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
-                                <div className="flex justify-between items-center">
-                                  <span className="text-[10px] sm:text-xs text-gray-500">تم دفعه (Shopify):</span>
-                                  <span className="text-[10px] sm:text-xs font-semibold text-green-600">
-                                    {(parseFloat(String((selectedOrder as any).total_paid || 0))).toFixed(2)} ج.م
-                                  </span>
-                                </div>
-                                <div className="flex justify-between items-center bg-amber-50 p-2 rounded-lg border border-amber-100">
-                                  <span className="text-xs sm:text-sm font-bold text-amber-800">المتبقي (Balance):</span>
-                                  <span className="text-sm sm:text-base font-black text-amber-900">
-                                    {(parseFloat(String((selectedOrder as any).balance || (displayTotal - ((selectedOrder as any).total_paid || 0))))).toFixed(2)} ج.م
-                                  </span>
-                                </div>
-                                
-                                {/* Warning if paid = balance (balance = 0) - Don't collect money */}
-                                {(() => {
-                                  const raw = (selectedOrder as any).shopify_raw_data || {}
-                                  const totalPaid = parseFloat(String((selectedOrder as any).total_paid || (raw.total_paid || 0)))
-                                  const balance = parseFloat(String((selectedOrder as any).balance || raw.total_outstanding || (displayTotal - totalPaid)))
-                                  
-                                  // Check if paid equals total (balance = 0) or if explicitly marked as paid
-                                  const isFullyPaid = Math.abs(balance) < 0.01 || // Balance is effectively 0 (accounting for floating point)
-                                                    (totalPaid > 0 && Math.abs(totalPaid - displayTotal) < 0.01) || // Paid equals total
-                                                    (selectedOrder as any).payment_status === 'paid' || 
-                                                    (selectedOrder as any).financial_status === 'paid' ||
-                                                    (raw.financial_status === 'paid')
-                                  
-                                  if (isFullyPaid) {
-                                    return (
-                                      <div className="mt-3 p-4 bg-gradient-to-r from-green-50 to-emerald-50 border-3 border-green-400 rounded-xl shadow-lg">
-                                        <div className="flex items-start gap-3">
-                                          <CheckCircle className="w-6 h-6 text-green-600 flex-shrink-0 mt-0.5" />
-                                          <div className="flex-1">
-                                            <h5 className="text-base sm:text-lg font-black text-green-800 mb-2">
-                                              ⚠️ تحذير مهم: لا تحصل أي مبلغ من العميل
-                                            </h5>
-                                            <div className="space-y-1 text-sm sm:text-base text-green-700 font-semibold">
-                                              <p>• الطلب مدفوع بالكامل في Shopify</p>
-                                              <p>• المبلغ المدفوع: {totalPaid.toFixed(2)} ج.م</p>
-                                              <p>• المتبقي: {balance.toFixed(2)} ج.م</p>
-                                              <p className="text-green-800 font-black mt-2">⚠️ لا تأخذ أي نقود من العميل</p>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    )
-                                  }
-                                  return null
-                                })()}
-                              </div>
-                            </>
+                              <span className="font-bold text-red-600 text-xs sm:text-base">
+                                -{totalDiscount.toFixed(2)} ج.م
+                              </span>
+                            </div>
                           )
-                        })()}
+                        }
+                        return null
+                      })()}
+                      {selectedOrder.total_tax !== undefined && selectedOrder.total_tax > 0 && (
+                        <div className="flex justify-between items-center py-1 sm:py-1.5 border-b border-gray-100">
+                          <span className="text-xs sm:text-sm text-gray-600">الضريبة:</span>
+                          <span className="font-semibold text-xs sm:text-sm text-gray-800">
+                            {selectedOrder.total_tax.toFixed(2)} ج.م
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex justify-between items-center pt-1.5 sm:pt-2 mt-1.5 sm:mt-2 border-t-2 border-gray-300">
+                        <span className="text-sm sm:text-base font-bold text-gray-800">الإجمالي:</span>
+                        <span className="text-base sm:text-xl font-bold text-green-600">
+                          {selectedOrder.total_order_fees.toFixed(2)} ج.م
+                        </span>
+                      </div>
                       {selectedOrder.payment_gateway_names && selectedOrder.payment_gateway_names.length > 0 && (
                         <div className="mt-2 sm:mt-3 pt-2 sm:pt-3 border-t border-gray-200">
                           <p className="text-[10px] sm:text-xs text-gray-600 mb-0.5 sm:mb-1">بوابة الدفع:</p>
@@ -3277,16 +3058,9 @@ const deleteDuplicatedOrder = async (order: Order) => {
                     <div className="bg-white/80 backdrop-blur-sm rounded-xl p-4 space-y-3 border border-white/50">
                       <div className="flex justify-between items-center py-2 px-3 bg-gray-50 rounded-lg">
                         <span className="text-sm text-gray-600 font-medium">قيمة الطلب الأساسية:</span>
-                        <div className="text-right">
-                          <span className="font-bold text-gray-900 text-base">
-                            {selectedOrder.total_order_fees.toFixed(2)} ج.م
-                          </span>
-                          {(selectedOrder as any).balance > 0 && (
-                            <p className="text-[10px] text-amber-600 font-bold">
-                              المتبقي في شوبيفاي: {(selectedOrder as any).balance.toFixed(2)} ج.م
-                            </p>
-                          )}
-                        </div>
+                        <span className="font-bold text-gray-900 text-base">
+                          {selectedOrder.total_order_fees.toFixed(2)} ج.م
+                        </span>
                       </div>
                       <div className="flex justify-between items-center py-2 px-3 bg-amber-50 rounded-lg border border-amber-100">
                         <span className="text-sm text-gray-700 font-medium">رسوم التوصيل:</span>
@@ -3336,12 +3110,10 @@ const deleteDuplicatedOrder = async (order: Order) => {
                     <select
                       value={updateData.status}
                       onChange={(e) => {
-                        setIsUserEditing(true)
                         setUpdateData({ ...updateData, status: e.target.value })
                       }}
                       className="w-full rounded-xl border-2 border-gray-300 px-4 py-3.5 text-base font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white hover:border-blue-400 transition-colors shadow-sm"
                       required
-                      translate="no"
                     >
                       {Object.entries(statusLabels).map(([key, { label }]) => (
                         <option key={key} value={key}>
@@ -3361,21 +3133,17 @@ const deleteDuplicatedOrder = async (order: Order) => {
                     </label>
                     <div className="relative">
                       <input
-                        type="text"
-                        inputMode="decimal"
+                        type="number"
+                        step="0.01"
                         value={updateData.delivery_fee}
                         onChange={(e) => {
-                          const val = e.target.value
-                          if (val === "" || /^[0-9]*\.?[0-9]*$/.test(val)) {
-                            setIsUserEditing(true)
-                            setUpdateData({ ...updateData, delivery_fee: val })
-                          }
+                          setUpdateData({ ...updateData, delivery_fee: e.target.value })
                         }}
-                        className="w-full rounded-xl border-2 border-gray-300 px-4 py-3.5 pl-14 text-right text-base font-medium focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 bg-white hover:border-amber-400 transition-colors shadow-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
+                        className="w-full rounded-xl border-2 border-gray-300 px-4 py-3.5 pr-14 text-base font-medium focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 bg-white hover:border-amber-400 transition-colors shadow-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
                         disabled={updateData.status === "return"}
                         placeholder="0.00"
                       />
-                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600 text-sm font-bold pointer-events-none">ج.م</span>
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600 text-sm font-bold">ج.م</span>
                     </div>
                     <p className="text-xs text-gray-500 mt-2 flex items-center gap-1.5">
                       <AlertCircle className="w-3.5 h-3.5" />
@@ -3406,6 +3174,8 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         const currentPartial = Number.parseFloat(updateData.partial_paid_amount) || 0
                         const isReturnStatus = updateData.status === "return"
                         // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                        const isReceivingPartWithNoFees =
+                          updateData.status === "receiving_part" && currentFee === 0 && currentPartial === 0
                         const isHandToHandWithNoFees =
                           updateData.status === "hand_to_hand" && currentFee === 0 && currentPartial === 0
                         const isCanceledWithNoFees =
@@ -3445,6 +3215,17 @@ const deleteDuplicatedOrder = async (order: Order) => {
                             (isOrderUnpaid && updateData.status !== "receiving_part") ||
                             (updateData.status === "canceled" && currentFee > 0) ||
                             (updateData.status === "receiving_part" && (currentFee > 0 || currentPartial > 0)))
+
+                        // Condition to show Collected By dropdown
+                        // Allow collected_by selection even for paid orders (courier can change if client pays differently)
+                        const showCollectedByDropdown =
+                          !isReturnStatus &&
+                          !isHandToHandWithNoFees &&
+                          !isCanceledWithNoFees &&
+                          ((currentFee > 0 || currentPartial > 0) ||
+                            (isOrderOriginallyPaidOnline && updateData.status !== "receiving_part")) && // Allow for paid orders
+                          (isOrderOriginallyPaidOnline ||
+                            (!isOrderOriginallyPaidOnline && !isOrderUnpaid && updateData.status !== "canceled"))
 
                         return (
                           <>
@@ -3540,7 +3321,6 @@ const deleteDuplicatedOrder = async (order: Order) => {
                                   onChange={(e) => {
                                     const selectedValue = e.target.value
                                     console.log('Payment method selected:', selectedValue)
-                                    setIsUserEditing(true)
                                     setUpdateData({ ...updateData, payment_sub_type: selectedValue })
                                   }}
                                   className="w-full rounded-xl border-2 border-gray-300 px-4 py-3.5 text-base font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white hover:border-indigo-400 transition-colors shadow-sm"
@@ -3553,6 +3333,32 @@ const deleteDuplicatedOrder = async (order: Order) => {
                                 >
                                   <option value="">اختر طريقة الدفع</option>
                                   {Object.entries(paymentSubTypesForCourier).map(([key, label]) => (
+                                    <option key={key} value={key}>
+                                      {label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            )}
+
+                            {showCollectedByDropdown && (
+                              <div className="bg-white rounded-xl border-2 border-gray-200 p-4">
+                                <label className="flex items-center gap-2 mb-3">
+                                  <div className="w-8 h-8 bg-gradient-to-br from-teal-500 to-cyan-600 rounded-lg flex items-center justify-center">
+                                    <UserCheck className="w-4 h-4 text-white" />
+                                  </div>
+                                  <span className="text-base font-bold text-gray-800">تم تحصيل الدفع بواسطة</span>
+                                </label>
+                                <select
+                                  value={updateData.collected_by}
+                                  onChange={(e) => {
+                                    setUpdateData({ ...updateData, collected_by: e.target.value })
+                                  }}
+                                  className="w-full rounded-xl border-2 border-gray-300 px-4 py-3.5 text-base font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white hover:border-teal-400 transition-colors shadow-sm"
+                                  required={showCollectedByDropdown}
+                                >
+                                  <option value="">اختر الطريقة</option>
+                                  {Object.entries(collectionMethodsForCourier).map(([key, label]) => (
                                     <option key={key} value={key}>
                                       {label}
                                     </option>
@@ -3574,21 +3380,17 @@ const deleteDuplicatedOrder = async (order: Order) => {
                           </label>
                           <div className="relative">
                             <input
-                              type="text"
-                              inputMode="decimal"
+                              type="number"
+                              step="0.01"
                               value={updateData.partial_paid_amount}
                               onChange={(e) => {
-                                const val = e.target.value
-                                if (val === "" || /^[0-9]*\.?[0-9]*$/.test(val)) {
-                                  setIsUserEditing(true)
-                                  setUpdateData({ ...updateData, partial_paid_amount: val })
-                                }
+                                setUpdateData({ ...updateData, partial_paid_amount: e.target.value })
                               }}
-                              className="w-full rounded-xl border-2 border-gray-300 px-4 py-3.5 pl-14 text-right text-base font-medium focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white hover:border-purple-400 transition-colors shadow-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
+                              className="w-full rounded-xl border-2 border-gray-300 px-4 py-3.5 pr-14 text-base font-medium focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white hover:border-purple-400 transition-colors shadow-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
                               disabled={updateData.status === "return"}
                               placeholder="0.00"
                             />
-                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600 text-sm font-bold pointer-events-none">ج.م</span>
+                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600 text-sm font-bold">ج.م</span>
                           </div>
                           <p className="text-xs text-gray-500 mt-2 flex items-center gap-1.5">
                             <AlertCircle className="w-3.5 h-3.5" />
@@ -3624,7 +3426,6 @@ const deleteDuplicatedOrder = async (order: Order) => {
                       rows={4}
                       value={updateData.internal_comment}
                       onChange={(e) => {
-                        setIsUserEditing(true)
                         setUpdateData({ ...updateData, internal_comment: e.target.value })
                       }}
                       className="w-full rounded-xl border-2 border-gray-300 px-4 py-3 text-base font-medium focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-gray-500 bg-white hover:border-gray-400 transition-colors shadow-sm resize-none"
@@ -3659,6 +3460,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                             type="file"
                             accept="image/*"
                             multiple
+                            capture="environment"
                             onChange={handleImageChange}
                             disabled={imageUploading}
                             className="hidden"
@@ -3782,10 +3584,13 @@ const deleteDuplicatedOrder = async (order: Order) => {
                           e.stopPropagation()
                           setModalOpen(false)
                           setSelectedOrder(null)
-                          
+                          setCardPosition(null)
                           if (cardPositionRef.current) {
                             cardPositionRef.current = null
                           }
+                          // Restore body scroll
+                          document.body.style.overflow = ''
+                          document.documentElement.style.overflow = ''
                         }}
                         className="flex-1 px-4 py-4 rounded-xl bg-gradient-to-br from-gray-100 to-gray-200 hover:from-gray-200 hover:to-gray-300 text-gray-800 font-bold transition-all active:scale-95 text-base shadow-md border-2 border-gray-300"
                         disabled={saving}
@@ -3793,7 +3598,12 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         إلغاء
                       </button>
                       <button
-                        type="submit"
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          handleSaveUpdate()
+                        }}
                         disabled={saving}
                         className="flex-1 px-4 py-4 rounded-xl bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-700 hover:from-blue-700 hover:via-blue-800 hover:to-indigo-800 text-white font-bold transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-base shadow-xl border-2 border-blue-800"
                       >
@@ -3815,8 +3625,6 @@ const deleteDuplicatedOrder = async (order: Order) => {
               </div>
             </div>
           </div>
-          ),
-          document.body
         )}
       </div>
 
@@ -3825,10 +3633,9 @@ const deleteDuplicatedOrder = async (order: Order) => {
       </div>
 
       {/* Image Modal - Large View */}
-      {imageModalOpen && selectedImage && typeof document !== 'undefined' && createPortal(
+      {imageModalOpen && selectedImage && (
         <div 
-          className="fixed inset-0 bg-black bg-opacity-90 z-[120] flex items-center justify-center p-4"
-          style={{ zIndex: 120 }}
+          className="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center p-4"
           onClick={() => {
             setImageModalOpen(false)
             setSelectedImage(null)
@@ -3860,8 +3667,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
               }}
             />
           </div>
-        </div>,
-        document.body
+        </div>
       )}
     </>
   )
