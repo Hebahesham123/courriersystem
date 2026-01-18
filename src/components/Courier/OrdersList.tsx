@@ -1064,7 +1064,7 @@ const OrdersList: React.FC = () => {
   }
 
   // Upload a single image
-  const uploadSingleImage = async (file: File): Promise<string> => {
+  const uploadSingleImage = async (file: File): Promise<OrderProof> => {
     const compressedFile = await compressImage(file)
     
     const formData = new FormData()
@@ -1079,15 +1079,18 @@ const OrdersList: React.FC = () => {
     const data = await res.json()
     if (!data.secure_url) throw new Error("فشل رفع الصورة على كلاودينارى")
 
-    const { error } = await supabase.from("order_proofs").insert({
+    const { data: inserted, error } = await supabase.from("order_proofs").insert({
       order_id: selectedOrder!.id,
       courier_id: user!.id,
       image_data: data.secure_url,
-    })
+    }).select().single()
 
     if (error) throw error
 
-    return data.secure_url
+    return {
+      id: inserted.id,
+      image_data: inserted.image_data || data.secure_url,
+    }
   }
 
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1098,7 +1101,7 @@ const OrdersList: React.FC = () => {
 
     setImageUploading(true)
     setUploadingImages(files.map(f => f.name))
-    const uploadedUrls: string[] = []
+    const uploadedProofs: OrderProof[] = []
     const errors: string[] = []
 
     try {
@@ -1106,8 +1109,8 @@ const OrdersList: React.FC = () => {
       for (let i = 0; i < files.length; i++) {
         const file = files[i]
         try {
-          const imageUrl = await uploadSingleImage(file)
-          uploadedUrls.push(imageUrl)
+          const proof = await uploadSingleImage(file)
+          uploadedProofs.push(proof)
           // Remove this file from uploading list
           setUploadingImages(prev => prev.filter(name => name !== file.name))
         } catch (error: any) {
@@ -1117,18 +1120,16 @@ const OrdersList: React.FC = () => {
         }
       }
 
-      if (uploadedUrls.length > 0) {
+      if (uploadedProofs.length > 0) {
         // Update the selected order with all new images
         // Use functional update to preserve reference stability
         setSelectedOrder((prev) => {
           if (!prev) return prev
-          const newProofs = uploadedUrls.map(url => ({ id: crypto.randomUUID(), image_data: url }))
-          // Only create new object if order_proofs actually changed
           const existingProofs = prev.order_proofs || []
-          if (newProofs.length === 0) return prev
+          if (uploadedProofs.length === 0) return prev
           return {
             ...prev,
-            order_proofs: [...existingProofs, ...newProofs],
+            order_proofs: [...existingProofs, ...uploadedProofs],
           }
         })
 
@@ -1139,7 +1140,7 @@ const OrdersList: React.FC = () => {
                   ...o,
                   order_proofs: [
                     ...(o.order_proofs || []),
-                    ...uploadedUrls.map(url => ({ id: crypto.randomUUID(), image_data: url })),
+                    ...uploadedProofs,
                   ],
                 }
               : o,
@@ -1152,8 +1153,8 @@ const OrdersList: React.FC = () => {
       }
 
       if (errors.length > 0) {
-        alert(`تم رفع ${uploadedUrls.length} صورة بنجاح\n\nفشل رفع ${errors.length} صورة:\n${errors.join('\n')}`)
-      } else if (uploadedUrls.length > 0) {
+        alert(`تم رفع ${uploadedProofs.length} صورة بنجاح\n\nفشل رفع ${errors.length} صورة:\n${errors.join('\n')}`)
+      } else if (uploadedProofs.length > 0) {
         // Success message will be shown by the success indicator
       }
     } catch (error: any) {
@@ -2449,8 +2450,8 @@ const deleteDuplicatedOrder = async (order: Order) => {
                 zIndex: 1000,
               }}
               onClick={(e) => {
+                // Allow native inputs (camera/file picker) to work while keeping modal open
                 e.stopPropagation()
-                e.preventDefault()
               }}
             >
               {/* Modal Header - Ultra Compact Mobile - Always Visible */}
@@ -3455,18 +3456,28 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         </span>
                       )}
                     </label>
-                    <label
-                      htmlFor="image-upload"
+                    <div
                       className="relative border-2 border-dashed border-gray-300 rounded-xl p-4 sm:p-6 text-center hover:border-green-400 transition-colors bg-gradient-to-br from-gray-50 to-white cursor-pointer block"
-                      onClick={() => triggerFileInput()}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          triggerFileInput()
-                        }
+                      onClick={(e) => {
+                        // Let the native file input handle opening the picker
+                        e.stopPropagation()
+                        if ((e.target as HTMLElement)?.tagName === "INPUT") return
+                        triggerFileInput()
                       }}
-                      tabIndex={0}
                     >
-                      <div className="space-y-3">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        capture="environment"
+                        ref={fileInputRef}
+                        onChange={handleImageChange}
+                        disabled={imageUploading}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                        style={{ display: "block", zIndex: 20 }}
+                        id="image-upload"
+                      />
+                      <div className="space-y-3 pointer-events-none">
                         <div className="w-16 h-16 bg-gradient-to-br from-green-100 to-emerald-100 rounded-full flex items-center justify-center mx-auto">
                           {imageUploading ? (
                             <Loader2 className="w-8 h-8 text-green-600 animate-spin" />
@@ -3475,22 +3486,17 @@ const deleteDuplicatedOrder = async (order: Order) => {
                           )}
                         </div>
                         <div>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            multiple
-                            capture="environment"
-                            ref={fileInputRef}
-                            onChange={handleImageChange}
-                            disabled={imageUploading}
-                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                            style={{ overflow: "hidden", zIndex: 5 }}
-                            id="image-upload"
-                          />
-                          <div
-                            className={`inline-block px-5 py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-xl font-bold text-sm transition-all active:scale-95 shadow-lg ${
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              // Avoid canceling the input's default behavior
+                              e.stopPropagation()
+                              triggerFileInput()
+                            }}
+                            className={`inline-block px-5 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl font-bold text-sm transition-all shadow-lg ${
                               imageUploading ? "opacity-50 cursor-not-allowed" : "cursor-pointer"
                             }`}
+                            disabled={imageUploading}
                           >
                             {imageUploading ? (
                               <span className="flex items-center gap-2">
@@ -3503,7 +3509,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                                 اختر أو التقط صور (واحد أو أكثر)
                               </span>
                             )}
-                          </div>
+                          </button>
                           <p className="text-xs text-gray-500 mt-2 flex items-center justify-center gap-1.5">
                             <AlertCircle className="w-3.5 h-3.5" />
                             يمكنك اختيار عدة صور من المعرض أو التقاطها من الكاميرا
@@ -3526,7 +3532,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                           )}
                         </div>
                       </div>
-                    </label>
+                    </div>
                   </div>
 
                   {/* Current Images - Enhanced with Better Removal */}
