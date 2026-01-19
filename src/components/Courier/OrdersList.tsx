@@ -33,6 +33,7 @@ import {
   Trash2,
   UserCheck,
   Copy,
+  Percent,
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
 import { useAuth } from "../../contexts/AuthContext"
@@ -141,10 +142,8 @@ const statusLabels: Record<string, { label: string; icon: React.ComponentType<an
     },
   }
 
-// Modified collection methods for courier's choice in modal
-const collectionMethodsForCourier: Record<string, string> = {
-  courier: "المندوب",
-}
+// Collection methods for courier's choice in modal (disabled per request)
+const collectionMethodsForCourier: Record<string, string> = {}
 
 // Modified payment sub-types for courier's choice in modal
 const paymentSubTypesForCourier: Record<string, string> = {
@@ -777,7 +776,7 @@ const OrdersList: React.FC = () => {
     return match ? Number.parseInt(match[0], 10) : 0
   }
 
-  const fetchOrders = useCallback(async (showRefreshing = false, showFullLoading = true) => {
+  const fetchOrders = useCallback(async (showRefreshing = false, showFullLoading = true, dateOverride?: string) => {
     if (!user?.id) {
       console.error("User not authenticated")
       setLoading(false)
@@ -792,9 +791,10 @@ const OrdersList: React.FC = () => {
       setLoading(true)
     }
     try {
-      const startDate = new Date(selectedDate)
+      const dateToUse = dateOverride || selectedDate
+      const startDate = new Date(dateToUse)
       startDate.setHours(0, 0, 0, 0)
-      const endDate = new Date(selectedDate)
+      const endDate = new Date(dateToUse)
       endDate.setHours(23, 59, 59, 999)
 
       // Get orders assigned to this courier on the selected date
@@ -1194,6 +1194,57 @@ const OrdersList: React.FC = () => {
     return order.total_order_fees
   }
 
+  const getOrderDiscountInfo = (order: Order) => {
+    const parseLineItems = () => {
+      if (!order.line_items) return []
+      if (Array.isArray(order.line_items)) return order.line_items
+      try {
+        return JSON.parse(order.line_items) || []
+      } catch {
+        return []
+      }
+    }
+
+    const items = order.order_items || []
+    const lineItems = parseLineItems()
+    const allItems = items.length > 0 ? items : lineItems
+
+    const itemDiscountTotal = allItems.reduce((sum: number, item: any) => {
+      const value = parseFloat(item?.total_discount ?? item?.discount ?? 0)
+      return sum + (Number.isFinite(value) ? value : 0)
+    }, 0)
+
+    const orderLevelDiscountRaw = order.total_discounts ?? 0
+    const orderLevelDiscount = Number.isFinite(orderLevelDiscountRaw as number)
+      ? Number(orderLevelDiscountRaw)
+      : parseFloat(orderLevelDiscountRaw as any) || 0
+
+    const amount = itemDiscountTotal > 0 ? itemDiscountTotal : orderLevelDiscount
+
+    let subtotal =
+      typeof order.subtotal_price === "number" && Number.isFinite(order.subtotal_price)
+        ? order.subtotal_price
+        : null
+
+    if ((subtotal === null || subtotal === undefined || Number.isNaN(subtotal)) && allItems.length > 0) {
+      subtotal = allItems.reduce((sum: number, item: any) => {
+        const price = parseFloat(item?.price ?? 0)
+        const qty = parseInt(item?.quantity ?? 1)
+        const validPrice = Number.isFinite(price) ? price : 0
+        const validQty = Number.isFinite(qty) ? qty : 0
+        return sum + validPrice * (validQty || 1)
+      }, 0)
+    }
+
+    const percentage = amount > 0 && subtotal && subtotal > 0 ? (amount / subtotal) * 100 : null
+
+    return {
+      amount,
+      percentage,
+      source: itemDiscountTotal > 0 ? "items" : "order",
+    }
+  }
+
   const handleSaveUpdate = async () => {
     if (!selectedOrder) return
 
@@ -1585,13 +1636,16 @@ const duplicateOrder = async (order: Order) => {
   }
   
   // Ask for confirmation
-  if (!window.confirm(`هل أنت متأكد من نسخ الطلب #${order.order_id}؟\n\nسيتم إنشاء نسخة جديدة من هذا الطلب مع:\n• إضافة "(نسخة)" للرقم\n• إعادة تعيين الحالة إلى "مكلف"\n• إعادة تعيين جميع الرسوم والتعليقات`)) {
+  if (!window.confirm(`هل أنت متأكد من نسخ الطلب #${order.order_id}؟\n\nسيتم إنشاء نسخة جديدة من هذا الطلب مع:\n• إضافة "(نسخة)" للرقم\n• إعادة تعيين الحالة إلى "مكلف"\n• إعادة تعيين جميع الرسوم والتعليقات\n• تاريخ اليوم ليظهر في قائمة اليوم`)) {
     return;
   }
   
   setDuplicatingOrderId(order.id)
   try {
     console.log("Starting to duplicate order:", order.order_id);
+
+    const nowIso = new Date().toISOString();
+    const todayString = nowIso.split("T")[0];
     
     // Create a copy of the order with modified fields
     const duplicatedOrder = {
@@ -1609,9 +1663,9 @@ const duplicateOrder = async (order: Order) => {
       collected_by: null,
       assigned_courier_id: user.id, // Assign to current courier
       notes: order.notes,
-      // Use the same date as the original order to ensure it appears on the same day
-      created_at: order.created_at,
-      updated_at: new Date().toISOString(),
+      // Use today's date so the duplicate appears in today's list
+      created_at: nowIso,
+      updated_at: nowIso,
     };
 
     console.log("Duplicated order data:", duplicatedOrder);
@@ -1634,7 +1688,7 @@ const duplicateOrder = async (order: Order) => {
     console.log("Successfully created duplicated order:", newOrder);
     
     // Show success message with order details
-    const originalOrderDate = new Date(order.created_at).toLocaleDateString('ar-EG');
+    const duplicateOrderDate = new Date(nowIso).toLocaleDateString('ar-EG');
     const successMessage = `تم نسخ الطلب بنجاح!
 
 الطلب الجديد:
@@ -1642,31 +1696,23 @@ const duplicateOrder = async (order: Order) => {
 • العميل: ${duplicatedOrder.customer_name}
 • العنوان: ${duplicatedOrder.address}
 • الحالة: مكلف
-• التاريخ: ${originalOrderDate}
+• التاريخ: ${duplicateOrderDate}
 • يمكنك تعديله كما تريد
 
-سيظهر الطلب المكرر في نفس تاريخ الطلب الأصلي (${originalOrderDate})...`;
+سيظهر الطلب المكرر في تاريخ اليوم (${duplicateOrderDate})...`;
     
-    // Show success message with option to navigate to the correct date
-    const shouldNavigateToDate = window.confirm(
-      `${successMessage}\n\nهل تريد الانتقال إلى تاريخ الطلب المكرر (${originalOrderDate})؟`
-    );
-    
-    if (shouldNavigateToDate) {
-      // Navigate to the date of the original order
-      const originalOrderDateString = order.created_at.split('T')[0];
-      setSelectedDate(originalOrderDateString);
-      console.log("Navigating to date:", originalOrderDateString);
-    }
+    // Show success message with option to confirm (no navigation needed; we jump to today)
+    window.alert(successMessage);
+    setSelectedDate(todayString);
     
     // Refresh orders to show the new duplicated order
     console.log("Refreshing orders...");
-    await fetchOrders();
+    await fetchOrders(false, true, todayString);
     console.log("Orders refreshed, checking if duplicated order appears...");
     
     // Force refresh the current date's orders to ensure we get the latest data
-    // Use the selected date instead of current date to ensure we're looking at the right day
-    const refreshDate = selectedDate;
+    // Use today's date to ensure we're looking at the right day
+    const refreshDate = todayString;
     console.log("Refresh date for verification:", refreshDate);
     console.log("Original order date:", order.created_at.split('T')[0]);
     
@@ -2038,6 +2084,12 @@ const deleteDuplicatedOrder = async (order: Order) => {
                 i?.properties?._is_removed === true ||
                 i?.properties?._is_removed === 'true'
               const hasRemovedItems = allItems.some(isItemRemoved)
+              const discountInfo = getOrderDiscountInfo(order)
+              const editedByCourier = order.updated_at && order.created_at && order.updated_at !== order.created_at
+              const showDashedBorder =
+                editedByCourier ||
+                recentlyUpdatedOrderIds.current.has(order.id) ||
+                storedModifiedOrderIds.current.has(order.id)
 
               return (
                 <div
@@ -2074,20 +2126,20 @@ const deleteDuplicatedOrder = async (order: Order) => {
                     }
                   }}
                   className={`relative bg-white rounded-2xl shadow-lg overflow-hidden transition-all active:scale-[0.98] cursor-pointer hover:shadow-xl border-2 ${
-                    (recentlyUpdatedOrderIds.current.has(order.id) || storedModifiedOrderIds.current.has(order.id))
+                    showDashedBorder
                       ? "border-amber-400 border-dashed bg-amber-50"
                       : order.order_id.includes("(نسخة)")
                         ? "border-green-300 bg-green-50"
                         : order.status === "assigned"
                           ? "border-blue-300 bg-blue-50"
                           : "border-gray-200"
-                  } ${(recentlyUpdatedOrderIds.current.has(order.id) || storedModifiedOrderIds.current.has(order.id)) ? "line-through decoration-amber-700/70 decoration-2" : ""}`}
+                  } ${showDashedBorder ? "line-through decoration-amber-700/70 decoration-2" : ""}`}
                   style={
-                    (recentlyUpdatedOrderIds.current.has(order.id) || storedModifiedOrderIds.current.has(order.id))
+                    showDashedBorder
                       ? {
                           backgroundImage:
-                            "repeating-linear-gradient(135deg, rgba(251,191,36,0.18) 0, rgba(251,191,36,0.18) 10px, rgba(255,255,255,0.7) 10px, rgba(255,255,255,0.7) 20px)",
-                          backgroundSize: "16px 16px",
+                            "repeating-linear-gradient(135deg, rgba(251,191,36,0.14) 0, rgba(251,191,36,0.14) 10px, rgba(255,255,255,0.6) 10px, rgba(255,255,255,0.6) 20px), repeating-linear-gradient(45deg, rgba(251,191,36,0.14) 0, rgba(251,191,36,0.14) 10px, rgba(255,255,255,0.6) 10px, rgba(255,255,255,0.6) 20px)",
+                          backgroundSize: "18px 18px, 18px 18px",
                         }
                       : undefined
                   }
@@ -2140,6 +2192,24 @@ const deleteDuplicatedOrder = async (order: Order) => {
                           </div>
                         )}
                       </div>
+
+                      {discountInfo.amount > 0 && (
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-50 text-red-700 border border-red-200">
+                            <Percent className="w-4 h-4" />
+                            <span>
+                              خصم
+                              {discountInfo.percentage !== null ? ` ${discountInfo.percentage.toFixed(0)}%` : ""}
+                            </span>
+                            <span className="text-[11px] font-bold">
+                              -{discountInfo.amount.toFixed(2)} ج.م
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-red-600 bg-red-100 px-2 py-0.5 rounded">
+                            {discountInfo.source === "items" ? "من المنتجات" : "من الطلب"}
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     {/* Address - Modern Design */}
@@ -2900,34 +2970,24 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         </div>
                       )}
                       {(() => {
-                        // Calculate total discount from order items if available
-                        const items = selectedOrder.order_items || []
-                        const lineItems = selectedOrder.line_items 
-                          ? (typeof selectedOrder.line_items === 'string' 
-                              ? JSON.parse(selectedOrder.line_items) 
-                              : selectedOrder.line_items)
-                          : []
-                        const allItems = items.length > 0 ? items : lineItems
-                        const totalItemDiscounts = allItems.reduce((sum: number, item: any) => {
-                          return sum + (parseFloat(item.total_discount || item.discount || 0))
-                        }, 0)
-                        const orderDiscount = selectedOrder.total_discounts || 0
-                        const totalDiscount = totalItemDiscounts > 0 ? totalItemDiscounts : orderDiscount
-                        
-                        if (totalDiscount > 0) {
+                        const discountInfo = getOrderDiscountInfo(selectedOrder)
+                        if (discountInfo.amount > 0) {
                           return (
                             <div className="flex justify-between items-center py-1 sm:py-1.5 border-b border-gray-100 bg-red-50 -mx-2 sm:-mx-4 px-2 sm:px-4 rounded-lg">
                               <div className="flex items-center gap-1 sm:gap-2">
+                                <Percent className="w-4 h-4 text-red-600" />
                                 <span className="text-xs sm:text-sm font-semibold text-red-700">الخصم:</span>
-                                {orderDiscount > 0 && totalItemDiscounts === 0 && (
-                                  <span className="text-[9px] sm:text-xs text-red-600 bg-red-100 px-1 sm:px-2 py-0.5 rounded">من الطلب</span>
+                                {discountInfo.percentage !== null && (
+                                  <span className="text-[9px] sm:text-xs text-red-700 bg-red-100 px-1 sm:px-2 py-0.5 rounded font-bold">
+                                    {discountInfo.percentage.toFixed(0)}%
+                                  </span>
                                 )}
-                                {totalItemDiscounts > 0 && (
-                                  <span className="text-[9px] sm:text-xs text-red-600 bg-red-100 px-1 sm:px-2 py-0.5 rounded">من المنتجات</span>
-                                )}
+                                <span className="text-[9px] sm:text-xs text-red-600 bg-red-100 px-1 sm:px-2 py-0.5 rounded">
+                                  {discountInfo.source === "items" ? "من المنتجات" : "من الطلب"}
+                                </span>
                               </div>
                               <span className="font-bold text-red-600 text-xs sm:text-base">
-                                -{totalDiscount.toFixed(2)} ج.م
+                                -{discountInfo.amount.toFixed(2)} ج.م
                               </span>
                             </div>
                           )
@@ -3229,6 +3289,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         // Condition to show Collected By dropdown
                         // Allow collected_by selection even for paid orders (courier can change if client pays differently)
                         const showCollectedByDropdown =
+                          Object.keys(collectionMethodsForCourier).length > 0 &&
                           !isReturnStatus &&
                           !isHandToHandWithNoFees &&
                           !isCanceledWithNoFees &&

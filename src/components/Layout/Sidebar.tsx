@@ -57,6 +57,14 @@ const Sidebar: React.FC = () => {
     setSidebarOpen(false)
   }, [location.pathname])
 
+  // Always keep admin sidebar visible (desktop) by default
+  useEffect(() => {
+    if (user?.role === "admin") {
+      setSidebarOpen(true)
+      setIsCollapsed(false)
+    }
+  }, [user?.role])
+
   // Handle escape key to close sidebar
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {

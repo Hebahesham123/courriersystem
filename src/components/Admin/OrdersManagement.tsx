@@ -628,6 +628,27 @@ const OrdersManagement: React.FC = () => {
     }
   }, [viewMode, dateRange.from, dateRange.to, filters.couriers, filters.statuses, filters.paymentStatuses, filters.fulfillmentStatuses, filters.tags, debouncedSearch, sortField])
 
+  // Keep a ref to the latest fetchOrders to use inside real-time subscription without re-subscribing
+  const fetchOrdersRef = useRef(fetchOrders)
+  useEffect(() => {
+    fetchOrdersRef.current = fetchOrders
+  }, [fetchOrders])
+
+  // Real-time subscription to reflect courier status updates immediately on admin dashboard
+  useEffect(() => {
+    const channel = supabase
+      .channel("orders_management_changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, () => {
+        // Lightweight refresh (no full-screen loader) so courier status changes replace "pending" right away
+        fetchOrdersRef.current?.(false, false)
+      })
+      .subscribe()
+
+    return () => {
+      channel.unsubscribe().catch(console.error)
+    }
+  }, [])
+
   const fetchCouriers = async () => {
     try {
       const { data: allUsers, error } = await supabase.from("users").select("id, name, email, role")
@@ -1498,6 +1519,19 @@ const OrdersManagement: React.FC = () => {
     return order.assigned_courier_id !== null && order.assigned_courier_id !== undefined
   }
 
+  // Hide status badges on admin cards per request; keep logic centralized
+  const showStatusBadgeInCard = false
+
+  // Prefer a meaningful status for display: if a courier is assigned but the row is still "pending",
+  // show it as "assigned" so admins see the courier-updated state instead of the default pending tag.
+  const getDisplayStatus = (order: Order) => {
+    const statusLower = (order.status || "").toLowerCase()
+    if (statusLower === "pending" && isOrderAssigned(order)) {
+      return "assigned"
+    }
+    return order.status
+  }
+
   // Payment status badge
   const getPaymentStatusBadge = (status?: string) => {
     if (!status) {
@@ -1741,7 +1775,7 @@ const OrdersManagement: React.FC = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {getStatusBadge(order.status)}
+            {showStatusBadgeInCard ? getStatusBadge(getDisplayStatus(order)) : null}
             <button
               onClick={() => toggleRowExpansion(order.id)}
               className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
@@ -3417,7 +3451,8 @@ const OrdersManagement: React.FC = () => {
                     const edited = orderEdits[order.id] || {}
                     const isEditing = editingOrder === order.id
                     const assigned = isOrderAssigned(order)
-                    const statusLower = (order.status || '').toLowerCase()
+                    const displayStatus = getDisplayStatus(order)
+                    const statusLower = (displayStatus || '').toLowerCase()
                     const paymentLower = (order.payment_status || '').toLowerCase()
                     const financialLower = (order.financial_status || '').toLowerCase()
                     const isCanceled =
