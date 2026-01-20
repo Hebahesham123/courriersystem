@@ -1015,65 +1015,114 @@ const OrdersList: React.FC = () => {
     // In that case, just return the original file so the upload can proceed.
     if (!isImage || isHeic) return file
 
+    // On mobile, if file is already small enough, skip compression to avoid issues
+    if (file.size < 500000) { // Less than 500KB
+      return file
+    }
+
     try {
-      return await new Promise((resolve) => {
-        const reader = new FileReader()
-        reader.onload = (event) => {
-          const img = new Image()
-          img.crossOrigin = "anonymous"
-          img.onload = () => {
-            const canvas = document.createElement("canvas")
-            const MAX_WIDTH = 720
-            const MAX_HEIGHT = 540
+      return await Promise.race([
+        new Promise<File>((resolve) => {
+          const reader = new FileReader()
+          let resolved = false
 
-            let width = img.width
-            let height = img.height
-
-            if (width > height) {
-              if (width > MAX_WIDTH) {
-                height *= MAX_WIDTH / width
-                width = MAX_WIDTH
-              }
-            } else {
-              if (height > MAX_HEIGHT) {
-                width *= MAX_HEIGHT / height
-                height = MAX_HEIGHT
-              }
-            }
-
-            canvas.width = width
-            canvas.height = height
-
-            const ctx = canvas.getContext("2d")
-            if (!ctx) {
+          const resolveWithOriginal = () => {
+            if (!resolved) {
+              resolved = true
               resolve(file)
-              return
             }
+          }
 
-            ctx.drawImage(img, 0, 0, width, height)
+          reader.onload = (event) => {
+            if (resolved) return
+            
+            const img = new Image()
+            img.crossOrigin = "anonymous"
+            
+            img.onload = () => {
+              if (resolved) return
+              
+              try {
+                const canvas = document.createElement("canvas")
+                const MAX_WIDTH = 720
+                const MAX_HEIGHT = 540
 
-            canvas.toBlob(
-              (blob) => {
-                if (blob) {
-                  resolve(new File([blob], file.name, { type: "image/jpeg", lastModified: Date.now() }))
+                let width = img.width
+                let height = img.height
+
+                if (width > height) {
+                  if (width > MAX_WIDTH) {
+                    height *= MAX_WIDTH / width
+                    width = MAX_WIDTH
+                  }
                 } else {
-                  resolve(file)
+                  if (height > MAX_HEIGHT) {
+                    width *= MAX_HEIGHT / height
+                    height = MAX_HEIGHT
+                  }
                 }
-              },
-              "image/jpeg",
-              0.5,
-            )
+
+                canvas.width = width
+                canvas.height = height
+
+                const ctx = canvas.getContext("2d")
+                if (!ctx) {
+                  resolveWithOriginal()
+                  return
+                }
+
+                ctx.drawImage(img, 0, 0, width, height)
+
+                canvas.toBlob(
+                  (blob) => {
+                    if (resolved) return
+                    if (blob) {
+                      resolved = true
+                      resolve(new File([blob], file.name, { type: "image/jpeg", lastModified: Date.now() }))
+                    } else {
+                      resolveWithOriginal()
+                    }
+                  },
+                  "image/jpeg",
+                  0.85, // Higher quality for mobile
+                )
+              } catch (err) {
+                console.warn("Canvas compression error:", err)
+                resolveWithOriginal()
+              }
+            }
+            
+            img.onerror = () => {
+              resolveWithOriginal()
+            }
+            
+            try {
+              img.src = event.target?.result as string
+            } catch (err) {
+              console.warn("Image src error:", err)
+              resolveWithOriginal()
+            }
           }
-          img.onerror = () => {
+          
+          reader.onerror = () => {
+            resolveWithOriginal()
+          }
+          
+          try {
+            reader.readAsDataURL(file)
+          } catch (err) {
+            console.warn("FileReader error:", err)
+            resolveWithOriginal()
+          }
+        }),
+        // Timeout after 5 seconds to prevent hanging on mobile
+        new Promise<File>((resolve) => {
+          setTimeout(() => {
+            console.warn("Image compression timeout, using original file")
             resolve(file)
-          }
-          img.src = event.target?.result as string
-        }
-        reader.onerror = () => {
-          resolve(file)
-        }
-        reader.readAsDataURL(file)
-      })
+          }, 5000)
+        })
+      ])
     } catch (err) {
       console.warn("Image compression failed, using original file", err)
       return file
@@ -1086,21 +1135,61 @@ const OrdersList: React.FC = () => {
     const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`
     const filePath = `${selectedOrder!.id}/${user!.id}/${fileName}`
 
-    const { error: uploadError } = await supabase.storage.from(SUPABASE_BUCKET).upload(filePath, file, {
-      cacheControl: "3600",
-      upsert: false,
-      contentType: file.type || "image/jpeg",
-    })
-    if (uploadError) throw uploadError
+    // Determine content type - important for mobile browsers
+    let contentType = file.type || "image/jpeg"
+    if (!contentType || contentType === "application/octet-stream") {
+      // Fallback content type detection
+      if (fileExt.toLowerCase() === "heic" || fileExt.toLowerCase() === "heif") {
+        contentType = "image/heic"
+      } else if (fileExt.toLowerCase() === "png") {
+        contentType = "image/png"
+      } else {
+        contentType = "image/jpeg"
+      }
+    }
 
-    const { data: urlData } = supabase.storage.from(SUPABASE_BUCKET).getPublicUrl(filePath)
-    if (!urlData?.publicUrl) throw new Error("فشل الحصول على رابط الصورة من سبابيز")
-    return urlData.publicUrl
+    try {
+      const { error: uploadError } = await supabase.storage.from(SUPABASE_BUCKET).upload(filePath, file, {
+        cacheControl: "3600",
+        upsert: false,
+        contentType: contentType,
+      })
+      
+      if (uploadError) {
+        console.error("Supabase upload error:", uploadError)
+        throw new Error(uploadError.message || "فشل رفع الصورة إلى التخزين")
+      }
+
+      const { data: urlData } = supabase.storage.from(SUPABASE_BUCKET).getPublicUrl(filePath)
+      if (!urlData?.publicUrl) {
+        throw new Error("فشل الحصول على رابط الصورة من سبابيز")
+      }
+      
+      return urlData.publicUrl
+    } catch (err: any) {
+      console.error("Supabase storage error:", err)
+      throw err
+    }
   }
 
   // Upload a single image with Cloudinary primary + Supabase fallback
   const uploadSingleImage = async (file: File): Promise<OrderProof> => {
-    const compressedFile = await compressImage(file)
+    // Compress image with timeout protection
+    let compressedFile: File
+    try {
+      compressedFile = await Promise.race([
+        compressImage(file),
+        new Promise<File>((resolve) => {
+          setTimeout(() => {
+            console.warn("Compression taking too long, using original file")
+            resolve(file)
+          }, 8000) // 8 second timeout
+        })
+      ])
+    } catch (err) {
+      console.warn("Compression error, using original file:", err)
+      compressedFile = file
+    }
 
     let imageUrl: string | null = null
     let lastError: any = null
@@ -1111,13 +1200,34 @@ const OrdersList: React.FC = () => {
       formData.append("file", compressedFile)
       formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET)
 
-      const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`, {
-        method: "POST",
-        body: formData,
-      })
-      const data = await res.json()
-      if (!data.secure_url) throw new Error(data?.error?.message || "فشل رفع الصورة على كلاودينارى")
-      imageUrl = data.secure_url
+      // Add timeout for mobile networks
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 second timeout
+
+      try {
+        const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`, {
+          method: "POST",
+          body: formData,
+          signal: controller.signal,
+        })
+        clearTimeout(timeoutId)
+        
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${res.statusText}`)
+        }
+        
+        const data = await res.json()
+        if (!data.secure_url) {
+          throw new Error(data?.error?.message || "فشل رفع الصورة على كلاودينارى")
+        }
+        imageUrl = data.secure_url
+      } catch (fetchErr: any) {
+        clearTimeout(timeoutId)
+        if (fetchErr.name === 'AbortError') {
+          throw new Error("انتهت مهلة الاتصال. يرجى المحاولة مرة أخرى.")
+        }
+        throw fetchErr
+      }
     } catch (err) {
       lastError = err
       console.warn("Cloudinary upload failed, trying Supabase Storage...", err)
@@ -1129,20 +1239,30 @@ const OrdersList: React.FC = () => {
         imageUrl = await uploadToSupabaseStorage(compressedFile)
       } catch (err) {
         lastError = err
+        console.warn("Supabase upload also failed:", err)
       }
     }
 
     if (!imageUrl) {
-      throw new Error(lastError?.message || "فشل رفع الصورة، برجاء المحاولة مرة أخرى")
+      const errorMsg = lastError?.message || lastError?.error?.message || "فشل رفع الصورة، برجاء المحاولة مرة أخرى"
+      throw new Error(errorMsg)
     }
 
+    // Save to database
     const { data: inserted, error } = await supabase.from("order_proofs").insert({
       order_id: selectedOrder!.id,
       courier_id: user!.id,
       image_data: imageUrl,
     }).select().single()
 
-    if (error) throw error
+    if (error) {
+      console.error("Database insert error:", error)
+      throw new Error(error.message || "فشل حفظ الصورة في قاعدة البيانات")
+    }
+
+    if (!inserted) {
+      throw new Error("لم يتم حفظ الصورة في قاعدة البيانات")
+    }
 
     return {
       id: inserted.id,
@@ -1151,31 +1271,56 @@ const OrdersList: React.FC = () => {
   }
 
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || e.target.files.length === 0) {
-      alert("لم يتم اختيار أي صورة")
+    const target = e.target
+    const files = target.files
+    
+    // Store files immediately before any async operations
+    if (!files || files.length === 0) {
+      // On mobile, sometimes files can be null if user cancels
+      // Don't show alert in this case as it's expected behavior
       return
     }
-    if (!selectedOrder || !user) return
+    
+    if (!selectedOrder || !user) {
+      console.warn("No selected order or user")
+      return
+    }
 
-    const files = Array.from(e.target.files)
-    if (files.length === 0) return
+    const fileArray = Array.from(files)
+    if (fileArray.length === 0) return
 
     setImageUploading(true)
-    setUploadingImages(files.map(f => f.name))
+    setUploadingImages(fileArray.map(f => f.name))
     const uploadedProofs: OrderProof[] = []
     const errors: string[] = []
 
     try {
       // Upload all images sequentially to avoid overwhelming the server
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i]
+      for (let i = 0; i < fileArray.length; i++) {
+        const file = fileArray[i]
         try {
+          // Validate file before upload
+          if (!file || file.size === 0) {
+            errors.push(`${file.name}: ملف فارغ أو تالف`)
+            setUploadingImages(prev => prev.filter(name => name !== file.name))
+            continue
+          }
+          
+          // Check file size (max 10MB for mobile)
+          if (file.size > 10 * 1024 * 1024) {
+            errors.push(`${file.name}: حجم الملف كبير جداً (الحد الأقصى 10MB)`)
+            setUploadingImages(prev => prev.filter(name => name !== file.name))
+            continue
+          }
+          
           const proof = await uploadSingleImage(file)
           uploadedProofs.push(proof)
           // Remove this file from uploading list
           setUploadingImages(prev => prev.filter(name => name !== file.name))
         } catch (error: any) {
-          errors.push(`${file.name}: ${error.message}`)
+          const errorMsg = error?.message || "خطأ غير معروف"
+          errors.push(`${file.name}: ${errorMsg}`)
+          console.error(`Error uploading ${file.name}:`, error)
           // Remove this file from uploading list even on error
           setUploadingImages(prev => prev.filter(name => name !== file.name))
         }
@@ -1214,17 +1359,28 @@ const OrdersList: React.FC = () => {
       }
 
       if (errors.length > 0) {
-        alert(`تم رفع ${uploadedProofs.length} صورة بنجاح\n\nفشل رفع ${errors.length} صورة:\n${errors.join('\n')}`)
+        const successMsg = uploadedProofs.length > 0 
+          ? `تم رفع ${uploadedProofs.length} صورة بنجاح\n\n`
+          : ""
+        alert(`${successMsg}فشل رفع ${errors.length} صورة:\n${errors.join('\n')}`)
       } else if (uploadedProofs.length > 0) {
         // Success message will be shown by the success indicator
+      } else {
+        alert("لم يتم رفع أي صورة. يرجى المحاولة مرة أخرى.")
       }
     } catch (error: any) {
-      alert("فشل الرفع: " + error.message)
+      console.error("Upload error:", error)
+      alert("فشل الرفع: " + (error?.message || "خطأ غير معروف"))
     } finally {
       setImageUploading(false)
       setUploadingImages([])
       // Clear the file input to allow uploading the same files again if needed
-      e.target.value = ""
+      // Use setTimeout to ensure this happens after the event is fully processed
+      setTimeout(() => {
+        if (target) {
+          target.value = ""
+        }
+      }, 100)
     }
   }
 
@@ -1239,7 +1395,30 @@ const OrdersList: React.FC = () => {
     if (inputEl) {
       // Reset value to ensure onChange fires even if the same file is re-selected
       inputEl.value = ""
-      inputEl.click()
+      
+      // Use setTimeout to ensure the reset happens before click (important for mobile)
+      setTimeout(() => {
+        try {
+          // For mobile, ensure the input is visible (not display:none) when clicking
+          const originalStyle = inputEl.style.cssText
+          inputEl.style.position = "fixed"
+          inputEl.style.opacity = "0"
+          inputEl.style.width = "1px"
+          inputEl.style.height = "1px"
+          inputEl.style.pointerEvents = "none"
+          
+          inputEl.click()
+          
+          // Restore original style after a short delay
+          setTimeout(() => {
+            inputEl.style.cssText = originalStyle
+          }, 100)
+        } catch (err) {
+          console.warn("Error triggering file input:", err)
+          // Fallback: just click it
+          inputEl.click()
+        }
+      }, 10)
     }
   }, [imageUploading])
 
@@ -3875,7 +4054,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         ref={cameraInputRef}
                         onChange={handleImageChange}
                         disabled={imageUploading}
-                        className="sr-only"
+                        style={{ position: 'absolute', opacity: 0, width: '1px', height: '1px', pointerEvents: 'none' }}
                         id="image-upload-camera"
                         aria-label="Take a photo"
                       />
@@ -3886,7 +4065,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         ref={galleryInputRef}
                         onChange={handleImageChange}
                         disabled={imageUploading}
-                        className="sr-only"
+                        style={{ position: 'absolute', opacity: 0, width: '1px', height: '1px', pointerEvents: 'none' }}
                         id="image-upload-gallery"
                         aria-label="Upload images from gallery"
                       />
@@ -3906,14 +4085,19 @@ const deleteDuplicatedOrder = async (order: Order) => {
                             onClick={(e) => {
                               e.preventDefault()
                               e.stopPropagation()
-                              triggerFileInput("camera")
+                              if (!imageUploading) {
+                                triggerFileInput("camera")
+                              }
                             }}
-                            onTouchStart={(e) => {
+                            onTouchEnd={(e) => {
+                              e.preventDefault()
                               e.stopPropagation()
-                              triggerFileInput("camera")
+                              if (!imageUploading) {
+                                triggerFileInput("camera")
+                              }
                             }}
                             className={`w-full sm:w-auto px-5 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl font-bold text-sm transition-all shadow-lg ${
-                              imageUploading ? "opacity-50 cursor-not-allowed" : "cursor-pointer"
+                              imageUploading ? "opacity-50 cursor-not-allowed" : "cursor-pointer active:scale-95"
                             }`}
                             disabled={imageUploading}
                           >
@@ -3928,14 +4112,19 @@ const deleteDuplicatedOrder = async (order: Order) => {
                             onClick={(e) => {
                               e.preventDefault()
                               e.stopPropagation()
-                              triggerFileInput("gallery")
+                              if (!imageUploading) {
+                                triggerFileInput("gallery")
+                              }
                             }}
-                            onTouchStart={(e) => {
+                            onTouchEnd={(e) => {
+                              e.preventDefault()
                               e.stopPropagation()
-                              triggerFileInput("gallery")
+                              if (!imageUploading) {
+                                triggerFileInput("gallery")
+                              }
                             }}
                             className={`w-full sm:w-auto px-5 py-3 bg-white text-green-700 border-2 border-green-500 rounded-xl font-bold text-sm transition-all shadow-lg ${
-                              imageUploading ? "opacity-50 cursor-not-allowed" : "cursor-pointer"
+                              imageUploading ? "opacity-50 cursor-not-allowed" : "cursor-pointer active:scale-95"
                             }`}
                             disabled={imageUploading}
                           >
