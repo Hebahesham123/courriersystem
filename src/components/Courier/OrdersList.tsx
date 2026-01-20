@@ -243,7 +243,8 @@ const OrdersList: React.FC = () => {
     }
     return false
   })
-  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const cameraInputRef = useRef<HTMLInputElement | null>(null)
+  const galleryInputRef = useRef<HTMLInputElement | null>(null)
   const cardPositionRef = useRef<{ top: number; left: number; width: number; height: number } | null>(null)
   const modalContainerRef = useRef<HTMLDivElement | null>(null)
   const windowScrollRef = useRef<number>(0)
@@ -1182,9 +1183,14 @@ const OrdersList: React.FC = () => {
     }
   }
 
-  const triggerFileInput = useCallback(() => {
+  const triggerFileInput = useCallback((type: "camera" | "gallery" = "gallery") => {
     if (imageUploading) return
-    const inputEl = fileInputRef.current || (document.getElementById("image-upload") as HTMLInputElement | null)
+
+    const inputEl =
+      type === "camera"
+        ? (cameraInputRef.current || (document.getElementById("image-upload-camera") as HTMLInputElement | null))
+        : (galleryInputRef.current || (document.getElementById("image-upload-gallery") as HTMLInputElement | null))
+
     if (inputEl) {
       inputEl.click()
     }
@@ -3772,30 +3778,32 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         </span>
                       )}
                     </label>
-                    <div
-                      className="relative border-2 border-dashed border-gray-300 rounded-xl p-4 sm:p-6 text-center hover:border-green-400 transition-colors bg-gradient-to-br from-gray-50 to-white cursor-pointer block"
-                      onClick={() => {
-                        triggerFileInput()
-                      }}
-                      onTouchStart={() => triggerFileInput()}
-                    >
-                      {/* Full overlay invisible input so taps anywhere open the picker (mobile-safe) */}
+                    <div className="relative border-2 border-dashed border-gray-300 rounded-xl p-4 sm:p-6 text-center hover:border-green-400 transition-colors bg-gradient-to-br from-gray-50 to-white">
+                      {/* Separate inputs for camera vs gallery to prompt mobile users correctly */}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        ref={cameraInputRef}
+                        onChange={handleImageChange}
+                        disabled={imageUploading}
+                        className="sr-only"
+                        id="image-upload-camera"
+                        aria-label="Take a photo"
+                      />
                       <input
                         type="file"
                         accept="image/*"
                         multiple
-                        capture="environment"
-                        ref={fileInputRef}
+                        ref={galleryInputRef}
                         onChange={handleImageChange}
                         disabled={imageUploading}
-                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                        style={{ zIndex: 30 }}
-                        id="image-upload"
-                        aria-label="Upload proof images"
-                        onClick={(e) => e.stopPropagation()}
+                        className="sr-only"
+                        id="image-upload-gallery"
+                        aria-label="Upload images from gallery"
                       />
-                      {/* Allow interactions on the button/content */}
-                      <div className="space-y-3 relative z-10 pointer-events-none">
+
+                      <div className="space-y-4 relative z-10">
                         <div className="w-16 h-16 bg-gradient-to-br from-green-100 to-emerald-100 rounded-full flex items-center justify-center mx-auto">
                           {imageUploading ? (
                             <Loader2 className="w-8 h-8 text-green-600 animate-spin" />
@@ -3803,52 +3811,74 @@ const deleteDuplicatedOrder = async (order: Order) => {
                             <Camera className="w-8 h-8 text-green-600" />
                           )}
                         </div>
-                        <div>
+
+                        <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
                           <button
                             type="button"
                             onClick={(e) => {
-                              // Avoid canceling the input's default behavior
+                              e.preventDefault()
                               e.stopPropagation()
-                              triggerFileInput()
+                              triggerFileInput("camera")
                             }}
-                            className={`inline-block px-5 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl font-bold text-sm transition-all shadow-lg ${
+                            onTouchStart={(e) => {
+                              e.stopPropagation()
+                              triggerFileInput("camera")
+                            }}
+                            className={`w-full sm:w-auto px-5 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl font-bold text-sm transition-all shadow-lg ${
                               imageUploading ? "opacity-50 cursor-not-allowed" : "cursor-pointer"
                             }`}
                             disabled={imageUploading}
                           >
-                            {imageUploading ? (
-                              <span className="flex items-center gap-2">
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                                جاري الرفع...
-                              </span>
-                            ) : (
-                              <span className="flex items-center gap-2">
-                                <Upload className="w-4 h-4" />
-                                اختر أو التقط صور (واحد أو أكثر)
-                              </span>
-                            )}
+                            <span className="flex items-center gap-2 justify-center">
+                              <Camera className="w-4 h-4" />
+                              التقط صورة الآن
+                            </span>
                           </button>
-                          <p className="text-xs text-gray-500 mt-2 flex items-center justify-center gap-1.5">
-                            <AlertCircle className="w-3.5 h-3.5" />
-                            يمكنك اختيار عدة صور من المعرض أو التقاطها من الكاميرا
-                          </p>
-                          {uploadingImages.length > 0 && (
-                            <div className="mt-3 space-y-1">
-                              <p className="text-xs text-blue-600 font-medium">جاري رفع:</p>
-                              {uploadingImages.map((fileName, idx) => (
-                                <div key={idx} className="text-xs text-gray-600 bg-blue-50 px-2 py-1 rounded">
-                                  {fileName}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          {imageUploadSuccess && (
-                            <p className="text-xs text-green-600 mt-2 flex items-center justify-center gap-1.5 font-bold">
-                              <CheckCircle className="w-4 h-4" />
-                              تم رفع الصور بنجاح!
-                            </p>
-                          )}
+
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              triggerFileInput("gallery")
+                            }}
+                            onTouchStart={(e) => {
+                              e.stopPropagation()
+                              triggerFileInput("gallery")
+                            }}
+                            className={`w-full sm:w-auto px-5 py-3 bg-white text-green-700 border-2 border-green-500 rounded-xl font-bold text-sm transition-all shadow-lg ${
+                              imageUploading ? "opacity-50 cursor-not-allowed" : "cursor-pointer"
+                            }`}
+                            disabled={imageUploading}
+                          >
+                            <span className="flex items-center gap-2 justify-center">
+                              <Upload className="w-4 h-4" />
+                              اختر من المعرض
+                            </span>
+                          </button>
                         </div>
+
+                        <p className="text-xs text-gray-500 mt-1 flex items-center justify-center gap-1.5">
+                          <AlertCircle className="w-3.5 h-3.5" />
+                          على الهاتف يمكنك فتح الكاميرا مباشرة أو اختيار صورك من المعرض
+                        </p>
+
+                        {uploadingImages.length > 0 && (
+                          <div className="mt-3 space-y-1">
+                            <p className="text-xs text-blue-600 font-medium">جاري رفع:</p>
+                            {uploadingImages.map((fileName, idx) => (
+                              <div key={idx} className="text-xs text-gray-600 bg-blue-50 px-2 py-1 rounded">
+                                {fileName}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {imageUploadSuccess && (
+                          <p className="text-xs text-green-600 mt-2 flex items-center justify-center gap-1.5 font-bold">
+                            <CheckCircle className="w-4 h-4" />
+                            تم رفع الصور بنجاح!
+                          </p>
+                        )}
                       </div>
                     </div>
                   </div>
