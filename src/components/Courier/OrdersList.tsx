@@ -3774,13 +3774,12 @@ const deleteDuplicatedOrder = async (order: Order) => {
                     <div
                       className="relative border-2 border-dashed border-gray-300 rounded-xl p-4 sm:p-6 text-center hover:border-green-400 transition-colors bg-gradient-to-br from-gray-50 to-white cursor-pointer block"
                       onClick={(e) => {
-                        // Let the native file input handle opening the picker
+                        // User gesture triggers the native picker
                         e.stopPropagation()
-                        if ((e.target as HTMLElement)?.tagName === "INPUT") return
                         triggerFileInput()
                       }}
                     >
-                      {/* Visually hidden input so it does not block taps on mobile, but remains focusable for accessibility */}
+                      {/* Full overlay invisible input so taps anywhere open the picker (mobile-safe) */}
                       <input
                         type="file"
                         accept="image/*"
@@ -3788,11 +3787,13 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         ref={fileInputRef}
                         onChange={handleImageChange}
                         disabled={imageUploading}
-                        className="sr-only"
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                        style={{ zIndex: 30 }}
                         id="image-upload"
+                        aria-label="Upload proof images"
                       />
-                      {/* Allow interactions on the button/content (previously pointer-events-none blocked clicks on mobile) */}
-                      <div className="space-y-3">
+                      {/* Allow interactions on the button/content */}
+                      <div className="space-y-3 relative z-10 pointer-events-none">
                         <div className="w-16 h-16 bg-gradient-to-br from-green-100 to-emerald-100 rounded-full flex items-center justify-center mx-auto">
                           {imageUploading ? (
                             <Loader2 className="w-8 h-8 text-green-600 animate-spin" />
