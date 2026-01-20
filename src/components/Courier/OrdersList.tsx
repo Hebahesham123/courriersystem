@@ -4111,55 +4111,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                       className="relative border-2 border-dashed border-gray-300 rounded-xl p-4 sm:p-6 text-center hover:border-green-400 transition-colors bg-gradient-to-br from-gray-50 to-white"
                       style={{ touchAction: 'manipulation' }}
                     >
-                      {/* Separate inputs for camera vs gallery to prompt mobile users correctly */}
-                      <input
-                        type="file"
-                        accept="image/*"
-                        capture="environment"
-                        ref={cameraInputRef}
-                        onChange={(e) => {
-                          console.log("Camera input onChange triggered", e.target.files)
-                          handleImageChange(e)
-                        }}
-                        disabled={imageUploading}
-                        style={{ 
-                          position: 'absolute', 
-                          opacity: 0, 
-                          width: '0.1px', 
-                          height: '0.1px', 
-                          overflow: 'hidden',
-                          zIndex: -1,
-                          top: 0,
-                          left: 0,
-                          pointerEvents: 'auto' // Allow label to trigger it
-                        }}
-                        id="image-upload-camera"
-                        aria-label="Take a photo"
-                      />
-                      <input
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        ref={galleryInputRef}
-                        onChange={(e) => {
-                          console.log("Gallery input onChange triggered", e.target.files)
-                          handleImageChange(e)
-                        }}
-                        disabled={imageUploading}
-                        style={{ 
-                          position: 'absolute', 
-                          opacity: 0, 
-                          width: '0.1px', 
-                          height: '0.1px', 
-                          overflow: 'hidden',
-                          zIndex: -1,
-                          top: 0,
-                          left: 0,
-                          pointerEvents: 'auto' // Allow label to trigger it
-                        }}
-                        id="image-upload-gallery"
-                        aria-label="Upload images from gallery"
-                      />
+                      {/* File inputs are now inside the button containers above for better mobile support */}
 
                       <div className="space-y-4 relative z-10" style={{ pointerEvents: 'auto', touchAction: 'manipulation' }}>
                         <div className="w-16 h-16 bg-gradient-to-br from-green-100 to-emerald-100 rounded-full flex items-center justify-center mx-auto">
@@ -4171,79 +4123,115 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         </div>
 
                         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-                          <label
-                            htmlFor="image-upload-camera"
-                            onClick={(e) => {
-                              if (imageUploading) {
-                                e.preventDefault()
-                                return
-                              }
-                              console.log("Camera label clicked")
-                              // Ensure input is enabled
-                              const input = document.getElementById("image-upload-camera") as HTMLInputElement
-                              if (input) {
-                                input.removeAttribute('disabled')
-                                input.value = "" // Reset to allow re-selection
-                              }
-                            }}
-                            style={{
-                              touchAction: 'manipulation',
-                              WebkitTapHighlightColor: 'rgba(0,0,0,0.1)',
-                              userSelect: 'none',
-                              WebkitUserSelect: 'none',
-                              zIndex: 20,
-                              position: 'relative',
-                              minHeight: '44px',
-                              minWidth: '44px',
-                              display: 'inline-block',
-                              width: '100%',
-                            }}
-                            className={`w-full sm:w-auto px-5 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl font-bold text-sm transition-all shadow-lg ${
-                              imageUploading ? "opacity-50 cursor-not-allowed pointer-events-none" : "cursor-pointer active:scale-95 hover:scale-105"
-                            }`}
-                          >
-                            <span className="flex items-center gap-2 justify-center pointer-events-none">
-                              <Camera className="w-4 h-4" />
-                              التقط صورة الآن
-                            </span>
-                          </label>
+                          {/* Camera Button with Overlay Input */}
+                          <div className="relative w-full sm:w-auto" style={{ position: 'relative', display: 'inline-block' }}>
+                            <button
+                              type="button"
+                              disabled={imageUploading}
+                              style={{
+                                touchAction: 'manipulation',
+                                WebkitTapHighlightColor: 'rgba(0,0,0,0.1)',
+                                userSelect: 'none',
+                                WebkitUserSelect: 'none',
+                                minHeight: '44px',
+                                minWidth: '44px',
+                                width: '100%',
+                                pointerEvents: 'none', // Button is just visual, input handles clicks
+                              }}
+                              className={`w-full sm:w-auto px-5 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl font-bold text-sm transition-all shadow-lg ${
+                                imageUploading ? "opacity-50" : ""
+                              }`}
+                            >
+                              <span className="flex items-center gap-2 justify-center pointer-events-none">
+                                <Camera className="w-4 h-4" />
+                                التقط صورة الآن
+                              </span>
+                            </button>
+                            {/* File input overlaying the button - handles all clicks on mobile */}
+                            <input
+                              type="file"
+                              accept="image/*"
+                              capture="environment"
+                              ref={cameraInputRef}
+                              onChange={(e) => {
+                                console.log("Camera input onChange triggered", e.target.files)
+                                handleImageChange(e)
+                              }}
+                              disabled={imageUploading}
+                              style={{ 
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                bottom: 0,
+                                width: '100%',
+                                height: '100%',
+                                opacity: 0,
+                                cursor: 'pointer',
+                                zIndex: 20,
+                                pointerEvents: imageUploading ? 'none' : 'auto',
+                                touchAction: 'manipulation',
+                                fontSize: '0', // Prevent iOS zoom on focus
+                              }}
+                              id="image-upload-camera"
+                              aria-label="Take a photo"
+                            />
+                          </div>
 
-                          <label
-                            htmlFor="image-upload-gallery"
-                            onClick={(e) => {
-                              if (imageUploading) {
-                                e.preventDefault()
-                                return
-                              }
-                              console.log("Gallery label clicked")
-                              // Ensure input is enabled
-                              const input = document.getElementById("image-upload-gallery") as HTMLInputElement
-                              if (input) {
-                                input.removeAttribute('disabled')
-                                input.value = "" // Reset to allow re-selection
-                              }
-                            }}
-                            style={{
-                              touchAction: 'manipulation',
-                              WebkitTapHighlightColor: 'rgba(0,0,0,0.1)',
-                              userSelect: 'none',
-                              WebkitUserSelect: 'none',
-                              zIndex: 20,
-                              position: 'relative',
-                              minHeight: '44px',
-                              minWidth: '44px',
-                              display: 'inline-block',
-                              width: '100%',
-                            }}
-                            className={`w-full sm:w-auto px-5 py-3 bg-white text-green-700 border-2 border-green-500 rounded-xl font-bold text-sm transition-all shadow-lg ${
-                              imageUploading ? "opacity-50 cursor-not-allowed pointer-events-none" : "cursor-pointer active:scale-95 hover:scale-105"
-                            }`}
-                          >
-                            <span className="flex items-center gap-2 justify-center pointer-events-none">
-                              <Upload className="w-4 h-4" />
-                              اختر من المعرض
-                            </span>
-                          </label>
+                          {/* Gallery Button with Overlay Input */}
+                          <div className="relative w-full sm:w-auto" style={{ position: 'relative', display: 'inline-block' }}>
+                            <button
+                              type="button"
+                              disabled={imageUploading}
+                              style={{
+                                touchAction: 'manipulation',
+                                WebkitTapHighlightColor: 'rgba(0,0,0,0.1)',
+                                userSelect: 'none',
+                                WebkitUserSelect: 'none',
+                                minHeight: '44px',
+                                minWidth: '44px',
+                                width: '100%',
+                                pointerEvents: 'none', // Button is just visual, input handles clicks
+                              }}
+                              className={`w-full sm:w-auto px-5 py-3 bg-white text-green-700 border-2 border-green-500 rounded-xl font-bold text-sm transition-all shadow-lg ${
+                                imageUploading ? "opacity-50" : ""
+                              }`}
+                            >
+                              <span className="flex items-center gap-2 justify-center pointer-events-none">
+                                <Upload className="w-4 h-4" />
+                                اختر من المعرض
+                              </span>
+                            </button>
+                            {/* File input overlaying the button - handles all clicks on mobile */}
+                            <input
+                              type="file"
+                              accept="image/*"
+                              multiple
+                              ref={galleryInputRef}
+                              onChange={(e) => {
+                                console.log("Gallery input onChange triggered", e.target.files)
+                                handleImageChange(e)
+                              }}
+                              disabled={imageUploading}
+                              style={{ 
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                bottom: 0,
+                                width: '100%',
+                                height: '100%',
+                                opacity: 0,
+                                cursor: 'pointer',
+                                zIndex: 20,
+                                pointerEvents: imageUploading ? 'none' : 'auto',
+                                touchAction: 'manipulation',
+                                fontSize: '0', // Prevent iOS zoom on focus
+                              }}
+                              id="image-upload-gallery"
+                              aria-label="Upload images from gallery"
+                            />
+                          </div>
                         </div>
 
                         <p className="text-xs text-gray-500 mt-1 flex items-center justify-center gap-1.5">
