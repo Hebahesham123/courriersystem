@@ -1002,66 +1002,79 @@ const OrdersList: React.FC = () => {
     // DO NOT force scroll here - let the useEffect handle it once on open
   
 
-  // Compress a single image
+  // Compress a single image (skip/soft-fail on unsupported types like HEIC to keep mobile uploads working)
   const compressImage = async (file: File): Promise<File> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = (event) => {
-        const img = new Image()
-        img.crossOrigin = "anonymous"
-        img.onload = () => {
-          const canvas = document.createElement("canvas")
-          const MAX_WIDTH = 720
-          const MAX_HEIGHT = 540
+    const mime = (file.type || "").toLowerCase()
+    const isImage = mime.startsWith("image/")
+    const isHeic = mime.includes("heic") || mime.includes("heif")
 
-          let width = img.width
-          let height = img.height
+    // Many mobile galleries (especially iOS) return HEIC; canvas can't read it reliably.
+    // In that case, just return the original file so the upload can proceed.
+    if (!isImage || isHeic) return file
 
-          if (width > height) {
-            if (width > MAX_WIDTH) {
-              height *= MAX_WIDTH / width
-              width = MAX_WIDTH
-            }
-          } else {
-            if (height > MAX_HEIGHT) {
-              width *= MAX_HEIGHT / height
-              height = MAX_HEIGHT
-            }
-          }
+    try {
+      return await new Promise((resolve) => {
+        const reader = new FileReader()
+        reader.onload = (event) => {
+          const img = new Image()
+          img.crossOrigin = "anonymous"
+          img.onload = () => {
+            const canvas = document.createElement("canvas")
+            const MAX_WIDTH = 720
+            const MAX_HEIGHT = 540
 
-          canvas.width = width
-          canvas.height = height
+            let width = img.width
+            let height = img.height
 
-          const ctx = canvas.getContext("2d")
-          if (!ctx) {
-            reject(new Error("Failed to get canvas context"))
-            return
-          }
-
-          ctx.drawImage(img, 0, 0, width, height)
-
-          canvas.toBlob(
-            (blob) => {
-              if (blob) {
-                resolve(new File([blob], file.name, { type: "image/jpeg", lastModified: Date.now() }))
-              } else {
-                resolve(file)
+            if (width > height) {
+              if (width > MAX_WIDTH) {
+                height *= MAX_WIDTH / width
+                width = MAX_WIDTH
               }
-            },
-            "image/jpeg",
-            0.5,
-          )
+            } else {
+              if (height > MAX_HEIGHT) {
+                width *= MAX_HEIGHT / height
+                height = MAX_HEIGHT
+              }
+            }
+
+            canvas.width = width
+            canvas.height = height
+
+            const ctx = canvas.getContext("2d")
+            if (!ctx) {
+              resolve(file)
+              return
+            }
+
+            ctx.drawImage(img, 0, 0, width, height)
+
+            canvas.toBlob(
+              (blob) => {
+                if (blob) {
+                  resolve(new File([blob], file.name, { type: "image/jpeg", lastModified: Date.now() }))
+                } else {
+                  resolve(file)
+                }
+              },
+              "image/jpeg",
+              0.5,
+            )
+          }
+          img.onerror = () => {
+            resolve(file)
+          }
+          img.src = event.target?.result as string
         }
-        img.onerror = () => {
-          reject(new Error("Failed to load image for compression"))
+        reader.onerror = () => {
+          resolve(file)
         }
-        img.src = event.target?.result as string
-      }
-      reader.onerror = () => {
-        reject(new Error("Failed to read file"))
-      }
-      reader.readAsDataURL(file)
-    })
+        reader.readAsDataURL(file)
+      })
+    } catch (err) {
+      console.warn("Image compression failed, using original file", err)
+      return file
+    }
   }
 
   // Upload a single image
