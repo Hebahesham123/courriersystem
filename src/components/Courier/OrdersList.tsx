@@ -1271,6 +1271,8 @@ const OrdersList: React.FC = () => {
   }
 
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    console.log("handleImageChange triggered", e.target, e.target.files)
+    
     const target = e.target
     const files = target.files
     
@@ -1278,17 +1280,25 @@ const OrdersList: React.FC = () => {
     if (!files || files.length === 0) {
       // On mobile, sometimes files can be null if user cancels
       // Don't show alert in this case as it's expected behavior
+      console.log("No files selected or user cancelled")
       return
     }
     
+    console.log(`Files selected: ${files.length}`, Array.from(files).map(f => f.name))
+    
     if (!selectedOrder || !user) {
-      console.warn("No selected order or user")
+      console.warn("No selected order or user", { selectedOrder: !!selectedOrder, user: !!user })
+      alert("خطأ: لا يوجد طلب محدد أو مستخدم. يرجى تحديث الصفحة.")
       return
     }
 
     const fileArray = Array.from(files)
-    if (fileArray.length === 0) return
+    if (fileArray.length === 0) {
+      console.warn("File array is empty")
+      return
+    }
 
+    console.log("Starting upload process...")
     setImageUploading(true)
     setUploadingImages(fileArray.map(f => f.name))
     const uploadedProofs: OrderProof[] = []
@@ -1385,68 +1395,91 @@ const OrdersList: React.FC = () => {
   }
 
   const triggerFileInput = useCallback((type: "camera" | "gallery" = "gallery") => {
-    if (imageUploading) return
+    if (imageUploading) {
+      console.log("Upload in progress, ignoring click")
+      return
+    }
 
     const inputEl =
       type === "camera"
         ? (cameraInputRef.current || (document.getElementById("image-upload-camera") as HTMLInputElement | null))
         : (galleryInputRef.current || (document.getElementById("image-upload-gallery") as HTMLInputElement | null))
 
-    if (inputEl) {
-      // Reset value to ensure onChange fires even if the same file is re-selected
-      inputEl.value = ""
-      
-      // For mobile, we need to ensure the input is accessible
-      // Use requestAnimationFrame to ensure DOM is ready
-      requestAnimationFrame(() => {
-        try {
-          // Make input temporarily visible and clickable for mobile browsers
-          const originalStyle = {
-            position: inputEl.style.position,
-            opacity: inputEl.style.opacity,
-            width: inputEl.style.width,
-            height: inputEl.style.height,
-            pointerEvents: inputEl.style.pointerEvents,
-            zIndex: inputEl.style.zIndex,
-          }
-          
-          // Set styles that work better on mobile
-          inputEl.style.position = "absolute"
-          inputEl.style.opacity = "0"
-          inputEl.style.width = "100%"
-          inputEl.style.height = "100%"
-          inputEl.style.top = "0"
-          inputEl.style.left = "0"
-          inputEl.style.pointerEvents = "auto"
-          inputEl.style.zIndex = "10"
-          inputEl.style.cursor = "pointer"
-          
-          // Trigger click
-          inputEl.click()
-          
-          // Restore original styles after click
-          setTimeout(() => {
-            inputEl.style.position = originalStyle.position || "absolute"
-            inputEl.style.opacity = originalStyle.opacity || "0"
-            inputEl.style.width = originalStyle.width || "1px"
-            inputEl.style.height = originalStyle.height || "1px"
-            inputEl.style.pointerEvents = originalStyle.pointerEvents || "none"
-            inputEl.style.zIndex = originalStyle.zIndex || "-1"
-            inputEl.style.cursor = ""
-            inputEl.style.top = ""
-            inputEl.style.left = ""
-          }, 200)
-        } catch (err) {
-          console.warn("Error triggering file input:", err)
-          // Fallback: just click it directly
-          try {
-            inputEl.click()
-          } catch (fallbackErr) {
-            console.error("Fallback click also failed:", fallbackErr)
-          }
-        }
-      })
+    if (!inputEl) {
+      console.error(`File input not found for type: ${type}`)
+      alert("خطأ: لم يتم العثور على حقل رفع الصور. يرجى تحديث الصفحة.")
+      return
     }
+
+    console.log(`Triggering file input for ${type}`, inputEl)
+
+    // Reset value to ensure onChange fires even if the same file is re-selected
+    inputEl.value = ""
+    
+    // For mobile browsers, we need to trigger the click in a way that works
+    // Use a small delay to ensure the value reset is processed
+    setTimeout(() => {
+      try {
+        // Remove disabled attribute if present
+        inputEl.removeAttribute('disabled')
+        
+        // Make input accessible for click
+        inputEl.style.pointerEvents = "auto"
+        inputEl.style.position = "fixed"
+        inputEl.style.top = "0"
+        inputEl.style.left = "0"
+        inputEl.style.width = "100%"
+        inputEl.style.height = "100%"
+        inputEl.style.opacity = "0"
+        inputEl.style.zIndex = "9999"
+        inputEl.style.cursor = "pointer"
+        
+        // Focus the input first (helps on some mobile browsers)
+        inputEl.focus()
+        
+        // Small delay before click to ensure focus is set
+        setTimeout(() => {
+          try {
+            // Create a new MouseEvent for better mobile compatibility
+            const clickEvent = new MouseEvent('click', {
+              bubbles: true,
+              cancelable: true,
+              view: window
+            })
+            inputEl.dispatchEvent(clickEvent)
+            
+            // Also try the native click method
+            inputEl.click()
+            
+            console.log("File input click triggered")
+            
+            // Restore styles after a delay
+            setTimeout(() => {
+              inputEl.style.pointerEvents = "none"
+              inputEl.style.position = "absolute"
+              inputEl.style.top = ""
+              inputEl.style.left = ""
+              inputEl.style.width = "1px"
+              inputEl.style.height = "1px"
+              inputEl.style.zIndex = "-1"
+              inputEl.style.cursor = ""
+            }, 500)
+          } catch (clickErr) {
+            console.error("Error clicking file input:", clickErr)
+            // Restore styles on error
+            inputEl.style.pointerEvents = "none"
+            inputEl.style.position = "absolute"
+            inputEl.style.width = "1px"
+            inputEl.style.height = "1px"
+            inputEl.style.zIndex = "-1"
+            alert("فشل فتح الكاميرا/المعرض. يرجى المحاولة مرة أخرى.")
+          }
+        }, 50)
+      } catch (err) {
+        console.error("Error setting up file input:", err)
+        alert("خطأ في فتح حقل رفع الصور. يرجى المحاولة مرة أخرى.")
+      }
+    }, 10)
   }, [imageUploading])
 
   const calculateTotalAmount = (order: Order, deliveryFee: number, partialAmount: number, currentStatus: string) => {
@@ -4084,9 +4117,22 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         accept="image/*"
                         capture="environment"
                         ref={cameraInputRef}
-                        onChange={handleImageChange}
+                        onChange={(e) => {
+                          console.log("Camera input onChange triggered", e.target.files)
+                          handleImageChange(e)
+                        }}
                         disabled={imageUploading}
-                        style={{ position: 'absolute', opacity: 0, width: '1px', height: '1px', pointerEvents: 'none', zIndex: -1 }}
+                        style={{ 
+                          position: 'absolute', 
+                          opacity: 0, 
+                          width: '0.1px', 
+                          height: '0.1px', 
+                          overflow: 'hidden',
+                          zIndex: -1,
+                          top: 0,
+                          left: 0,
+                          pointerEvents: 'auto' // Allow label to trigger it
+                        }}
                         id="image-upload-camera"
                         aria-label="Take a photo"
                       />
@@ -4095,9 +4141,22 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         accept="image/*"
                         multiple
                         ref={galleryInputRef}
-                        onChange={handleImageChange}
+                        onChange={(e) => {
+                          console.log("Gallery input onChange triggered", e.target.files)
+                          handleImageChange(e)
+                        }}
                         disabled={imageUploading}
-                        style={{ position: 'absolute', opacity: 0, width: '1px', height: '1px', pointerEvents: 'none', zIndex: -1 }}
+                        style={{ 
+                          position: 'absolute', 
+                          opacity: 0, 
+                          width: '0.1px', 
+                          height: '0.1px', 
+                          overflow: 'hidden',
+                          zIndex: -1,
+                          top: 0,
+                          left: 0,
+                          pointerEvents: 'auto' // Allow label to trigger it
+                        }}
                         id="image-upload-gallery"
                         aria-label="Upload images from gallery"
                       />
@@ -4112,13 +4171,19 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         </div>
 
                         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-                          <button
-                            type="button"
+                          <label
+                            htmlFor="image-upload-camera"
                             onClick={(e) => {
-                              e.preventDefault()
-                              e.stopPropagation()
-                              if (!imageUploading) {
-                                triggerFileInput("camera")
+                              if (imageUploading) {
+                                e.preventDefault()
+                                return
+                              }
+                              console.log("Camera label clicked")
+                              // Ensure input is enabled
+                              const input = document.getElementById("image-upload-camera") as HTMLInputElement
+                              if (input) {
+                                input.removeAttribute('disabled')
+                                input.value = "" // Reset to allow re-selection
                               }
                             }}
                             style={{
@@ -4128,27 +4193,34 @@ const deleteDuplicatedOrder = async (order: Order) => {
                               WebkitUserSelect: 'none',
                               zIndex: 20,
                               position: 'relative',
-                              minHeight: '44px', // iOS recommended touch target size
+                              minHeight: '44px',
                               minWidth: '44px',
+                              display: 'inline-block',
+                              width: '100%',
                             }}
                             className={`w-full sm:w-auto px-5 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl font-bold text-sm transition-all shadow-lg ${
-                              imageUploading ? "opacity-50 cursor-not-allowed" : "cursor-pointer active:scale-95 hover:scale-105"
+                              imageUploading ? "opacity-50 cursor-not-allowed pointer-events-none" : "cursor-pointer active:scale-95 hover:scale-105"
                             }`}
-                            disabled={imageUploading}
                           >
                             <span className="flex items-center gap-2 justify-center pointer-events-none">
                               <Camera className="w-4 h-4" />
                               التقط صورة الآن
                             </span>
-                          </button>
+                          </label>
 
-                          <button
-                            type="button"
+                          <label
+                            htmlFor="image-upload-gallery"
                             onClick={(e) => {
-                              e.preventDefault()
-                              e.stopPropagation()
-                              if (!imageUploading) {
-                                triggerFileInput("gallery")
+                              if (imageUploading) {
+                                e.preventDefault()
+                                return
+                              }
+                              console.log("Gallery label clicked")
+                              // Ensure input is enabled
+                              const input = document.getElementById("image-upload-gallery") as HTMLInputElement
+                              if (input) {
+                                input.removeAttribute('disabled')
+                                input.value = "" // Reset to allow re-selection
                               }
                             }}
                             style={{
@@ -4158,19 +4230,20 @@ const deleteDuplicatedOrder = async (order: Order) => {
                               WebkitUserSelect: 'none',
                               zIndex: 20,
                               position: 'relative',
-                              minHeight: '44px', // iOS recommended touch target size
+                              minHeight: '44px',
                               minWidth: '44px',
+                              display: 'inline-block',
+                              width: '100%',
                             }}
                             className={`w-full sm:w-auto px-5 py-3 bg-white text-green-700 border-2 border-green-500 rounded-xl font-bold text-sm transition-all shadow-lg ${
-                              imageUploading ? "opacity-50 cursor-not-allowed" : "cursor-pointer active:scale-95 hover:scale-105"
+                              imageUploading ? "opacity-50 cursor-not-allowed pointer-events-none" : "cursor-pointer active:scale-95 hover:scale-105"
                             }`}
-                            disabled={imageUploading}
                           >
                             <span className="flex items-center gap-2 justify-center pointer-events-none">
                               <Upload className="w-4 h-4" />
                               اختر من المعرض
                             </span>
-                          </button>
+                          </label>
                         </div>
 
                         <p className="text-xs text-gray-500 mt-1 flex items-center justify-center gap-1.5">
