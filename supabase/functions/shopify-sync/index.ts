@@ -323,14 +323,25 @@ Deno.serve(async (req: Request) => {
       // If order already exists AND has a courier assigned, don't update certain fields
       // to preserve the assignment date and status
       if (existing && existing.assigned_courier_id) {
+        const hasRemovedItems = (finalLineItems || []).some((i: any) => {
+          const qtyZero = Number(i?.quantity) === 0
+          const propRemoved = i?.properties?._is_removed === true || i?.properties?._is_removed === 'true'
+          return i?.is_removed === true || qtyZero || propRemoved
+        })
+
         // For orders with courier assignments, only update Shopify metadata, not the management fields
         const updateData: any = {
           shopify_updated_at: orderData.shopify_updated_at,
           shopify_cancelled_at: orderData.shopify_cancelled_at,
           shopify_closed_at: orderData.shopify_closed_at,
           financial_status: orderData.financial_status,
-          // IMPORTANT: Preserve manually edited total_order_fees if it differs from Shopify
+          // If Shopify marks items as removed (quantity 0 / _is_removed), trust Shopify totals
+          // Otherwise preserve significant manual edits made inside the system
           total_order_fees: (() => {
+            if (hasRemovedItems) {
+              return orderData.total_order_fees
+            }
+
             const existingTotal = existing.total_order_fees || 0
             const shopifyTotal = orderData.total_order_fees || 0
             const difference = Math.abs(existingTotal - shopifyTotal)

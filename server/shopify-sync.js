@@ -1028,9 +1028,20 @@ async function syncShopifyOrders(updatedAtMin = null) {
             total_order_fees: (() => {
               const existingTotal = existing.total_order_fees || 0
               const shopifyTotal = dbOrder.total_order_fees || 0
+              const lineItems = Array.isArray(dbOrder.line_items) ? dbOrder.line_items : []
+              const hasRemovedItems = lineItems.some((i) => {
+                const qtyZero = Number(i?.quantity) === 0
+                const propRemoved = i?.properties?._is_removed === true || i?.properties?._is_removed === 'true'
+                return i?.is_removed === true || qtyZero || propRemoved
+              })
 
               // If Shopify cancelled the order, force Shopify total (usually 0)
               if (dbOrder.status === 'canceled' || dbOrder.shopify_cancelled_at) {
+                return shopifyTotal
+              }
+
+              // If Shopify marks items as removed, trust Shopify totals (exclude removed items)
+              if (hasRemovedItems) {
                 return shopifyTotal
               }
 
@@ -1299,6 +1310,18 @@ app.post('/api/shopify/sync-order/:shopifyId', async (req, res) => {
           total_order_fees: (() => {
             const existingTotal = existing.total_order_fees || 0
             const shopifyTotal = dbOrder.total_order_fees || 0
+            const lineItems = Array.isArray(dbOrder.line_items) ? dbOrder.line_items : []
+            const hasRemovedItems = lineItems.some((i) => {
+              const qtyZero = Number(i?.quantity) === 0
+              const propRemoved = i?.properties?._is_removed === true || i?.properties?._is_removed === 'true'
+              return i?.is_removed === true || qtyZero || propRemoved
+            })
+
+            // If Shopify marks items as removed, trust Shopify totals (exclude removed items)
+            if (hasRemovedItems) {
+              return shopifyTotal
+            }
+
             const difference = Math.abs(existingTotal - shopifyTotal)
             // If difference is significant (> 0.01), assume it was manually edited and preserve it
             if (difference > 0.01 && existingTotal > 0) {

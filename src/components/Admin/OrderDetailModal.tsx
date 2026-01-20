@@ -689,7 +689,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
 
   // If we have orderItems from database, enhance them with images from product_images
   const items = orderItems.length > 0 
-    ? orderItems.map((orderItem: OrderItem, index: number) => {
+    ? orderItems.map((orderItem: OrderItem) => {
         // If orderItem already has image_url, use it
         if (orderItem.image_url && orderItem.image_url !== 'null' && orderItem.image_url !== null) {
           return orderItem;
@@ -922,13 +922,61 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
   // This ensures 100% accuracy when orders are edited in Shopify
   const raw = order.shopify_raw_data || {}
   
+  const isItemRemoved = (rawItem: any) =>
+    rawItem?.is_removed === true ||
+    rawItem?.properties?._is_removed === true ||
+    rawItem?.properties?._is_removed === 'true' ||
+    Number.parseFloat(String(rawItem?.quantity)) === 0
+
+  const isItemFulfilled = (rawItem: any) => {
+    const statusCandidates = [
+      rawItem?.fulfillment_status,
+      rawItem?.shopify_raw_data?.fulfillment_status,
+      rawItem?.properties?._fulfillment_status,
+    ]
+      .map((s) => (typeof s === 'string' ? s.toLowerCase().trim() : ''))
+      .filter(Boolean)
+
+    const fulfilledValues = new Set(['fulfilled', 'success', 'complete', 'completed'])
+    const unfulfilledValues = new Set(['unfulfilled', 'pending', 'partial', 'open', 'not_fulfilled'])
+
+    if (statusCandidates.some((s) => fulfilledValues.has(s))) return true
+    if (statusCandidates.some((s) => unfulfilledValues.has(s))) return false
+    return false
+  }
+
+  const getFulfillmentTotals = (lineItems: any[]) => {
+    return lineItems.reduce(
+      (acc, rawItem) => {
+        const price = Number.parseFloat(rawItem?.price ?? 0) || 0
+        const qty = Number.parseInt(rawItem?.quantity ?? 1) || 0
+        const discount = Number.parseFloat(rawItem?.total_discount ?? rawItem?.discount ?? 0) || 0
+        const lineTotal = Math.max(0, price * qty - discount)
+
+        if (isItemRemoved(rawItem)) {
+          acc.removedTotal += lineTotal
+          acc.removedCount += 1
+          acc.removedQuantity += qty
+        } else if (isItemFulfilled(rawItem)) {
+          acc.fulfilledTotal += lineTotal
+        } else {
+          acc.unfulfilledTotal += lineTotal
+        }
+        return acc
+      },
+      { fulfilledTotal: 0, unfulfilledTotal: 0, removedTotal: 0, removedCount: 0, removedQuantity: 0 }
+    )
+  }
+
   // Count active items (not removed, quantity > 0) - this matches Shopify's "X items" count
   const activeItems = items.filter(i => {
     const item = i as any
-    const isRemoved = item.is_removed || item.properties?._is_removed || parseFloat(String(item.quantity)) === 0
+    const isRemoved = isItemRemoved(item)
     return !isRemoved && item.quantity > 0
   })
-  
+
+  const fulfillmentTotals = getFulfillmentTotals(items as any[])
+
   // Use Shopify's exact totals (these are the source of truth, especially for edited orders)
   const subtotal = parseFloat(raw.current_subtotal_price || order.subtotal_price || 0)
   const tax = parseFloat(raw.current_total_tax || order.total_tax || 0)
@@ -1033,10 +1081,11 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
     }
 
     const color = statusColors[status] || statusColors.pending
+    const shape = type === 'fulfillment' ? 'border-dashed' : 'border-solid'
     const label = statusLabels[status] || status
 
     return (
-      <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium border ${color}`}>
+      <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium border ${shape} ${color}`}>
         {label}
       </span>
     )
@@ -1462,6 +1511,17 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                       <span>-{order.currency || 'EGP'} {discounts.toFixed(2)}</span>
                     </div>
                   )}
+                  {fulfillmentTotals.removedTotal > 0 && (
+                    <div className="flex justify-between text-amber-700">
+                      <span className="flex items-center gap-2">
+                        Removed items (محذوف)
+                        <span className="text-[11px] bg-amber-100 px-2 py-0.5 rounded-full font-semibold text-amber-800">
+                          {fulfillmentTotals.removedCount} items / {fulfillmentTotals.removedQuantity} qty
+                        </span>
+                      </span>
+                      <span>-{order.currency || 'EGP'} {fulfillmentTotals.removedTotal.toFixed(2)}</span>
+                    </div>
+                  )}
                   <div className="border-t border-gray-200 pt-2 mt-2">
                     <div className="flex justify-between font-semibold text-lg">
                       <span>Total</span>
@@ -1478,7 +1538,14 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                           />
                         </div>
                       ) : (
-                        <span>{order.currency || 'EGP'} {total.toFixed(2)}</span>
+                        <div className="text-right">
+                          <span>{order.currency || 'EGP'} {Math.max(0, fulfillmentTotals.fulfilledTotal).toFixed(2)}</span>
+                          {(fulfillmentTotals.removedTotal > 0 || fulfillmentTotals.unfulfilledTotal > 0) && (
+                            <p className="text-xs text-amber-700 font-semibold">
+                              بعد طرح غير منفذ/محذوف
+                            </p>
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>

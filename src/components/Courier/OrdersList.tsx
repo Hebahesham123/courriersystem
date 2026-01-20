@@ -1246,6 +1246,115 @@ const OrdersList: React.FC = () => {
     }
   }
 
+  const getRemovedItemsInfo = (order: Order) => {
+    const parseLineItems = () => {
+      if (!order.line_items) return []
+      if (Array.isArray(order.line_items)) return order.line_items
+      try {
+        return JSON.parse(order.line_items) || []
+      } catch {
+        return []
+      }
+    }
+
+    const items = order.order_items || []
+    const lineItems = parseLineItems()
+    const allItems = items.length > 0 ? items : lineItems
+    const removedItems = (allItems || []).filter(isOrderItemRemoved)
+
+    const amount = removedItems.reduce((sum: number, item: any) => {
+      const price = parseFloat(item?.price ?? 0)
+      const qty = parseInt(item?.quantity ?? 1)
+      const discount = parseFloat(item?.total_discount ?? item?.discount ?? 0)
+      const validPrice = Number.isFinite(price) ? price : 0
+      const validQty = Number.isFinite(qty) ? qty : 0
+      const validDiscount = Number.isFinite(discount) ? discount : 0
+      const lineTotal = Math.max(0, validPrice * (validQty || 1) - validDiscount)
+      return sum + lineTotal
+    }, 0)
+
+    const quantity = removedItems.reduce((sum: number, item: any) => {
+      const qty = parseInt(item?.quantity ?? 1)
+      return sum + (Number.isFinite(qty) ? qty : 0)
+    }, 0)
+
+    return { amount, quantity, count: removedItems.length }
+  }
+
+  const getFulfillmentTotals = (order: Order) => {
+    const parseLineItems = () => {
+      if (!order.line_items) return []
+      if (Array.isArray(order.line_items)) return order.line_items
+      try {
+        return JSON.parse(order.line_items) || []
+      } catch {
+        return []
+      }
+    }
+
+    const rawLineItems = parseLineItems()
+    const fulfillmentItems =
+      rawLineItems && rawLineItems.length > 0 ? rawLineItems : (order.order_items || [])
+
+    const removedTotal = fulfillmentItems.reduce((sum: number, i: any) => {
+      if (!isOrderItemRemoved(i)) return sum
+      const price = Number.parseFloat(i?.price ?? 0) || 0
+      const qty = Number.parseInt(i?.quantity ?? 1) || 0
+      const discount = Number.parseFloat(i?.total_discount ?? i?.discount ?? 0) || 0
+      const lineTotal = Math.max(0, price * qty - discount)
+      return sum + lineTotal
+    }, 0)
+
+    const fulfilledTotal = fulfillmentItems.reduce((sum: number, i: any) => {
+      if (isOrderItemRemoved(i) || !isOrderItemFulfilled(i)) return sum
+      const price = Number.parseFloat(i?.price ?? 0) || 0
+      const qty = Number.parseInt(i?.quantity ?? 1) || 1
+      const discount = Number.parseFloat(i?.total_discount ?? i?.discount ?? 0) || 0
+      const lineTotal = Math.max(0, price * qty - discount)
+      return sum + lineTotal
+    }, 0)
+
+    const unfulfilledTotal = fulfillmentItems.reduce((sum: number, i: any) => {
+      if (isOrderItemRemoved(i) || isOrderItemFulfilled(i)) return sum
+      const price = Number.parseFloat(i?.price ?? 0) || 0
+      const qty = Number.parseInt(i?.quantity ?? 1) || 1
+      const discount = Number.parseFloat(i?.total_discount ?? i?.discount ?? 0) || 0
+      const lineTotal = Math.max(0, price * qty - discount)
+      return sum + lineTotal
+    }, 0)
+
+    return { fulfilledTotal, unfulfilledTotal, removedTotal }
+  }
+
+  const isOrderItemRemoved = (i: any) =>
+    i?.is_removed === true ||
+    Number(i?.quantity) === 0 ||
+    i?.properties?._is_removed === true ||
+    i?.properties?._is_removed === 'true'
+
+  const isOrderItemFulfilled = (i: any) => {
+    const statusCandidates = [
+      i?.fulfillment_status,
+      i?.shopify_raw_data?.fulfillment_status,
+      i?.properties?._fulfillment_status,
+    ]
+      .map((s) => (typeof s === "string" ? s.toLowerCase().trim() : ""))
+      .filter(Boolean)
+
+    const fulfilledValues = new Set(["fulfilled", "success", "complete", "completed"])
+    const unfulfilledValues = new Set(["unfulfilled", "pending", "partial", "open", "not_fulfilled"])
+
+    if (statusCandidates.some((s) => fulfilledValues.has(s))) return true
+    if (statusCandidates.some((s) => unfulfilledValues.has(s))) return false
+
+    // No signal => treat as unfulfilled so we don't collect it
+    return false
+  }
+
+  const isOrderItemUnfulfilled = (i: any) => {
+    return !isOrderItemFulfilled(i)
+  }
+
   const handleSaveUpdate = async () => {
     if (!selectedOrder) return
 
@@ -2078,14 +2187,32 @@ const deleteDuplicatedOrder = async (order: Order) => {
               const rawLineItems = order.line_items
                 ? (typeof order.line_items === 'string' ? JSON.parse(order.line_items) : order.line_items)
                 : []
+              const fulfillmentItems =
+                rawLineItems && rawLineItems.length > 0 ? rawLineItems : (order.order_items || [])
               const allItems = [...(order.order_items || []), ...(rawLineItems || [])]
-              const isItemRemoved = (i: any) =>
-                i?.is_removed === true ||
-                Number(i?.quantity) === 0 ||
-                i?.properties?._is_removed === true ||
-                i?.properties?._is_removed === 'true'
-              const hasRemovedItems = allItems.some(isItemRemoved)
+              const hasRemovedItems = allItems.some(isOrderItemRemoved)
               const discountInfo = getOrderDiscountInfo(order)
+              const fulfilledItems = fulfillmentItems.filter(
+                (i: any) => !isOrderItemRemoved(i) && isOrderItemFulfilled(i)
+              )
+              const fulfilledTotal = fulfilledItems.reduce((sum: number, i: any) => {
+                const price = Number.parseFloat(i?.price ?? 0) || 0
+                const qty = Number.parseInt(i?.quantity ?? 1) || 1
+                const discount = Number.parseFloat(i?.total_discount ?? i?.discount ?? 0) || 0
+                const lineTotal = Math.max(0, price * qty - discount)
+                return sum + lineTotal
+              }, 0)
+              const unfulfilledItems = fulfillmentItems.filter(
+                (i: any) => !isOrderItemRemoved(i) && isOrderItemUnfulfilled(i)
+              )
+              const unfulfilledTotal = unfulfilledItems.reduce((sum: number, i: any) => {
+                const price = Number.parseFloat(i?.price ?? 0) || 0
+                const qty = Number.parseInt(i?.quantity ?? 1) || 1
+                const discount = Number.parseFloat(i?.total_discount ?? i?.discount ?? 0) || 0
+                const lineTotal = Math.max(0, price * qty - discount)
+                return sum + lineTotal
+              }, 0)
+              const collectibleAmount = Math.max(0, fulfilledTotal)
               const noteText = `${order.internal_comment || ""} ${order.notes || ""}`.toLowerCase()
               const isReceivingPartNote =
                 noteText.includes("استلام قط") || noteText.includes("استلام قطعة") || noteText.includes("استلام قطعه")
@@ -2223,6 +2350,13 @@ const deleteDuplicatedOrder = async (order: Order) => {
                             <span>{isExchangeStatus ? "تبديل" : "استلام قطعة"}</span>
                           </div>
                         )}
+                        {unfulfilledItems.length > 0 && (
+                          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 shadow-sm">
+                            <AlertCircle className="w-4 h-4" />
+                            <span>منتجات غير منفذة</span>
+                            <span className="text-[11px] font-bold">-{unfulfilledTotal.toFixed(0)} ج.م</span>
+                          </div>
+                        )}
                         <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold ${
                           isPaid ? "bg-green-100 text-green-700 border border-green-300" : "bg-yellow-100 text-yellow-700 border border-yellow-300"
                         }`}>
@@ -2278,9 +2412,14 @@ const deleteDuplicatedOrder = async (order: Order) => {
                     {/* Financial Info Row - Modern Grid */}
                     <div className="grid grid-cols-2 gap-3">
                       <div className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200 rounded-xl p-3 text-center">
-                        <p className="text-xs text-green-700 mb-1">إجمالي الطلب</p>
-                        <p className="text-xl font-bold text-green-800">{totalAmount.toFixed(0)}</p>
+                        <p className="text-xs text-green-700 mb-1">المبلغ للتحصيل</p>
+                        <p className="text-xl font-bold text-green-800">{collectibleAmount.toFixed(0)}</p>
                         <p className="text-xs text-green-600">ج.م</p>
+                        {unfulfilledTotal > 0 && (
+                          <p className="text-[11px] text-amber-700 font-semibold mt-1">
+                            طرح {unfulfilledTotal.toFixed(0)} ج.م لمنتجات غير منفذة
+                          </p>
+                        )}
                       </div>
                       <div className="bg-gradient-to-br from-blue-50 to-cyan-50 border-2 border-blue-200 rounded-xl p-3 text-center">
                         <p className="text-xs text-blue-700 mb-1">طريقة الدفع</p>
@@ -2861,6 +3000,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                                 Number(item.quantity) === 0 ||
                                 item?.properties?._is_removed === true ||
                                 item?.properties?._is_removed === 'true'
+                              const isUnfulfilled = !isRemoved && isOrderItemUnfulfilled(item)
                               
                               return (
                                 <div 
@@ -2868,7 +3008,9 @@ const deleteDuplicatedOrder = async (order: Order) => {
                                   className={`rounded-lg sm:rounded-xl border-2 p-2 sm:p-4 transition-all duration-300 hover:shadow-md ${
                                     isRemoved
                                       ? 'bg-red-50 border-red-200 text-red-700 opacity-90'
-                                      : 'bg-white border-gray-100 hover:border-blue-300'
+                                      : isUnfulfilled
+                                        ? 'bg-amber-50 border-amber-200 text-amber-800'
+                                        : 'bg-white border-gray-100 hover:border-blue-300'
                                   }`}
                                 >
                                   <div className="flex gap-2 sm:gap-4">
@@ -2916,6 +3058,11 @@ const deleteDuplicatedOrder = async (order: Order) => {
                                         {isRemoved && (
                                           <span className="px-2 py-0.5 text-[10px] sm:text-xs font-bold rounded-full bg-red-600 text-white uppercase shadow">
                                             removed
+                                          </span>
+                                        )}
+                                        {isUnfulfilled && (
+                                          <span className="px-2 py-0.5 text-[10px] sm:text-xs font-bold rounded-full bg-amber-100 text-amber-800 border border-amber-200 shadow">
+                                            غير منفذ
                                           </span>
                                         )}
                                       </div>
@@ -3038,6 +3185,26 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         }
                         return null
                       })()}
+                      {(() => {
+                        const removedInfo = getRemovedItemsInfo(selectedOrder)
+                        if (removedInfo.amount > 0) {
+                          return (
+                            <div className="flex justify-between items-center py-1 sm:py-1.5 border-b border-gray-100 bg-amber-50 -mx-2 sm:-mx-4 px-2 sm:px-4 rounded-lg">
+                              <div className="flex items-center gap-1 sm:gap-2 text-amber-800">
+                                <Trash2 className="w-4 h-4" />
+                                <span className="text-xs sm:text-sm font-semibold">طرح منتجات محذوفة</span>
+                                <span className="text-[9px] sm:text-xs bg-amber-100 px-1 sm:px-2 py-0.5 rounded font-bold">
+                                  {removedInfo.count} منتج / {removedInfo.quantity} قطعة
+                                </span>
+                              </div>
+                              <span className="font-bold text-amber-800 text-xs sm:text-base">
+                                -{removedInfo.amount.toFixed(2)} ج.م
+                              </span>
+                            </div>
+                          )
+                        }
+                        return null
+                      })()}
                       {selectedOrder.total_tax !== undefined && selectedOrder.total_tax > 0 && (
                         <div className="flex justify-between items-center py-1 sm:py-1.5 border-b border-gray-100">
                           <span className="text-xs sm:text-sm text-gray-600">الضريبة:</span>
@@ -3047,10 +3214,26 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         </div>
                       )}
                       <div className="flex justify-between items-center pt-1.5 sm:pt-2 mt-1.5 sm:mt-2 border-t-2 border-gray-300">
-                        <span className="text-sm sm:text-base font-bold text-gray-800">الإجمالي:</span>
-                        <span className="text-base sm:text-xl font-bold text-green-600">
-                          {selectedOrder.total_order_fees.toFixed(2)} ج.م
-                        </span>
+                        {(() => {
+                          const { fulfilledTotal, unfulfilledTotal, removedTotal } = getFulfillmentTotals(selectedOrder)
+                          const adjustedTotal = Math.max(0, fulfilledTotal)
+                          const showAdjustment = removedTotal > 0 || unfulfilledTotal > 0
+                          return (
+                            <>
+                              <span className="text-sm sm:text-base font-bold text-gray-800">الإجمالي:</span>
+                              <div className="text-right">
+                                <span className="block text-base sm:text-xl font-bold text-green-600">
+                                  {adjustedTotal.toFixed(2)} ج.م
+                                </span>
+                                {showAdjustment && (
+                                  <span className="block text-[10px] sm:text-xs text-amber-700 font-semibold">
+                                    بعد طرح غير منفذ/محذوف
+                                  </span>
+                                )}
+                              </div>
+                            </>
+                          )
+                        })()}
                       </div>
                       {selectedOrder.payment_gateway_names && selectedOrder.payment_gateway_names.length > 0 && (
                         <div className="mt-2 sm:mt-3 pt-2 sm:pt-3 border-t border-gray-200">
@@ -3169,11 +3352,16 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         <p className="text-xs text-gray-500">تفاصيل المبالغ والرسوم</p>
                       </div>
                     </div>
-                    <div className="bg-white/80 backdrop-blur-sm rounded-xl p-4 space-y-3 border border-white/50">
+                    {(() => {
+                      const { fulfilledTotal, unfulfilledTotal, removedTotal } = getFulfillmentTotals(selectedOrder)
+                      const adjustedOrderForCalc = { ...selectedOrder, total_order_fees: fulfilledTotal }
+                      const showAdjustment = removedTotal > 0 || unfulfilledTotal > 0
+                      return (
+                        <div className="bg-white/80 backdrop-blur-sm rounded-xl p-4 space-y-3 border border-white/50">
                       <div className="flex justify-between items-center py-2 px-3 bg-gray-50 rounded-lg">
                         <span className="text-sm text-gray-600 font-medium">قيمة الطلب الأساسية:</span>
                         <span className="font-bold text-gray-900 text-base">
-                          {selectedOrder.total_order_fees.toFixed(2)} ج.م
+                          {fulfilledTotal.toFixed(2)} ج.م
                         </span>
                       </div>
                       <div className="flex justify-between items-center py-2 px-3 bg-amber-50 rounded-lg border border-amber-100">
@@ -3194,21 +3382,30 @@ const deleteDuplicatedOrder = async (order: Order) => {
                               ? "إجمالي الرسوم:"
                               : "إجمالي الطلب:"}
                         </span>
-                        <span className="text-green-700 font-bold text-xl">
-                          {calculateTotalAmount(
-                            selectedOrder,
-                            Number.parseFloat(updateData.delivery_fee) || 0,
-                            Number.parseFloat(updateData.partial_paid_amount) || 0,
-                            updateData.status,
-                          ).toFixed(2)}{" "}
-                          ج.م
-                        </span>
+                            <div className="text-right">
+                              <span className="text-green-700 font-bold text-xl block">
+                                {calculateTotalAmount(
+                                  adjustedOrderForCalc as any,
+                                  Number.parseFloat(updateData.delivery_fee) || 0,
+                                  Number.parseFloat(updateData.partial_paid_amount) || 0,
+                                  updateData.status,
+                                ).toFixed(2)}{" "}
+                                ج.م
+                              </span>
+                              {showAdjustment && (
+                                <span className="text-[11px] text-amber-700 font-semibold block">
+                                  بعد طرح غير منفذ/محذوف
+                                </span>
+                              )}
+                            </div>
                       </div>
                       <div className="bg-blue-50/80 border border-blue-200 p-3 rounded-lg text-xs text-blue-800 mt-2 flex items-start gap-2">
                         <AlertCircle className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
                         <span><strong>ملاحظة:</strong> الرسوم منفصلة تماماً عن قيمة الطلب الأساسية ولا تُضاف إليها</span>
                       </div>
-                    </div>
+                        </div>
+                      )
+                    })()}
                   </div>
 
                   {/* Status Selection - Modern Design */}
@@ -3574,7 +3771,6 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         type="file"
                         accept="image/*"
                         multiple
-                        capture="environment"
                         ref={fileInputRef}
                         onChange={handleImageChange}
                         disabled={imageUploading}

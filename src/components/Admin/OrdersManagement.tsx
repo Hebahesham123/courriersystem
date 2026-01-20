@@ -145,6 +145,75 @@ const renderNotesWithLinks = (notes: string) => {
   });
 };
 
+// Shared helpers for item parsing and unfulfilled calculations
+const parseLineItemsSafe = (raw: any) => {
+  if (!raw) return []
+  if (Array.isArray(raw)) return raw
+  try {
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+const getAllOrderItems = (order: Order) => {
+  const orderItems = (order as any).order_items || []
+  const lineItems = parseLineItemsSafe(order.line_items)
+  // Prefer Shopify line items (carry fulfillment status); fall back to order_items
+  if (lineItems.length > 0) return lineItems
+  return orderItems
+}
+
+const isOrderItemRemoved = (i: any) =>
+  i?.is_removed === true ||
+  Number(i?.quantity) === 0 ||
+  i?.properties?._is_removed === true ||
+  i?.properties?._is_removed === "true"
+
+const isOrderItemFulfilled = (i: any) => {
+  const statusCandidates = [
+    i?.fulfillment_status,
+    i?.shopify_raw_data?.fulfillment_status,
+    i?.properties?._fulfillment_status,
+  ]
+    .map((s) => (typeof s === "string" ? s.toLowerCase().trim() : ""))
+    .filter(Boolean)
+
+  const fulfilledValues = new Set(["fulfilled", "success", "complete", "completed"])
+  const unfulfilledValues = new Set(["unfulfilled", "pending", "partial", "open", "not_fulfilled"])
+
+  if (statusCandidates.some((s) => fulfilledValues.has(s))) return true
+  if (statusCandidates.some((s) => unfulfilledValues.has(s))) return false
+
+  // No signal => treat as unfulfilled so we don't collect it
+  return false
+}
+
+const isOrderItemUnfulfilled = (i: any) => !isOrderItemFulfilled(i)
+
+const getUnfulfilledSummary = (order: Order) => {
+  const allItems = getAllOrderItems(order)
+  const fulfilledItems = allItems.filter((i: any) => !isOrderItemRemoved(i) && isOrderItemFulfilled(i))
+  const fulfilledTotal = fulfilledItems.reduce((sum: number, i: any) => {
+    const price = Number.parseFloat(i?.price ?? 0) || 0
+    const qty = Number.parseInt(i?.quantity ?? 1) || 1
+    const discount = Number.parseFloat(i?.total_discount ?? i?.discount ?? 0) || 0
+    const lineTotal = Math.max(0, price * qty - discount)
+    return sum + lineTotal
+  }, 0)
+  const unfulfilledItems = allItems.filter((i: any) => !isOrderItemRemoved(i) && isOrderItemUnfulfilled(i))
+  const unfulfilledTotal = unfulfilledItems.reduce((sum: number, i: any) => {
+    const price = Number.parseFloat(i?.price ?? 0) || 0
+    const qty = Number.parseInt(i?.quantity ?? 1) || 1
+    const discount = Number.parseFloat(i?.total_discount ?? i?.discount ?? 0) || 0
+    const lineTotal = Math.max(0, price * qty - discount)
+    return sum + lineTotal
+  }, 0)
+  const collectibleAmount = Math.max(0, fulfilledTotal)
+  return { unfulfilledItems, unfulfilledTotal, collectibleAmount }
+}
+
 const statusConfig: Record<string, { label: string; color: string; bgColor: string; icon: React.ComponentType<any> }> =
   {
     assigned: {
@@ -1613,6 +1682,7 @@ const OrdersManagement: React.FC = () => {
     const isEditing = editingOrder === order.id
     const isExpanded = expandedRows.includes(order.id)
     const assigned = isOrderAssigned(order)
+    const { unfulfilledItems, unfulfilledTotal, collectibleAmount } = getUnfulfilledSummary(order)
 
     return (
       <div
@@ -1776,6 +1846,12 @@ const OrdersManagement: React.FC = () => {
           </div>
           <div className="flex items-center gap-2">
             {showStatusBadgeInCard ? getStatusBadge(getDisplayStatus(order)) : null}
+            {unfulfilledItems.length > 0 && (
+              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                <AlertCircle className="w-3.5 h-3.5" />
+                غير منفذ
+              </span>
+            )}
             <button
               onClick={() => toggleRowExpansion(order.id)}
               className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
@@ -1795,8 +1871,14 @@ const OrdersManagement: React.FC = () => {
           </div>
           <div className="flex items-center gap-2">
             <CreditCard className="w-4 h-4 text-gray-400" />
-            <span className="font-medium text-gray-900">{order.total_order_fees.toFixed(2)} ج.م</span>
+            <span className="font-medium text-gray-900">{collectibleAmount.toFixed(2)} ج.م</span>
           </div>
+          {unfulfilledTotal > 0 && (
+            <div className="col-span-2 text-xs text-amber-700 font-semibold bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 flex items-center gap-1.5">
+              <AlertCircle className="w-4 h-4" />
+              <span>تم طرح {unfulfilledTotal.toFixed(2)} ج.م لمنتجات غير منفذة</span>
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <UserCheck className="w-4 h-4 text-gray-400" />
             <span className={`${assigned ? "text-green-700 font-medium" : "text-gray-900"}`}>
@@ -1859,7 +1941,16 @@ const OrdersManagement: React.FC = () => {
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               ) : (
-                <span className="text-sm font-medium text-gray-900">{order.total_order_fees.toFixed(2)} ج.م</span>
+                <div className="space-y-1">
+                  <span className="text-sm font-medium text-gray-900">
+                    {collectibleAmount.toFixed(2)} ج.م
+                  </span>
+                  {unfulfilledTotal > 0 && (
+                    <p className="text-xs text-amber-700 font-semibold">
+                      طرح {unfulfilledTotal.toFixed(2)} ج.م لمنتجات غير منفذة
+                    </p>
+                  )}
+                </div>
               )}
             </div>
 
@@ -3455,6 +3546,7 @@ const OrdersManagement: React.FC = () => {
                     const statusLower = (displayStatus || '').toLowerCase()
                     const paymentLower = (order.payment_status || '').toLowerCase()
                     const financialLower = (order.financial_status || '').toLowerCase()
+                    const { unfulfilledItems, unfulfilledTotal, collectibleAmount } = getUnfulfilledSummary(order)
                     const isCanceled =
                       statusLower === 'canceled' ||
                       statusLower === 'cancelled' ||
@@ -3613,9 +3705,16 @@ const OrdersManagement: React.FC = () => {
                               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                             />
                           ) : (
-                            <span className={`text-sm font-semibold ${isCanceled ? "text-red-700 line-through" : "text-gray-900"}`}>
-                              {order.currency || 'EGP'} {parseFloat(String(order.total_order_fees || 0)).toFixed(2)}
-                            </span>
+                            <div className="flex flex-col">
+                              <span className={`text-sm font-semibold ${isCanceled ? "text-red-700 line-through" : "text-gray-900"}`}>
+                                {order.currency || 'EGP'} {collectibleAmount.toFixed(2)}
+                              </span>
+                              {unfulfilledTotal > 0 && (
+                                <span className="text-[11px] text-amber-700 font-semibold">
+                                  طرح {unfulfilledTotal.toFixed(2)} ج.م لمنتجات غير منفذة
+                                </span>
+                              )}
+                            </div>
                           )}
                         </td>
                         <td className="px-3 py-2.5">
