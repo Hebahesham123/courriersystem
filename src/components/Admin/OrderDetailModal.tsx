@@ -1936,5 +1936,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
   )
 }
 
+// Export both default and named for flexible imports (fixes cases where default import fails)
+export { OrderDetailModal }
 export default OrderDetailModal
 

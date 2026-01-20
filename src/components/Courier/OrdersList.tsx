@@ -3780,6 +3780,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         triggerFileInput()
                       }}
                     >
+                      {/* Visually hidden input so it does not block taps on mobile, but remains focusable for accessibility */}
                       <input
                         type="file"
                         accept="image/*"
@@ -3787,8 +3788,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         ref={fileInputRef}
                         onChange={handleImageChange}
                         disabled={imageUploading}
-                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                        style={{ display: "block", zIndex: 20 }}
+                        className="sr-only"
                         id="image-upload"
                       />
                       {/* Allow interactions on the button/content (previously pointer-events-none blocked clicks on mobile) */}

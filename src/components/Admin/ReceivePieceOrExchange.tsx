@@ -18,7 +18,7 @@ import {
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
 import { useAuth } from "../../contexts/AuthContext"
-import OrderDetailModal from "./OrderDetailModal"
+import { OrderDetailModal } from "./OrderDetailModal"
 
 interface Order {
   id: string
