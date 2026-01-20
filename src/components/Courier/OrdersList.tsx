@@ -28,6 +28,7 @@ import {
   ChevronRight,
   CalendarDays,
   HandMetal,
+  Star,
   CheckCircle,
   DollarSign,
   Trash2,
@@ -2085,9 +2086,22 @@ const deleteDuplicatedOrder = async (order: Order) => {
                 i?.properties?._is_removed === 'true'
               const hasRemovedItems = allItems.some(isItemRemoved)
               const discountInfo = getOrderDiscountInfo(order)
-              const editedByCourier = order.updated_at && order.created_at && order.updated_at !== order.created_at
+              const noteText = `${order.internal_comment || ""} ${order.notes || ""}`.toLowerCase()
+              const isReceivingPartNote =
+                noteText.includes("استلام قط") || noteText.includes("استلام قطعة") || noteText.includes("استلام قطعه")
+              const isExchangeNote =
+                noteText.includes("تبديل") || noteText.includes("استبدال") || noteText.includes("exchange")
+              const isReceivingPartStatus =
+                order.status === "receiving_part" ||
+                order.payment_sub_type === "receiving_part" ||
+                isReceivingPartNote
+              const isExchangeStatus =
+                order.status === "hand_to_hand" ||
+                order.payment_sub_type === "hand_to_hand" ||
+                order.payment_sub_type === "exchange" ||
+                isExchangeNote
+              const showSpecialBadge = isReceivingPartStatus || isExchangeStatus
               const showDashedBorder =
-                editedByCourier ||
                 recentlyUpdatedOrderIds.current.has(order.id) ||
                 storedModifiedOrderIds.current.has(order.id)
 
@@ -2130,9 +2144,13 @@ const deleteDuplicatedOrder = async (order: Order) => {
                       ? "border-amber-400 border-dashed bg-amber-50"
                       : order.order_id.includes("(نسخة)")
                         ? "border-green-300 bg-green-50"
-                        : order.status === "assigned"
-                          ? "border-blue-300 bg-blue-50"
-                          : "border-gray-200"
+                        : isReceivingPartStatus
+                          ? "border-indigo-300 bg-indigo-50"
+                          : isExchangeStatus
+                            ? "border-purple-300 bg-purple-50"
+                            : order.status === "assigned"
+                              ? "border-blue-300 bg-blue-50"
+                              : "border-gray-200"
                   } ${showDashedBorder ? "line-through decoration-amber-700/70 decoration-2" : ""}`}
                   style={
                     showDashedBorder
@@ -2144,6 +2162,22 @@ const deleteDuplicatedOrder = async (order: Order) => {
                       : undefined
                   }
                 >
+                  {showSpecialBadge && (
+                    <div className="absolute top-2 right-2 z-30 flex gap-2 pointer-events-none">
+                      {isExchangeStatus && (
+                        <span className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-purple-600 text-white text-xs font-semibold shadow-md">
+                          <Star className="w-3.5 h-3.5" />
+                          تبديل
+                        </span>
+                      )}
+                      {isReceivingPartStatus && (
+                        <span className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-indigo-600 text-white text-xs font-semibold shadow-md">
+                          <Star className="w-3.5 h-3.5" />
+                          استلام قطعة
+                        </span>
+                      )}
+                    </div>
+                  )}
                   {/* Status Indicator Bar */}
                   <div className={`h-1 relative z-0 ${
                     order.order_id.includes("(نسخة)") ? "bg-green-500" : 
@@ -2179,6 +2213,16 @@ const deleteDuplicatedOrder = async (order: Order) => {
                           <StatusIcon className="w-4 h-4" />
                           <span>{statusInfo.label}</span>
                         </div>
+                        {showSpecialBadge && (
+                          <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border shadow-sm ${
+                            isExchangeStatus
+                              ? "bg-purple-50 border-purple-200 text-purple-700"
+                              : "bg-indigo-50 border-indigo-200 text-indigo-700"
+                          }`}>
+                            <Star className="w-4 h-4" />
+                            <span>{isExchangeStatus ? "تبديل" : "استلام قطعة"}</span>
+                          </div>
+                        )}
                         <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold ${
                           isPaid ? "bg-green-100 text-green-700 border border-green-300" : "bg-yellow-100 text-yellow-700 border border-yellow-300"
                         }`}>
