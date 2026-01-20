@@ -1085,13 +1085,14 @@ const OrdersList: React.FC = () => {
     formData.append("file", compressedFile)
     formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET)
 
-    const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {
+    // Use auto upload to accept HEIC/other formats from mobile cameras
+    const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`, {
       method: "POST",
       body: formData,
     })
 
     const data = await res.json()
-    if (!data.secure_url) throw new Error("فشل رفع الصورة على كلاودينارى")
+    if (!data.secure_url) throw new Error(data?.error?.message || "فشل رفع الصورة على كلاودينارى")
 
     const { data: inserted, error } = await supabase.from("order_proofs").insert({
       order_id: selectedOrder!.id,
@@ -3784,6 +3785,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         type="file"
                         accept="image/*"
                         multiple
+                        capture="environment"
                         ref={fileInputRef}
                         onChange={handleImageChange}
                         disabled={imageUploading}
