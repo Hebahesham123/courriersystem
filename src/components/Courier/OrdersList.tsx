@@ -3791,7 +3791,8 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         style={{ display: "block", zIndex: 20 }}
                         id="image-upload"
                       />
-                      <div className="space-y-3 pointer-events-none">
+                      {/* Allow interactions on the button/content (previously pointer-events-none blocked clicks on mobile) */}
+                      <div className="space-y-3">
                         <div className="w-16 h-16 bg-gradient-to-br from-green-100 to-emerald-100 rounded-full flex items-center justify-center mx-auto">
                           {imageUploading ? (
                             <Loader2 className="w-8 h-8 text-green-600 animate-spin" />
