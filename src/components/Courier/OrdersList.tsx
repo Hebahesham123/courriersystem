@@ -248,6 +248,7 @@ const OrdersList: React.FC = () => {
   const cardPositionRef = useRef<{ top: number; left: number; width: number; height: number } | null>(null)
   const modalContainerRef = useRef<HTMLDivElement | null>(null)
   const windowScrollRef = useRef<number>(0)
+  const touchStartYRef = useRef<number | null>(null)
   // Track orders we just updated to prevent real-time subscription from causing double updates
   const recentlyUpdatedOrderIds = useRef<Set<string>>(new Set())
   // Track orders modified by courier (persisted in localStorage)
@@ -957,7 +958,7 @@ const OrdersList: React.FC = () => {
     setPhoneOptionsOpen(false)
   }
 
-  const openModal = (order: Order, sourceEvent?: React.MouseEvent | { currentTarget?: any }) => {
+  const openModal = (order: Order, sourceEvent?: React.MouseEvent | React.TouchEvent | { currentTarget?: any }) => {
     // FIRST: Capture the card's EXACT viewport position BEFORE opening modal
     let capturedPosition: { top: number; left: number; width: number; height: number } | null = null
     
@@ -2256,6 +2257,45 @@ const deleteDuplicatedOrder = async (order: Order) => {
                 <div
                   key={order.id}
                   data-order-card
+                  onTouchStart={(e) => {
+                    const touch = e.touches[0]
+                    touchStartYRef.current = touch ? touch.clientY : null
+                  }}
+                  onTouchEnd={(e) => {
+                    const target = e.target as HTMLElement
+                    if (target.tagName === 'BUTTON' || target.tagName === 'A' || target.closest('button') || target.closest('a')) {
+                      return
+                    }
+
+                    // Avoid opening when the user is scrolling
+                    const touch = e.changedTouches[0]
+                    if (touch && touchStartYRef.current !== null) {
+                      const deltaY = Math.abs(touch.clientY - touchStartYRef.current)
+                      if (deltaY > 10) {
+                        touchStartYRef.current = null
+                        return
+                      }
+                    }
+                    touchStartYRef.current = null
+
+                    e.preventDefault()
+                    e.stopPropagation()
+
+                    const cardElement = e.currentTarget as HTMLElement
+                    if (cardElement && typeof window !== 'undefined') {
+                      const rect = cardElement.getBoundingClientRect()
+                      const position = {
+                        top: rect.top + window.scrollY,
+                        left: rect.left + window.scrollX,
+                        width: rect.width,
+                        height: rect.height,
+                      }
+                      cardPositionRef.current = position
+                      setCardPosition(position)
+                    }
+
+                    openModal(order, e)
+                  }}
                   onClick={(e) => {
                     const target = e.target as HTMLElement
                     if (target.tagName === 'BUTTON' || target.tagName === 'A' || target.closest('button') || target.closest('a')) {
