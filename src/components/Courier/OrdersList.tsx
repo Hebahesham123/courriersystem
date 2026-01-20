@@ -3774,11 +3774,10 @@ const deleteDuplicatedOrder = async (order: Order) => {
                     </label>
                     <div
                       className="relative border-2 border-dashed border-gray-300 rounded-xl p-4 sm:p-6 text-center hover:border-green-400 transition-colors bg-gradient-to-br from-gray-50 to-white cursor-pointer block"
-                      onClick={(e) => {
-                        // User gesture triggers the native picker
-                        e.stopPropagation()
+                      onClick={() => {
                         triggerFileInput()
                       }}
+                      onTouchStart={() => triggerFileInput()}
                     >
                       {/* Full overlay invisible input so taps anywhere open the picker (mobile-safe) */}
                       <input
@@ -3793,6 +3792,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         style={{ zIndex: 30 }}
                         id="image-upload"
                         aria-label="Upload proof images"
+                        onClick={(e) => e.stopPropagation()}
                       />
                       {/* Allow interactions on the button/content */}
                       <div className="space-y-3 relative z-10 pointer-events-none">
