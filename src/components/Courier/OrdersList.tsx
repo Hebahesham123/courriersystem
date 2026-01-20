@@ -1396,29 +1396,56 @@ const OrdersList: React.FC = () => {
       // Reset value to ensure onChange fires even if the same file is re-selected
       inputEl.value = ""
       
-      // Use setTimeout to ensure the reset happens before click (important for mobile)
-      setTimeout(() => {
+      // For mobile, we need to ensure the input is accessible
+      // Use requestAnimationFrame to ensure DOM is ready
+      requestAnimationFrame(() => {
         try {
-          // For mobile, ensure the input is visible (not display:none) when clicking
-          const originalStyle = inputEl.style.cssText
-          inputEl.style.position = "fixed"
-          inputEl.style.opacity = "0"
-          inputEl.style.width = "1px"
-          inputEl.style.height = "1px"
-          inputEl.style.pointerEvents = "none"
+          // Make input temporarily visible and clickable for mobile browsers
+          const originalStyle = {
+            position: inputEl.style.position,
+            opacity: inputEl.style.opacity,
+            width: inputEl.style.width,
+            height: inputEl.style.height,
+            pointerEvents: inputEl.style.pointerEvents,
+            zIndex: inputEl.style.zIndex,
+          }
           
+          // Set styles that work better on mobile
+          inputEl.style.position = "absolute"
+          inputEl.style.opacity = "0"
+          inputEl.style.width = "100%"
+          inputEl.style.height = "100%"
+          inputEl.style.top = "0"
+          inputEl.style.left = "0"
+          inputEl.style.pointerEvents = "auto"
+          inputEl.style.zIndex = "10"
+          inputEl.style.cursor = "pointer"
+          
+          // Trigger click
           inputEl.click()
           
-          // Restore original style after a short delay
+          // Restore original styles after click
           setTimeout(() => {
-            inputEl.style.cssText = originalStyle
-          }, 100)
+            inputEl.style.position = originalStyle.position || "absolute"
+            inputEl.style.opacity = originalStyle.opacity || "0"
+            inputEl.style.width = originalStyle.width || "1px"
+            inputEl.style.height = originalStyle.height || "1px"
+            inputEl.style.pointerEvents = originalStyle.pointerEvents || "none"
+            inputEl.style.zIndex = originalStyle.zIndex || "-1"
+            inputEl.style.cursor = ""
+            inputEl.style.top = ""
+            inputEl.style.left = ""
+          }, 200)
         } catch (err) {
           console.warn("Error triggering file input:", err)
-          // Fallback: just click it
-          inputEl.click()
+          // Fallback: just click it directly
+          try {
+            inputEl.click()
+          } catch (fallbackErr) {
+            console.error("Fallback click also failed:", fallbackErr)
+          }
         }
-      }, 10)
+      })
     }
   }, [imageUploading])
 
@@ -2988,6 +3015,8 @@ const deleteDuplicatedOrder = async (order: Order) => {
                   : 'translate(-50%, -50%)',
                 marginBottom: '24px',
                 zIndex: 1000,
+                pointerEvents: 'auto',
+                touchAction: 'manipulation',
               }}
               onClick={(e) => {
                 // Allow native inputs (camera/file picker) to work while keeping modal open
@@ -4045,7 +4074,10 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         </span>
                       )}
                     </label>
-                    <div className="relative border-2 border-dashed border-gray-300 rounded-xl p-4 sm:p-6 text-center hover:border-green-400 transition-colors bg-gradient-to-br from-gray-50 to-white">
+                    <div 
+                      className="relative border-2 border-dashed border-gray-300 rounded-xl p-4 sm:p-6 text-center hover:border-green-400 transition-colors bg-gradient-to-br from-gray-50 to-white"
+                      style={{ touchAction: 'manipulation' }}
+                    >
                       {/* Separate inputs for camera vs gallery to prompt mobile users correctly */}
                       <input
                         type="file"
@@ -4054,7 +4086,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         ref={cameraInputRef}
                         onChange={handleImageChange}
                         disabled={imageUploading}
-                        style={{ position: 'absolute', opacity: 0, width: '1px', height: '1px', pointerEvents: 'none' }}
+                        style={{ position: 'absolute', opacity: 0, width: '1px', height: '1px', pointerEvents: 'none', zIndex: -1 }}
                         id="image-upload-camera"
                         aria-label="Take a photo"
                       />
@@ -4065,12 +4097,12 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         ref={galleryInputRef}
                         onChange={handleImageChange}
                         disabled={imageUploading}
-                        style={{ position: 'absolute', opacity: 0, width: '1px', height: '1px', pointerEvents: 'none' }}
+                        style={{ position: 'absolute', opacity: 0, width: '1px', height: '1px', pointerEvents: 'none', zIndex: -1 }}
                         id="image-upload-gallery"
                         aria-label="Upload images from gallery"
                       />
 
-                      <div className="space-y-4 relative z-10">
+                      <div className="space-y-4 relative z-10" style={{ pointerEvents: 'auto', touchAction: 'manipulation' }}>
                         <div className="w-16 h-16 bg-gradient-to-br from-green-100 to-emerald-100 rounded-full flex items-center justify-center mx-auto">
                           {imageUploading ? (
                             <Loader2 className="w-8 h-8 text-green-600 animate-spin" />
@@ -4089,19 +4121,22 @@ const deleteDuplicatedOrder = async (order: Order) => {
                                 triggerFileInput("camera")
                               }
                             }}
-                            onTouchEnd={(e) => {
-                              e.preventDefault()
-                              e.stopPropagation()
-                              if (!imageUploading) {
-                                triggerFileInput("camera")
-                              }
+                            style={{
+                              touchAction: 'manipulation',
+                              WebkitTapHighlightColor: 'rgba(0,0,0,0.1)',
+                              userSelect: 'none',
+                              WebkitUserSelect: 'none',
+                              zIndex: 20,
+                              position: 'relative',
+                              minHeight: '44px', // iOS recommended touch target size
+                              minWidth: '44px',
                             }}
                             className={`w-full sm:w-auto px-5 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl font-bold text-sm transition-all shadow-lg ${
-                              imageUploading ? "opacity-50 cursor-not-allowed" : "cursor-pointer active:scale-95"
+                              imageUploading ? "opacity-50 cursor-not-allowed" : "cursor-pointer active:scale-95 hover:scale-105"
                             }`}
                             disabled={imageUploading}
                           >
-                            <span className="flex items-center gap-2 justify-center">
+                            <span className="flex items-center gap-2 justify-center pointer-events-none">
                               <Camera className="w-4 h-4" />
                               التقط صورة الآن
                             </span>
@@ -4116,19 +4151,22 @@ const deleteDuplicatedOrder = async (order: Order) => {
                                 triggerFileInput("gallery")
                               }
                             }}
-                            onTouchEnd={(e) => {
-                              e.preventDefault()
-                              e.stopPropagation()
-                              if (!imageUploading) {
-                                triggerFileInput("gallery")
-                              }
+                            style={{
+                              touchAction: 'manipulation',
+                              WebkitTapHighlightColor: 'rgba(0,0,0,0.1)',
+                              userSelect: 'none',
+                              WebkitUserSelect: 'none',
+                              zIndex: 20,
+                              position: 'relative',
+                              minHeight: '44px', // iOS recommended touch target size
+                              minWidth: '44px',
                             }}
                             className={`w-full sm:w-auto px-5 py-3 bg-white text-green-700 border-2 border-green-500 rounded-xl font-bold text-sm transition-all shadow-lg ${
-                              imageUploading ? "opacity-50 cursor-not-allowed" : "cursor-pointer active:scale-95"
+                              imageUploading ? "opacity-50 cursor-not-allowed" : "cursor-pointer active:scale-95 hover:scale-105"
                             }`}
                             disabled={imageUploading}
                           >
-                            <span className="flex items-center gap-2 justify-center">
+                            <span className="flex items-center gap-2 justify-center pointer-events-none">
                               <Upload className="w-4 h-4" />
                               اختر من المعرض
                             </span>
