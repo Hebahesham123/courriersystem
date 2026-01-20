@@ -39,6 +39,8 @@ interface OrderItem {
   image_alt: string | null
   shopify_raw_data: any
   is_removed?: boolean
+  fulfillment_status?: string
+  properties?: any
 }
 
 interface Order {
@@ -116,6 +118,8 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
   const [editingNotes, setEditingNotes] = useState<string>("")
   const [editingOrderNote, setEditingOrderNote] = useState<string>("")
   const [editingCustomerNote, setEditingCustomerNote] = useState<string>("")
+  const [updatingItemFulfillmentId, setUpdatingItemFulfillmentId] = useState<string | null>(null)
+  const [editingFulfillmentStatus, setEditingFulfillmentStatus] = useState<string>("")
   const [saving, setSaving] = useState(false)
   const [couriers, setCouriers] = useState<Array<{ id: string; name: string; email: string }>>([])
   const [loadingCouriers, setLoadingCouriers] = useState(false)
@@ -252,6 +256,36 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
       alert(`Error: ${e.message}`)
     } finally {
       setRestoringItemId(null)
+    }
+  }
+
+  const handleToggleItemFulfillment = async (itemId: string, newStatus: string) => {
+    if (!order?.id) return
+    const item = orderItems.find(i => i.id === itemId)
+    const currentProps = (item as any)?.properties || {}
+    const updatedProps = { ...currentProps, _fulfillment_status: newStatus }
+    setUpdatingItemFulfillmentId(itemId)
+    try {
+      const { error } = await supabase
+        .from('order_items')
+        .update({
+          fulfillment_status: newStatus,
+          updated_at: new Date().toISOString(),
+          properties: updatedProps
+        } as any)
+        .eq('id', itemId)
+
+      if (error) throw error
+
+      // Refresh items locally
+      await fetchOrderItems()
+      // If parent needs refresh
+      if (onUpdate) onUpdate()
+    } catch (err: any) {
+      console.error('Error updating item fulfillment:', err)
+      alert('فشل تحديث حالة تنفيذ الصنف / Failed to update item fulfillment')
+    } finally {
+      setUpdatingItemFulfillmentId(null)
     }
   }
 
@@ -415,6 +449,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
       setEditingNotes(order.notes || "")
       setEditingOrderNote(order.order_note || "")
       setEditingCustomerNote(order.customer_note || "")
+      setEditingFulfillmentStatus(order.fulfillment_status || "unfulfilled")
     }
     
     // Debug: Log order data when it changes
@@ -483,6 +518,13 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
       }
       if (editingCustomerNote !== (order.customer_note || "")) {
         updateData.customer_note = editingCustomerNote
+      }
+
+      // Update fulfillment status if changed
+      const currentFulfillment = (order.fulfillment_status || "unfulfilled").toLowerCase().trim()
+      const newFulfillment = (editingFulfillmentStatus || "").toLowerCase().trim()
+      if (newFulfillment && newFulfillment !== currentFulfillment) {
+        updateData.fulfillment_status = newFulfillment
       }
 
       if (Object.keys(updateData).length === 1) {
@@ -1270,6 +1312,23 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                   <h3 className="font-semibold text-gray-900">Fulfillment</h3>
                   {order.fulfillment_status && getStatusBadge(order.fulfillment_status, 'fulfillment')}
                 </div>
+                {isEditing && (
+                  <div className="space-y-3 mb-3">
+                    <label className="text-sm font-medium text-gray-700">Fulfillment status</label>
+                    <select
+                      className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      value={editingFulfillmentStatus}
+                      onChange={(e) => setEditingFulfillmentStatus(e.target.value)}
+                    >
+                      <option value="fulfilled">Fulfilled</option>
+                      <option value="unfulfilled">Unfulfilled</option>
+                      <option value="partial">Partial</option>
+                      <option value="scheduled">Scheduled</option>
+                      <option value="on_hold">On hold</option>
+                      <option value="request_fulfillment">Request fulfillment</option>
+                    </select>
+                  </div>
+                )}
                 {order.shipping_method && (
                   <div className="flex items-center gap-2 text-sm text-gray-600">
                     <Truck className="w-4 h-4" />
@@ -1361,16 +1420,25 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                                       Removed
                                     </span>
                                   )}
-                                  {item.shopify_raw_data?.fulfillment_status === 'fulfilled' && !isRemoved && (
-                                    <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-bold rounded-full uppercase border border-blue-200 whitespace-nowrap">
-                                      Fulfilled
-                                    </span>
-                                  )}
-                                  {(!item.shopify_raw_data?.fulfillment_status || item.shopify_raw_data?.fulfillment_status === 'null') && !isRemoved && (
-                                    <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-[10px] font-bold rounded-full uppercase border border-yellow-200 whitespace-nowrap">
-                                      Unfulfilled
-                                    </span>
-                                  )}
+                                  {(() => {
+                                    const fulfillmentStatus = ((item as any).fulfillment_status ||
+                                      item.shopify_raw_data?.fulfillment_status ||
+                                      (item as any).properties?._fulfillment_status ||
+                                      'unfulfilled').toLowerCase()
+                                    if (isRemoved) return null
+                                    if (fulfillmentStatus === 'fulfilled') {
+                                      return (
+                                        <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-bold rounded-full uppercase border border-blue-200 whitespace-nowrap">
+                                          Fulfilled
+                                        </span>
+                                      )
+                                    }
+                                    return (
+                                      <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-[10px] font-bold rounded-full uppercase border border-yellow-200 whitespace-nowrap">
+                                        Unfulfilled
+                                      </span>
+                                    )
+                                  })()}
                                 </div>
                               </div>
                               {/* Action Buttons */}
@@ -1407,6 +1475,31 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                             )}
                             {item.sku && (
                               <p className={`text-xs mb-1 ${isRemoved ? 'text-red-300' : 'text-gray-400'}`}>SKU: {item.sku}</p>
+                            )}
+
+                            {isEditing && !isRemoved && (
+                              <div className="mt-2 flex items-center gap-2">
+                                <span className="text-xs text-gray-600">Fulfillment:</span>
+                                <select
+                                  className="border border-gray-300 rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  value={((item as any).fulfillment_status ||
+                                    item.shopify_raw_data?.fulfillment_status ||
+                                    (item as any).properties?._fulfillment_status ||
+                                    'unfulfilled')}
+                                  onChange={(e) => handleToggleItemFulfillment(item.id, e.target.value)}
+                                  disabled={updatingItemFulfillmentId === item.id}
+                                >
+                                  <option value="fulfilled">Fulfilled</option>
+                                  <option value="unfulfilled">Unfulfilled</option>
+                                  <option value="partial">Partial</option>
+                                  <option value="scheduled">Scheduled</option>
+                                  <option value="on_hold">On hold</option>
+                                  <option value="request_fulfillment">Request fulfillment</option>
+                                </select>
+                                {updatingItemFulfillmentId === item.id && (
+                                  <span className="text-xs text-gray-500">Saving...</span>
+                                )}
+                              </div>
                             )}
                             
                             {/* Fulfillment Date - Show like Shopify */}

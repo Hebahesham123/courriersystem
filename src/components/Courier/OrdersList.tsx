@@ -170,6 +170,7 @@ const allCollectionMethods: Record<string, string> = {
 // Cloudinary config
 const CLOUDINARY_CLOUD_NAME = "dclsvvfu2"
 const CLOUDINARY_UPLOAD_PRESET = "hebaaa"
+const SUPABASE_BUCKET = "order-proofs"
 
 // Utility function to render notes with clickable links
 const renderNotesWithLinks = (notes: string, isInModal: boolean = false) => {
@@ -1079,39 +1080,82 @@ const OrdersList: React.FC = () => {
     }
   }
 
-  // Upload a single image
+  // Fallback upload to Supabase Storage if Cloudinary fails (helps some Android devices)
+  const uploadToSupabaseStorage = async (file: File): Promise<string> => {
+    const fileExt = file.name.split('.').pop() || 'jpg'
+    const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`
+    const filePath = `${selectedOrder!.id}/${user!.id}/${fileName}`
+
+    const { error: uploadError } = await supabase.storage.from(SUPABASE_BUCKET).upload(filePath, file, {
+      cacheControl: "3600",
+      upsert: false,
+      contentType: file.type || "image/jpeg",
+    })
+    if (uploadError) throw uploadError
+
+    const { data: urlData } = supabase.storage.from(SUPABASE_BUCKET).getPublicUrl(filePath)
+    if (!urlData?.publicUrl) throw new Error("فشل الحصول على رابط الصورة من سبابيز")
+    return urlData.publicUrl
+  }
+
+  // Upload a single image with Cloudinary primary + Supabase fallback
   const uploadSingleImage = async (file: File): Promise<OrderProof> => {
     const compressedFile = await compressImage(file)
-    
-    const formData = new FormData()
-    formData.append("file", compressedFile)
-    formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET)
 
-    // Use auto upload to accept HEIC/other formats from mobile cameras
-    const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`, {
-      method: "POST",
-      body: formData,
-    })
+    let imageUrl: string | null = null
+    let lastError: any = null
 
-    const data = await res.json()
-    if (!data.secure_url) throw new Error(data?.error?.message || "فشل رفع الصورة على كلاودينارى")
+    // Primary: Cloudinary (handles HEIC via /auto)
+    try {
+      const formData = new FormData()
+      formData.append("file", compressedFile)
+      formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET)
+
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`, {
+        method: "POST",
+        body: formData,
+      })
+      const data = await res.json()
+      if (!data.secure_url) throw new Error(data?.error?.message || "فشل رفع الصورة على كلاودينارى")
+      imageUrl = data.secure_url
+    } catch (err) {
+      lastError = err
+      console.warn("Cloudinary upload failed, trying Supabase Storage...", err)
+    }
+
+    // Fallback: Supabase Storage (helps mobile uploads)
+    if (!imageUrl) {
+      try {
+        imageUrl = await uploadToSupabaseStorage(compressedFile)
+      } catch (err) {
+        lastError = err
+      }
+    }
+
+    if (!imageUrl) {
+      throw new Error(lastError?.message || "فشل رفع الصورة، برجاء المحاولة مرة أخرى")
+    }
 
     const { data: inserted, error } = await supabase.from("order_proofs").insert({
       order_id: selectedOrder!.id,
       courier_id: user!.id,
-      image_data: data.secure_url,
+      image_data: imageUrl,
     }).select().single()
 
     if (error) throw error
 
     return {
       id: inserted.id,
-      image_data: inserted.image_data || data.secure_url,
+      image_data: inserted.image_data || imageUrl,
     }
   }
 
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || !selectedOrder || !user) return
+    if (!e.target.files || e.target.files.length === 0) {
+      alert("لم يتم اختيار أي صورة")
+      return
+    }
+    if (!selectedOrder || !user) return
 
     const files = Array.from(e.target.files)
     if (files.length === 0) return
@@ -1193,6 +1237,8 @@ const OrdersList: React.FC = () => {
         : (galleryInputRef.current || (document.getElementById("image-upload-gallery") as HTMLInputElement | null))
 
     if (inputEl) {
+      // Reset value to ensure onChange fires even if the same file is re-selected
+      inputEl.value = ""
       inputEl.click()
     }
   }, [imageUploading])
@@ -2233,7 +2279,9 @@ const deleteDuplicatedOrder = async (order: Order) => {
                 const lineTotal = Math.max(0, price * qty - discount)
                 return sum + lineTotal
               }, 0)
-              const collectibleAmount = Math.max(0, fulfilledTotal)
+              const adminTotal = Number.parseFloat(String(order.total_order_fees ?? 0)) || 0
+              const hasAdminTotal = adminTotal > 0
+              const collectibleAmount = hasAdminTotal ? adminTotal : Math.max(0, fulfilledTotal)
               const noteText = `${order.internal_comment || ""} ${order.notes || ""}`.toLowerCase()
               const isReceivingPartNote =
                 noteText.includes("استلام قط") || noteText.includes("استلام قطعة") || noteText.includes("استلام قطعه")
@@ -2475,7 +2523,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         <p className="text-xs text-green-700 mb-1">المبلغ للتحصيل</p>
                         <p className="text-xl font-bold text-green-800">{collectibleAmount.toFixed(0)}</p>
                         <p className="text-xs text-green-600">ج.م</p>
-                        {unfulfilledTotal > 0 && (
+                        {!hasAdminTotal && unfulfilledTotal > 0 && (
                           <p className="text-[11px] text-amber-700 font-semibold mt-1">
                             طرح {unfulfilledTotal.toFixed(0)} ج.م لمنتجات غير منفذة
                           </p>

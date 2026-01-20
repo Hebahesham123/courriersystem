@@ -335,17 +335,14 @@ Deno.serve(async (req: Request) => {
           shopify_cancelled_at: orderData.shopify_cancelled_at,
           shopify_closed_at: orderData.shopify_closed_at,
           financial_status: orderData.financial_status,
-          // If Shopify marks items as removed (quantity 0 / _is_removed), trust Shopify totals
-          // Otherwise preserve significant manual edits made inside the system
+          fulfillment_status: orderData.fulfillment_status,
+          tracking_number: orderData.tracking_number,
+          tracking_url: orderData.tracking_url,
+          // Preserve any admin-edited totals over Shopify, even if unfulfilled
           total_order_fees: (() => {
-            if (hasRemovedItems) {
-              return orderData.total_order_fees
-            }
-
             const existingTotal = existing.total_order_fees || 0
             const shopifyTotal = orderData.total_order_fees || 0
             const difference = Math.abs(existingTotal - shopifyTotal)
-            // If difference is significant (> 0.01), assume it was manually edited and preserve it
             if (difference > 0.01 && existingTotal > 0) {
               console.log(`🔒 Preserving manually edited total for order ${shopifyOrder.id}: ${existingTotal} (Shopify: ${shopifyTotal})`)
               return existingTotal
