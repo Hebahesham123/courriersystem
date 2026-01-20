@@ -4082,38 +4082,8 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         </div>
 
                         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-                          {/* Camera Button with Overlay Input */}
-                          <div className="relative w-full sm:w-auto" style={{ position: 'relative', display: 'inline-block', zIndex: 1 }}>
-                            <button
-                              type="button"
-                              disabled={imageUploading}
-                              onClick={(e) => {
-                                e.preventDefault()
-                                e.stopPropagation()
-                                if (!imageUploading && cameraInputRef.current) {
-                                  cameraInputRef.current.click()
-                                }
-                              }}
-                              style={{
-                                touchAction: 'manipulation',
-                                WebkitTapHighlightColor: 'rgba(0,0,0,0.1)',
-                                userSelect: 'none',
-                                WebkitUserSelect: 'none',
-                                minHeight: '44px',
-                                minWidth: '44px',
-                                width: '100%',
-                                pointerEvents: 'auto', // Allow button clicks as fallback
-                              }}
-                              className={`w-full sm:w-auto px-5 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl font-bold text-sm transition-all shadow-lg ${
-                                imageUploading ? "opacity-50" : ""
-                              }`}
-                            >
-                              <span className="flex items-center gap-2 justify-center pointer-events-none">
-                                <Camera className="w-4 h-4" />
-                                التقط صورة الآن
-                              </span>
-                            </button>
-                            {/* File input overlaying the button - handles all clicks on mobile */}
+                          {/* Camera Button with Hidden Input */}
+                          <div className="relative w-full sm:w-auto" style={{ position: 'relative', display: 'inline-block' }}>
                             <input
                               type="file"
                               accept="image/*"
@@ -4126,39 +4096,25 @@ const deleteDuplicatedOrder = async (order: Order) => {
                               disabled={imageUploading}
                               style={{ 
                                 position: 'absolute',
-                                top: 0,
-                                left: 0,
-                                right: 0,
-                                bottom: 0,
-                                width: '100%',
-                                height: '100%',
+                                width: 0,
+                                height: 0,
                                 opacity: 0,
-                                cursor: 'pointer',
-                                zIndex: 9999,
-                                pointerEvents: 'auto', // Always allow clicks
-                                touchAction: 'manipulation',
-                                WebkitUserSelect: 'none',
-                                userSelect: 'none',
-                                WebkitTapHighlightColor: 'transparent',
-                                fontSize: '16px', // Prevents iOS zoom on focus
-                                WebkitAppearance: 'none',
-                                appearance: 'none',
+                                overflow: 'hidden',
+                                pointerEvents: 'none',
                               } as React.CSSProperties}
                               id="image-upload-camera"
                               aria-label="Take a photo"
                             />
-                          </div>
-
-                          {/* Gallery Button with Overlay Input */}
-                          <div className="relative w-full sm:w-auto" style={{ position: 'relative', display: 'inline-block', zIndex: 1 }}>
                             <button
                               type="button"
                               disabled={imageUploading}
                               onClick={(e) => {
                                 e.preventDefault()
                                 e.stopPropagation()
-                                if (!imageUploading && galleryInputRef.current) {
-                                  galleryInputRef.current.click()
+                                if (!imageUploading && cameraInputRef.current) {
+                                  // Reset value to allow selecting same file again
+                                  cameraInputRef.current.value = ''
+                                  cameraInputRef.current.click()
                                 }
                               }}
                               style={{
@@ -4169,18 +4125,22 @@ const deleteDuplicatedOrder = async (order: Order) => {
                                 minHeight: '44px',
                                 minWidth: '44px',
                                 width: '100%',
-                                pointerEvents: 'auto', // Allow button clicks as fallback
+                                pointerEvents: 'auto',
+                                cursor: 'pointer',
                               }}
-                              className={`w-full sm:w-auto px-5 py-3 bg-white text-green-700 border-2 border-green-500 rounded-xl font-bold text-sm transition-all shadow-lg ${
-                                imageUploading ? "opacity-50" : ""
+                              className={`w-full sm:w-auto px-5 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl font-bold text-sm transition-all shadow-lg ${
+                                imageUploading ? "opacity-50 cursor-not-allowed" : "hover:from-green-700 hover:to-emerald-700 active:scale-95"
                               }`}
                             >
-                              <span className="flex items-center gap-2 justify-center pointer-events-none">
-                                <Upload className="w-4 h-4" />
-                                اختر من المعرض
+                              <span className="flex items-center gap-2 justify-center">
+                                <Camera className="w-4 h-4" />
+                                التقط صورة الآن
                               </span>
                             </button>
-                            {/* File input overlaying the button - handles all clicks on mobile */}
+                          </div>
+
+                          {/* Gallery Button with Hidden Input */}
+                          <div className="relative w-full sm:w-auto" style={{ position: 'relative', display: 'inline-block' }}>
                             <input
                               type="file"
                               accept="image/*"
@@ -4193,27 +4153,47 @@ const deleteDuplicatedOrder = async (order: Order) => {
                               disabled={imageUploading}
                               style={{ 
                                 position: 'absolute',
-                                top: 0,
-                                left: 0,
-                                right: 0,
-                                bottom: 0,
-                                width: '100%',
-                                height: '100%',
+                                width: 0,
+                                height: 0,
                                 opacity: 0,
-                                cursor: 'pointer',
-                                zIndex: 9999,
-                                pointerEvents: 'auto', // Always allow clicks
-                                touchAction: 'manipulation',
-                                WebkitUserSelect: 'none',
-                                userSelect: 'none',
-                                WebkitTapHighlightColor: 'transparent',
-                                fontSize: '16px', // Prevents iOS zoom on focus
-                                WebkitAppearance: 'none',
-                                appearance: 'none',
+                                overflow: 'hidden',
+                                pointerEvents: 'none',
                               } as React.CSSProperties}
                               id="image-upload-gallery"
                               aria-label="Upload images from gallery"
                             />
+                            <button
+                              type="button"
+                              disabled={imageUploading}
+                              onClick={(e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                if (!imageUploading && galleryInputRef.current) {
+                                  // Reset value to allow selecting same file again
+                                  galleryInputRef.current.value = ''
+                                  galleryInputRef.current.click()
+                                }
+                              }}
+                              style={{
+                                touchAction: 'manipulation',
+                                WebkitTapHighlightColor: 'rgba(0,0,0,0.1)',
+                                userSelect: 'none',
+                                WebkitUserSelect: 'none',
+                                minHeight: '44px',
+                                minWidth: '44px',
+                                width: '100%',
+                                pointerEvents: 'auto',
+                                cursor: 'pointer',
+                              }}
+                              className={`w-full sm:w-auto px-5 py-3 bg-white text-green-700 border-2 border-green-500 rounded-xl font-bold text-sm transition-all shadow-lg ${
+                                imageUploading ? "opacity-50 cursor-not-allowed" : "hover:bg-green-50 hover:border-green-600 active:scale-95"
+                              }`}
+                            >
+                              <span className="flex items-center gap-2 justify-center">
+                                <Upload className="w-4 h-4" />
+                                اختر من المعرض
+                              </span>
+                            </button>
                           </div>
                         </div>
 
