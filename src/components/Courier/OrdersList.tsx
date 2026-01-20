@@ -4072,7 +4072,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                     >
                       {/* File inputs are now inside the button containers above for better mobile support */}
 
-                      <div className="space-y-4 relative z-10" style={{ pointerEvents: 'auto', touchAction: 'manipulation' }}>
+                      <div className="space-y-4 relative" style={{ pointerEvents: 'auto', touchAction: 'manipulation', zIndex: 1 }}>
                         <div className="w-16 h-16 bg-gradient-to-br from-green-100 to-emerald-100 rounded-full flex items-center justify-center mx-auto">
                           {imageUploading ? (
                             <Loader2 className="w-8 h-8 text-green-600 animate-spin" />
@@ -4083,10 +4083,17 @@ const deleteDuplicatedOrder = async (order: Order) => {
 
                         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
                           {/* Camera Button with Overlay Input */}
-                          <div className="relative w-full sm:w-auto" style={{ position: 'relative', display: 'inline-block' }}>
+                          <div className="relative w-full sm:w-auto" style={{ position: 'relative', display: 'inline-block', zIndex: 1 }}>
                             <button
                               type="button"
                               disabled={imageUploading}
+                              onClick={(e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                if (!imageUploading && cameraInputRef.current) {
+                                  cameraInputRef.current.click()
+                                }
+                              }}
                               style={{
                                 touchAction: 'manipulation',
                                 WebkitTapHighlightColor: 'rgba(0,0,0,0.1)',
@@ -4095,7 +4102,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                                 minHeight: '44px',
                                 minWidth: '44px',
                                 width: '100%',
-                                pointerEvents: 'none', // Button is just visual, input handles clicks
+                                pointerEvents: 'auto', // Allow button clicks as fallback
                               }}
                               className={`w-full sm:w-auto px-5 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl font-bold text-sm transition-all shadow-lg ${
                                 imageUploading ? "opacity-50" : ""
@@ -4110,7 +4117,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                             <input
                               type="file"
                               accept="image/*"
-                              capture="environment"
+                              capture
                               ref={cameraInputRef}
                               onChange={(e) => {
                                 console.log("[v0] Camera input onChange triggered", e.target.files)
@@ -4127,11 +4134,15 @@ const deleteDuplicatedOrder = async (order: Order) => {
                                 height: '100%',
                                 opacity: 0,
                                 cursor: 'pointer',
-                                zIndex: 20,
+                                zIndex: 9999,
                                 pointerEvents: 'auto', // Always allow clicks
                                 touchAction: 'manipulation',
                                 WebkitUserSelect: 'none',
                                 userSelect: 'none',
+                                WebkitTapHighlightColor: 'transparent',
+                                fontSize: '16px', // Prevents iOS zoom on focus
+                                WebkitAppearance: 'none',
+                                appearance: 'none',
                               } as React.CSSProperties}
                               id="image-upload-camera"
                               aria-label="Take a photo"
@@ -4139,10 +4150,17 @@ const deleteDuplicatedOrder = async (order: Order) => {
                           </div>
 
                           {/* Gallery Button with Overlay Input */}
-                          <div className="relative w-full sm:w-auto" style={{ position: 'relative', display: 'inline-block' }}>
+                          <div className="relative w-full sm:w-auto" style={{ position: 'relative', display: 'inline-block', zIndex: 1 }}>
                             <button
                               type="button"
                               disabled={imageUploading}
+                              onClick={(e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                if (!imageUploading && galleryInputRef.current) {
+                                  galleryInputRef.current.click()
+                                }
+                              }}
                               style={{
                                 touchAction: 'manipulation',
                                 WebkitTapHighlightColor: 'rgba(0,0,0,0.1)',
@@ -4151,7 +4169,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                                 minHeight: '44px',
                                 minWidth: '44px',
                                 width: '100%',
-                                pointerEvents: 'none', // Button is just visual, input handles clicks
+                                pointerEvents: 'auto', // Allow button clicks as fallback
                               }}
                               className={`w-full sm:w-auto px-5 py-3 bg-white text-green-700 border-2 border-green-500 rounded-xl font-bold text-sm transition-all shadow-lg ${
                                 imageUploading ? "opacity-50" : ""
@@ -4183,11 +4201,15 @@ const deleteDuplicatedOrder = async (order: Order) => {
                                 height: '100%',
                                 opacity: 0,
                                 cursor: 'pointer',
-                                zIndex: 20,
+                                zIndex: 9999,
                                 pointerEvents: 'auto', // Always allow clicks
                                 touchAction: 'manipulation',
                                 WebkitUserSelect: 'none',
                                 userSelect: 'none',
+                                WebkitTapHighlightColor: 'transparent',
+                                fontSize: '16px', // Prevents iOS zoom on focus
+                                WebkitAppearance: 'none',
+                                appearance: 'none',
                               } as React.CSSProperties}
                               id="image-upload-gallery"
                               aria-label="Upload images from gallery"
