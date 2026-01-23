@@ -87,19 +87,50 @@ Deno.serve(async (req: Request) => {
         paymentMethods.push('gift_card')
       }
       
-      if (gatewayLower.includes('paymob') || gatewayLower.includes('pay mob')) {
-        if (!paymentMethods.includes('paymob')) paymentMethods.push('paymob')
-      }
+      // Check for ValU (separate from Paymob)
       if (gatewayLower.includes('valu')) {
         if (!paymentMethods.includes('valu')) paymentMethods.push('valu')
       }
-      if (gatewayLower.includes('card') || gatewayLower.includes('stripe')) {
-        if (!paymentMethods.includes('paid')) paymentMethods.push('paid')
+      
+      // All card and online payment methods should be normalized to 'paymob'
+      // This includes: paymob, card, visa, mastercard, credit, debit, sohoola, sympl, tru, stripe, fawry, instapay, etc.
+      const isOnlinePayment = 
+        gatewayLower.includes('paymob') || 
+        gatewayLower.includes('pay mob') ||
+        gatewayLower.includes('card') ||
+        gatewayLower.includes('visa') ||
+        gatewayLower.includes('mastercard') ||
+        gatewayLower.includes('master card') ||
+        gatewayLower.includes('credit') ||
+        gatewayLower.includes('debit') ||
+        gatewayLower.includes('sohoola') ||
+        gatewayLower.includes('sympl') ||
+        gatewayLower.includes('tru') ||
+        gatewayLower.includes('stripe') ||
+        gatewayLower.includes('paypal') ||
+        gatewayLower.includes('square') ||
+        gatewayLower.includes('razorpay') ||
+        gatewayLower.includes('fawry') ||
+        gatewayLower.includes('instapay') ||
+        gatewayLower.includes('vodafone cash') ||
+        gatewayLower.includes('vodafonecash') ||
+        gatewayLower.includes('orange cash') ||
+        gatewayLower.includes('orangecash') ||
+        gatewayLower.includes('we pay') ||
+        gatewayLower.includes('wepay')
+      
+      if (isOnlinePayment) {
+        if (!paymentMethods.includes('paymob')) paymentMethods.push('paymob')
       }
 
       // Determine payment status
+      // Paymob, Valu, and all online payment methods are always paid, regardless of financial_status
       let paymentStatus = 'cod'
-      if (statusLower.includes('paid') && !isPartiallyPaid) {
+      if (gatewayLower.includes('valu')) {
+        paymentStatus = 'paid'
+      } else if (isOnlinePayment) {
+        paymentStatus = 'paid'
+      } else if (statusLower.includes('paid') && !isPartiallyPaid) {
         paymentStatus = 'paid'
       } else if (isPartiallyPaid) {
         paymentStatus = 'partially_paid'
@@ -129,8 +160,14 @@ Deno.serve(async (req: Request) => {
       // Get payment transactions (for gift cards and partial payments)
       const transactions = shopifyOrder.payment_transactions || []
       
+      // Check both gateway and payment_gateway_names for payment method detection
+      const gatewayString = shopifyOrder.gateway || 
+                           shopifyOrder.payment_gateway_names?.[0] || 
+                           (Array.isArray(shopifyOrder.payment_gateway_names) ? shopifyOrder.payment_gateway_names.join(' ') : '') ||
+                           ''
+      
       const paymentInfo = normalizePayment(
-        shopifyOrder.gateway || shopifyOrder.payment_gateway_names?.[0],
+        gatewayString,
         shopifyOrder.financial_status,
         transactions
       )
@@ -262,15 +299,44 @@ Deno.serve(async (req: Request) => {
       }
 
       // Prepare order data for orders table (frontend reads from here)
+      // Determine initial status - preserve existing status if order was already processed
+      let initialStatus = shopifyOrder.cancelled_at ? 'canceled' : 'pending'
+      let initialPaymentMethod = paymentInfo.method
+      let initialPaymentStatus = paymentInfo.status
+      let initialCollectedBy = null
+      let initialPaymentSubType = null
+      
+      if (existing) {
+        // Preserve existing status if it's not pending (e.g., delivered, assigned, partial, etc.)
+        // Processed statuses should never be reset to pending by Shopify sync
+        const processedStatuses = ['delivered', 'partial', 'canceled', 'return', 'hand_to_hand', 'receiving_part', 'assigned']
+        if (existing.status && processedStatuses.includes(existing.status)) {
+          initialStatus = existing.status
+          // For delivered orders with online payment methods, preserve payment info
+          if (existing.status === 'delivered' && existing.payment_method && existing.payment_status === 'paid') {
+            initialPaymentMethod = existing.payment_method
+            initialPaymentStatus = existing.payment_status
+            initialCollectedBy = existing.collected_by
+            initialPaymentSubType = existing.payment_sub_type
+          }
+        }
+        // Only override to canceled if Shopify says canceled AND order wasn't already processed
+        if (shopifyOrder.cancelled_at && !processedStatuses.includes(existing.status || '')) {
+          initialStatus = 'canceled'
+        }
+      }
+      
       const orderData: any = {
         shopify_order_id: shopifyOrder.id,
         shopify_order_name: shopifyOrder.name,
         shopify_order_number: shopifyOrder.order_number?.toString(),
         order_id: shopifyOrder.name || shopifyOrder.order_number?.toString() || shopifyOrder.id?.toString(),
-        status: shopifyOrder.cancelled_at ? 'canceled' : 'pending',
+        status: initialStatus,
         financial_status: shopifyOrder.financial_status || paymentInfo.status,
-        payment_status: paymentInfo.status,
-        payment_method: paymentInfo.method,
+        payment_status: initialPaymentStatus,
+        payment_method: initialPaymentMethod,
+        collected_by: initialCollectedBy,
+        payment_sub_type: initialPaymentSubType,
         payment_gateway_names: shopifyOrder.payment_gateway_names || [],
         fulfillment_status: shopifyOrder.fulfillment_status,
         // Use current_total_price for edited orders, fallback to total_price
@@ -292,8 +358,6 @@ Deno.serve(async (req: Request) => {
         shipping_city: shippingAddress.city,
         billing_country: billingAddress.country,
         shipping_country: shippingAddress.country,
-        payment_method: paymentInfo.method,
-        payment_status: paymentInfo.status,
         payment_gateway_names: shopifyOrder.payment_gateway_names || [],
         // Store payment transactions for gift cards and partial payments
         payment_transactions: transactions.length > 0 ? JSON.stringify(transactions) : null,
@@ -330,6 +394,14 @@ Deno.serve(async (req: Request) => {
         })
 
         // For orders with courier assignments, only update Shopify metadata, not the management fields
+        // CRITICAL: Protect ALL courier edits - never overwrite what courier has set
+        const hasCourierEdits = existing.delivery_fee || 
+                                existing.partial_paid_amount || 
+                                existing.collected_by || 
+                                existing.payment_sub_type ||
+                                existing.internal_comment ||
+                                (existing.status && existing.status !== 'pending' && existing.status !== 'assigned')
+        
         const updateData: any = {
           shopify_updated_at: orderData.shopify_updated_at,
           shopify_cancelled_at: orderData.shopify_cancelled_at,
@@ -354,6 +426,28 @@ Deno.serve(async (req: Request) => {
           total_discounts: orderData.total_discounts,
           line_items: orderData.line_items,
           product_images: orderData.product_images,
+          // Protect ALL courier-edited fields if order has courier edits
+          payment_method: (hasCourierEdits && existing.payment_method)
+            ? existing.payment_method
+            : orderData.payment_method,
+          payment_status: (hasCourierEdits && existing.payment_status)
+            ? existing.payment_status
+            : orderData.payment_status,
+          collected_by: (hasCourierEdits && existing.collected_by)
+            ? existing.collected_by
+            : (existing.collected_by || orderData.collected_by),
+          payment_sub_type: (hasCourierEdits && existing.payment_sub_type)
+            ? existing.payment_sub_type
+            : (existing.payment_sub_type || orderData.payment_sub_type),
+          delivery_fee: (hasCourierEdits && existing.delivery_fee)
+            ? existing.delivery_fee
+            : (existing.delivery_fee || orderData.delivery_fee),
+          partial_paid_amount: (hasCourierEdits && existing.partial_paid_amount)
+            ? existing.partial_paid_amount
+            : (existing.partial_paid_amount || orderData.partial_paid_amount),
+          internal_comment: (hasCourierEdits && existing.internal_comment)
+            ? existing.internal_comment
+            : (existing.internal_comment || orderData.internal_comment),
           // DON'T update: status, assigned_courier_id, updated_at - these are managed by the courier system
         }
         
@@ -374,9 +468,20 @@ Deno.serve(async (req: Request) => {
       }
 
       // Upsert order to orders table (frontend reads from here) - for new orders or unassigned orders
+      // IMPORTANT: Status and payment info are already set correctly above based on existing order
+      // Just preserve assigned_courier_id if it exists
+      if (existing && existing.assigned_courier_id) {
+        orderData.assigned_courier_id = existing.assigned_courier_id
+      }
+      
+      // Use upsert but with conflict resolution to preserve status and payment info
       const { error } = await supabaseClient
         .from('orders')
-        .upsert(orderData, { onConflict: 'shopify_order_id' })
+        .upsert(orderData, { 
+          onConflict: 'shopify_order_id',
+          // Don't overwrite status, payment_method, payment_status, collected_by if they were set by courier/admin
+          ignoreDuplicates: false
+        })
 
       if (error) {
         console.error(`Error syncing order ${shopifyOrder.id}:`, error)

@@ -256,6 +256,8 @@ const OrdersList: React.FC = () => {
   const storedModifiedOrderIds = useRef<Set<string>>(new Set())
   // Track which order cards have already been animated to prevent re-animation on updates
   const animatedOrderIds = useRef<Set<string>>(new Set())
+  // Track current selectedOrder in ref to access in real-time subscription
+  const selectedOrderRef = useRef<Order | null>(null)
 
   // Routing helpers
   const navigate = useNavigate()
@@ -384,37 +386,58 @@ const OrdersList: React.FC = () => {
     const method = normalizeMethod(order.payment_method)
     const isOrderOriginallyPaidOnline = isOrderPaid(order)
 
+    // Always preserve saved values from the order - only set defaults if values are truly missing
     let initialDeliveryFee = order.delivery_fee?.toString() || ""
     let initialPartialPaidAmount = order.partial_paid_amount?.toString() || ""
     let initialCollectedBy = order.collected_by || ""
     let initialPaymentSubType = order.payment_sub_type || ""
+    let initialInternalComment = order.internal_comment || ""
 
+    // Only reset values for specific statuses when they haven't been saved yet
     if (
       order.status === "return" ||
-      (order.status === "receiving_part" && !order.delivery_fee && !order.partial_paid_amount)
+      (order.status === "receiving_part" && !order.delivery_fee && !order.partial_paid_amount && !order.collected_by)
     ) {
-      initialDeliveryFee = "0"
-      initialPartialPaidAmount = "0"
-      initialCollectedBy = ""
-      initialPaymentSubType = ""
+      // Only reset if values weren't already saved
+      if (!order.delivery_fee && !order.partial_paid_amount) {
+        initialDeliveryFee = "0"
+        initialPartialPaidAmount = "0"
+      }
+      if (!order.collected_by) {
+        initialCollectedBy = ""
+        initialPaymentSubType = ""
+      }
     } else if (isOrderOriginallyPaidOnline && !order.delivery_fee && !order.partial_paid_amount) {
-      initialCollectedBy = method
-      initialPaymentSubType = ""
+      // Only set default if collected_by wasn't already saved
+      if (!order.collected_by) {
+        initialCollectedBy = method
+        initialPaymentSubType = ""
+      }
     } else if (!isOrderOriginallyPaidOnline && !isOrderPaid(order) && order.status !== "canceled") {
-      initialCollectedBy = "courier"
+      // Only set default if collected_by wasn't already saved
+      if (!order.collected_by) {
+        initialCollectedBy = "courier"
+      }
     } else if (order.status === "canceled" && (order.delivery_fee || order.partial_paid_amount)) {
-      initialCollectedBy = "courier"
+      // Only set default if collected_by wasn't already saved
+      if (!order.collected_by) {
+        initialCollectedBy = "courier"
+      }
     } else if (order.status === "canceled" && !order.delivery_fee && !order.partial_paid_amount) {
-      initialCollectedBy = ""
-      initialPaymentSubType = ""
+      // Only reset if values weren't already saved
+      if (!order.collected_by) {
+        initialCollectedBy = ""
+        initialPaymentSubType = ""
+      }
     }
 
     setSelectedOrder(order)
+    selectedOrderRef.current = order
     setUpdateData({
-      status: order.status,
+      status: order.status || "",
       delivery_fee: initialDeliveryFee,
       partial_paid_amount: initialPartialPaidAmount,
-      internal_comment: order.internal_comment || "",
+      internal_comment: initialInternalComment,
       collected_by: initialCollectedBy,
       payment_sub_type: initialPaymentSubType,
     })
@@ -468,6 +491,18 @@ const OrdersList: React.FC = () => {
       })
     }
   }, [modalOpen, cardPosition])
+
+  // Sync form data when selectedOrder changes (e.g., after reload or real-time update)
+  // This ensures saved values are displayed when reopening an order
+  const previousSelectedOrderId = useRef<string | null>(null)
+  useEffect(() => {
+    if (selectedOrder && modalOpen && selectedOrder.id !== previousSelectedOrderId.current) {
+      // Re-initialize form with latest order data to show saved values
+      // Only when order ID actually changes (not on every render)
+      previousSelectedOrderId.current = selectedOrder.id
+      initializeOrderState(selectedOrder)
+    }
+  }, [selectedOrder?.id, modalOpen]) // Only re-run when order ID changes or modal opens
 
   // COMPLETELY DISABLED - Do not scroll modal to top at all
   // This was causing the modal to scroll up when interacting with form elements
@@ -553,6 +588,72 @@ const OrdersList: React.FC = () => {
               const orderIndex = prevOrders.findIndex(o => o.id === payload.new.id)
               if (orderIndex >= 0) {
                 const currentOrder = prevOrders[orderIndex]
+                
+                // CRITICAL: Protect ALL courier edits - never allow status or payment info to be reset
+                // If order has been processed by courier, preserve ALL courier-edited fields
+                const processedStatuses = ['delivered', 'partial', 'canceled', 'return', 'hand_to_hand', 'receiving_part']
+                const isCurrentOrderProcessed = currentOrder.status && processedStatuses.includes(currentOrder.status)
+                const isNewStatusPending = payload.new.status === 'pending' || payload.new.status === 'assigned'
+                
+                // Check if order was edited by courier (has courier-specific data)
+                const hasCourierEdits = currentOrder.delivery_fee || 
+                                       currentOrder.partial_paid_amount || 
+                                       currentOrder.collected_by || 
+                                       currentOrder.payment_sub_type ||
+                                       currentOrder.internal_comment ||
+                                       isCurrentOrderProcessed
+                
+                // Log for debugging
+                if (hasCourierEdits && isNewStatusPending) {
+                  console.log('🛡️ PROTECTING ORDER:', {
+                    orderId: currentOrder.order_id,
+                    currentStatus: currentOrder.status,
+                    attemptedStatus: payload.new.status,
+                    hasDeliveryFee: !!currentOrder.delivery_fee,
+                    hasPartialAmount: !!currentOrder.partial_paid_amount,
+                    collectedBy: currentOrder.collected_by
+                  })
+                }
+                
+                // If order has courier edits, protect ALL courier-edited fields from being overwritten
+                if (hasCourierEdits) {
+                  // Protect status - never downgrade from processed to pending/assigned
+                  if (isCurrentOrderProcessed && isNewStatusPending) {
+                    console.log('⚠️ PROTECTING: Ignoring status downgrade from', currentOrder.status, 'to', payload.new.status, 'for order:', orderId)
+                    payload.new.status = currentOrder.status
+                  }
+                  
+                  // Protect payment info if courier set it
+                  if (currentOrder.collected_by && !payload.new.collected_by) {
+                    console.log('⚠️ PROTECTING: Preserving collected_by:', currentOrder.collected_by, 'for order:', orderId)
+                    payload.new.collected_by = currentOrder.collected_by
+                  }
+                  
+                  if (currentOrder.payment_sub_type && !payload.new.payment_sub_type) {
+                    console.log('⚠️ PROTECTING: Preserving payment_sub_type:', currentOrder.payment_sub_type, 'for order:', orderId)
+                    payload.new.payment_sub_type = currentOrder.payment_sub_type
+                  }
+                  
+                  // Protect delivery fee and partial amount if courier set them
+                  if (currentOrder.delivery_fee && !payload.new.delivery_fee) {
+                    payload.new.delivery_fee = currentOrder.delivery_fee
+                  }
+                  
+                  if (currentOrder.partial_paid_amount && !payload.new.partial_paid_amount) {
+                    payload.new.partial_paid_amount = currentOrder.partial_paid_amount
+                  }
+                  
+                  // Protect internal comment if courier added it
+                  if (currentOrder.internal_comment && !payload.new.internal_comment) {
+                    payload.new.internal_comment = currentOrder.internal_comment
+                  }
+                  
+                  // Protect payment status if courier set it
+                  if (currentOrder.payment_status && currentOrder.payment_status === 'paid' && payload.new.payment_status !== 'paid') {
+                    payload.new.payment_status = currentOrder.payment_status
+                  }
+                }
+                
                 // Only update if there are actual changes to prevent unnecessary re-renders
                 const hasChanges = Object.keys(payload.new).some(key => {
                   const newValue = payload.new[key]
@@ -576,8 +677,23 @@ const OrdersList: React.FC = () => {
                 }
                 
                 // Update existing order smoothly without causing visual glitches
+                // Preserve all courier-edited fields
                 const updatedOrders = [...prevOrders]
-                updatedOrders[orderIndex] = { ...currentOrder, ...payload.new }
+                const updatedOrder = { 
+                  ...currentOrder, 
+                  ...payload.new,
+                  // Ensure status is preserved if it was processed
+                  status: (isCurrentOrderProcessed && isNewStatusPending) ? currentOrder.status : (payload.new.status || currentOrder.status)
+                }
+                updatedOrders[orderIndex] = updatedOrder
+                
+                // If this is the currently selected order, update selectedOrder to show latest values
+                // Use ref to access current selectedOrder without dependency issues
+                if (selectedOrderRef.current && selectedOrderRef.current.id === updatedOrder.id) {
+                  setSelectedOrder(updatedOrder)
+                  selectedOrderRef.current = updatedOrder
+                }
+                
                 return updatedOrders
               }
               // If order not found and it's assigned to this courier, add it
@@ -801,44 +917,63 @@ const OrdersList: React.FC = () => {
       const endDate = new Date(dateToUse)
       endDate.setHours(23, 59, 59, 999)
 
-      // Get orders assigned to this courier on the selected date
-      // Primary filter: assigned_at (when order was assigned to courier)
-      // Fallback: created_at (for legacy rows without assigned_at)
+      // Get orders assigned to this courier on the selected date (based on assigned_at)
+      // Orders appear on the day they were assigned by admin, regardless of when courier edits them
+      // But we fetch the latest version to show any updates (status, payment info, etc.)
       
+      // Step 1: Get order IDs that were assigned on the selected date
       // Primary: assigned_at in range
       const { data: assignedAtOrders, error: assignedAtError } = await supabase
         .from("orders")
-        .select("*")
+        .select("id")
         .eq("assigned_courier_id", user.id)
         .gte("assigned_at", startDate.toISOString())
         .lte("assigned_at", endDate.toISOString())
-        .order("assigned_at", { ascending: false })
 
       // Fallback: created_at in range for rows without assigned_at (legacy)
       const { data: createdAtOrders, error: createdAtError } = await supabase
         .from("orders")
-        .select("*")
+        .select("id")
         .eq("assigned_courier_id", user.id)
         .is("assigned_at", null)
         .gte("created_at", startDate.toISOString())
         .lte("created_at", endDate.toISOString())
-        .order("created_at", { ascending: false })
 
-      // Merge results
-      const orderMap = new Map<string, any>()
-      for (const order of (assignedAtOrders || [])) {
-        orderMap.set(order.id, order)
+      // Collect all order IDs that were assigned on this date
+      const assignedOrderIds = new Set<string>()
+      if (assignedAtOrders) {
+        assignedAtOrders.forEach(order => assignedOrderIds.add(order.id))
+      }
+      if (createdAtOrders) {
+        createdAtOrders.forEach(order => assignedOrderIds.add(order.id))
+      }
+
+      if (assignedAtError) {
+        console.warn("Error fetching assigned_at orders:", assignedAtError)
       }
       if (createdAtError) {
         console.warn("Error fetching created_at fallback orders:", createdAtError)
       }
-      for (const order of (createdAtOrders || [])) {
-        if (!orderMap.has(order.id)) {
-          orderMap.set(order.id, order)
+
+      // Step 2: Fetch the latest version of those orders (to show any updates from other days)
+      // This ensures courier edits (delivered, payment info, etc.) are visible even if made on a different day
+      let allOrders: any[] = []
+      if (assignedOrderIds.size > 0) {
+        const orderIdsArray = Array.from(assignedOrderIds)
+        const { data: latestOrders, error: latestError } = await supabase
+          .from("orders")
+          .select("*")
+          .eq("assigned_courier_id", user.id)
+          .in("id", orderIdsArray)
+          .order("assigned_at", { ascending: false })
+
+        if (latestError) {
+          console.error("Error fetching latest orders:", latestError)
+          allOrders = []
+        } else {
+          allOrders = latestOrders || []
         }
       }
-
-      const allOrders = Array.from(orderMap.values())
 
       // Fetch order_proofs and order_items separately for all order IDs
       if (allOrders.length > 0) {
@@ -902,6 +1037,24 @@ const OrdersList: React.FC = () => {
             order.order_items = itemsMap.get(order.id) || []
           })
         }
+      }
+
+      // Verify orders have correct status (debugging)
+      const ordersWithWrongStatus = allOrders.filter((o: Order) => {
+        const hasCourierEdits = o.delivery_fee || o.partial_paid_amount || o.collected_by || o.payment_sub_type || o.internal_comment
+        const processedStatuses = ['delivered', 'partial', 'canceled', 'return', 'hand_to_hand', 'receiving_part']
+        const isProcessed = o.status && processedStatuses.includes(o.status)
+        // If order has courier edits or is processed, it should NOT be pending
+        return (hasCourierEdits || isProcessed) && o.status === 'pending'
+      })
+      
+      if (ordersWithWrongStatus.length > 0) {
+        console.error('⚠️ WARNING: Found orders with courier edits that have pending status:', ordersWithWrongStatus.map(o => ({
+          order_id: o.order_id,
+          status: o.status,
+          delivery_fee: o.delivery_fee,
+          collected_by: o.collected_by
+        })))
       }
 
       // Sort by order number (numeric part of order_id)
@@ -1623,6 +1776,12 @@ const OrdersList: React.FC = () => {
   const handleSaveUpdate = async () => {
     if (!selectedOrder) return
 
+    // Validate that status is selected
+    if (!updateData.status || updateData.status.trim() === "") {
+      alert("يرجى اختيار حالة الطلب")
+      return
+    }
+
     setSaving(true)
     setUpdatingOrderId(selectedOrder.id)
     
@@ -1635,7 +1794,7 @@ const OrdersList: React.FC = () => {
       const isOrderUnpaid = !isOrderPaid(selectedOrder)
 
       const updatePayload: any = {
-        status: updateData.status,
+        status: updateData.status.trim(), // Ensure status is set and trimmed
         updated_at: new Date().toISOString(),
         // Preserve paid state/method by default (especially for online paid orders)
         payment_status: selectedOrder.payment_status || (isOrderOriginallyPaidOnline ? "paid" : selectedOrder.payment_status),
@@ -1699,11 +1858,23 @@ const OrdersList: React.FC = () => {
             updatePayload.payment_method = "paymob"
             updatePayload.payment_status = "paid"
           } else {
-            // Order is paid, no fees, no payment type change - keep original
-            updatePayload.collected_by = method
+            // Order is paid, no fees, no payment type change - ensure all online payment methods are set to paymob
+            // This ensures delivered orders with online payment methods are counted in paymob orders in dashboard
+            // Check if it's ValU first (separate from Paymob)
+            if (method === "valu" || selectedOrder.payment_method?.toLowerCase().includes("valu")) {
+              updatePayload.collected_by = "valu"
+              updatePayload.payment_method = "valu"
+            } else if (isOrderOriginallyPaidOnline) {
+              // All other online payment methods should be set to paymob for dashboard calculation
+              updatePayload.collected_by = "paymob"
+              updatePayload.payment_method = "paymob"
+            } else {
+              // Not an online payment, keep original method
+              updatePayload.collected_by = method
+              updatePayload.payment_method = selectedOrder.payment_method || method
+            }
             updatePayload.payment_sub_type = null
             updatePayload.payment_status = "paid"
-            updatePayload.payment_method = selectedOrder.payment_method
           }
         } else if (updateData.status === "canceled" && fee > 0) {
           if (!updateData.payment_sub_type) {
@@ -1801,22 +1972,100 @@ const OrdersList: React.FC = () => {
           "paymob": "paymob",
         }
         updatePayload.payment_method = paymentMethodMap[updatePayload.payment_sub_type] || selectedOrder.payment_method
+        // If payment_sub_type is paymob, ensure payment_status is paid
+        if (updatePayload.payment_sub_type === "paymob") {
+          updatePayload.payment_status = "paid"
+        }
       } else if (updatePayload.collected_by && updatePayload.collected_by !== "courier") {
         // For non-courier collection methods, map to payment_method
+        // All online payment methods should be set to paymob (except valu which is separate)
         const collectionMethodMap: Record<string, string> = {
           "paymob": "paymob",
           "valu": "valu",
-          "fawry": "paid",
-          "instapay": "instapay",
-          "vodafone_cash": "paid",
-          "orange_cash": "paid",
-          "we_pay": "paid",
+          "fawry": "paymob", // All online methods should be paymob
+          "instapay": "paymob", // All online methods should be paymob
+          "vodafone_cash": "paymob", // All online methods should be paymob
+          "orange_cash": "paymob", // All online methods should be paymob
+          "we_pay": "paymob", // All online methods should be paymob
         }
         updatePayload.payment_method = collectionMethodMap[updatePayload.collected_by] || selectedOrder.payment_method
+        // Ensure payment_status is set to "paid" for all online payment methods
+        if (updatePayload.collected_by === "paymob" || updatePayload.collected_by === "valu") {
+          updatePayload.payment_status = "paid"
+        } else if (["fawry", "instapay", "vodafone_cash", "orange_cash", "we_pay"].includes(updatePayload.collected_by)) {
+          // All these online methods should be set to paymob and paid
+          updatePayload.payment_method = "paymob"
+          updatePayload.collected_by = "paymob"
+          updatePayload.payment_status = "paid"
+        }
       } else if (!updatePayload.collected_by && !updatePayload.payment_sub_type) {
         // If both are cleared, keep original payment_method (don't change it)
         // This ensures that if courier/admin clears payment type, we don't accidentally change payment_method
       }
+
+      // Final check: If order is marked as delivered and has an online payment method,
+      // ensure it's set to paymob (except valu) so it's counted in dashboard
+      if (updatePayload.status === "delivered" && isOrderOriginallyPaidOnline) {
+        // If it's ValU, keep it as valu
+        if (method === "valu" || selectedOrder.payment_method?.toLowerCase().includes("valu")) {
+          if (!updatePayload.collected_by) {
+            updatePayload.collected_by = "valu"
+            updatePayload.payment_method = "valu"
+          }
+        } else {
+          // All other online payment methods should be paymob
+          if (!updatePayload.collected_by || (updatePayload.collected_by !== "valu" && updatePayload.collected_by !== "courier")) {
+            updatePayload.collected_by = "paymob"
+            updatePayload.payment_method = "paymob"
+          }
+        }
+        updatePayload.payment_status = "paid"
+      }
+
+      // CRITICAL: Ensure status is always set and never reset to pending if courier has processed the order
+      // Check if courier has edited this order
+      const hasCourierEdits = selectedOrder.delivery_fee || 
+                             selectedOrder.partial_paid_amount || 
+                             selectedOrder.collected_by || 
+                             selectedOrder.payment_sub_type ||
+                             selectedOrder.internal_comment ||
+                             (selectedOrder.status && selectedOrder.status !== 'pending' && selectedOrder.status !== 'assigned')
+      
+      if (!updatePayload.status || updatePayload.status.trim() === "") {
+        // Status is empty - use the one from form or existing order
+        const newStatus = updateData.status || selectedOrder.status
+        if (newStatus && newStatus.trim() !== "") {
+          updatePayload.status = newStatus
+        } else if (hasCourierEdits) {
+          // If order has courier edits but status is somehow empty, preserve the existing status
+          console.warn("⚠️ Status is empty but order has courier edits - preserving existing status:", selectedOrder.status)
+          updatePayload.status = selectedOrder.status || "assigned"
+        } else {
+          // Only set to pending if order has no courier edits
+          updatePayload.status = "pending"
+        }
+      } else {
+        // Status is set - but protect against downgrades if order has courier edits
+        const processedStatuses = ['delivered', 'partial', 'canceled', 'return', 'hand_to_hand', 'receiving_part']
+        const currentIsProcessed = selectedOrder.status && processedStatuses.includes(selectedOrder.status)
+        const newIsPending = updatePayload.status === 'pending' || updatePayload.status === 'assigned'
+        
+        if (hasCourierEdits && currentIsProcessed && newIsPending) {
+          console.warn("⚠️ BLOCKED: Attempted to reset processed order to pending - preserving:", selectedOrder.status)
+          updatePayload.status = selectedOrder.status
+        }
+      }
+
+      // Log the update payload for debugging
+      console.log("💾 Saving order with payload:", {
+        order_id: selectedOrder.order_id,
+        status: updatePayload.status,
+        previous_status: selectedOrder.status,
+        payment_method: updatePayload.payment_method,
+        payment_status: updatePayload.payment_status,
+        collected_by: updatePayload.collected_by,
+        hasCourierEdits: hasCourierEdits
+      })
 
       // Mark this order as recently updated to prevent real-time subscription from causing double updates
       recentlyUpdatedOrderIds.current.add(selectedOrder.id)
@@ -1841,8 +2090,40 @@ const OrdersList: React.FC = () => {
       document.body.style.overflow = ''
       document.documentElement.style.overflow = ''
 
-      // Then update the database
-      const { error } = await supabase.from("orders").update(updatePayload).eq("id", selectedOrder.id)
+      // Then update the database - ensure status is included and protected
+      // CRITICAL: Never reset status to pending if courier has processed the order
+      let finalStatus = updatePayload.status
+      if (!finalStatus || finalStatus.trim() === "") {
+        finalStatus = updateData.status || selectedOrder.status
+      }
+      
+      // Final protection: if order has courier edits, never set to pending
+      if (hasCourierEdits) {
+        const processedStatuses = ['delivered', 'partial', 'canceled', 'return', 'hand_to_hand', 'receiving_part']
+        const currentIsProcessed = selectedOrder.status && processedStatuses.includes(selectedOrder.status)
+        if (currentIsProcessed && (finalStatus === 'pending' || finalStatus === 'assigned')) {
+          console.warn("🛡️ FINAL PROTECTION: Preventing status reset to", finalStatus, "- keeping:", selectedOrder.status)
+          finalStatus = selectedOrder.status
+        }
+      }
+      
+      // Only use "pending" as last resort if order truly has no status and no courier edits
+      if (!finalStatus || finalStatus.trim() === "") {
+        finalStatus = hasCourierEdits ? (selectedOrder.status || "assigned") : "pending"
+      }
+      
+      const finalUpdatePayload = {
+        ...updatePayload,
+        status: finalStatus
+      }
+      
+      console.log("💾 Final database update:", {
+        order_id: selectedOrder.order_id,
+        final_status: finalStatus,
+        all_fields: Object.keys(finalUpdatePayload)
+      })
+      
+      const { error } = await supabase.from("orders").update(finalUpdatePayload).eq("id", selectedOrder.id)
 
       if (error) {
         // Rollback on error
@@ -4369,7 +4650,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
             
             {/* Large Image */}
             <img
-              src={selectedImage || "/placeholder.svg"}
+              src={selectedImage}
               alt="Product Image"
               className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
               onClick={(e) => e.stopPropagation()}

@@ -1,3 +1,4 @@
+/// <reference path="../deno.d.ts" />
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 
@@ -44,19 +45,42 @@ Deno.serve(async (req: Request) => {
         paymentMethods.push('gift_card')
       }
       
-      if (gatewayLower.includes('paymob') || gatewayLower.includes('pay mob')) {
-        if (!paymentMethods.includes('paymob')) paymentMethods.push('paymob')
-      }
+      // Check for ValU (separate from Paymob)
       if (gatewayLower.includes('valu')) {
         if (!paymentMethods.includes('valu')) paymentMethods.push('valu')
       }
-      if (gatewayLower.includes('card') || gatewayLower.includes('stripe')) {
-        if (!paymentMethods.includes('paid')) paymentMethods.push('paid')
+      
+      // All card and online payment methods should be normalized to 'paymob'
+      // This includes: paymob, card, visa, mastercard, credit, debit, sohoola, sympl, tru, stripe, etc.
+      const isOnlinePayment = 
+        gatewayLower.includes('paymob') || 
+        gatewayLower.includes('pay mob') ||
+        gatewayLower.includes('card') ||
+        gatewayLower.includes('visa') ||
+        gatewayLower.includes('mastercard') ||
+        gatewayLower.includes('master card') ||
+        gatewayLower.includes('credit') ||
+        gatewayLower.includes('debit') ||
+        gatewayLower.includes('sohoola') ||
+        gatewayLower.includes('sympl') ||
+        gatewayLower.includes('tru') ||
+        gatewayLower.includes('stripe') ||
+        gatewayLower.includes('paypal') ||
+        gatewayLower.includes('square') ||
+        gatewayLower.includes('razorpay')
+      
+      if (isOnlinePayment) {
+        if (!paymentMethods.includes('paymob')) paymentMethods.push('paymob')
       }
 
       // Determine payment status
+      // Paymob, Valu, and all online payment methods are always paid, regardless of financial_status
       let paymentStatus = 'cod'
-      if (statusLower.includes('paid') && !isPartiallyPaid) {
+      if (gatewayLower.includes('valu')) {
+        paymentStatus = 'paid'
+      } else if (isOnlinePayment) {
+        paymentStatus = 'paid'
+      } else if (statusLower.includes('paid') && !isPartiallyPaid) {
         paymentStatus = 'paid'
       } else if (isPartiallyPaid) {
         paymentStatus = 'partially_paid'
@@ -84,8 +108,14 @@ Deno.serve(async (req: Request) => {
     // Get payment transactions (for gift cards and partial payments)
     const transactions = shopifyOrder.payment_transactions || []
     
+    // Check both gateway and payment_gateway_names for payment method detection
+    const gatewayString = shopifyOrder.gateway || 
+                         shopifyOrder.payment_gateway_names?.[0] || 
+                         (Array.isArray(shopifyOrder.payment_gateway_names) ? shopifyOrder.payment_gateway_names.join(' ') : '') ||
+                         ''
+    
     const paymentInfo = normalizePayment(
-      shopifyOrder.gateway || shopifyOrder.payment_gateway_names?.[0],
+      gatewayString,
       shopifyOrder.financial_status,
       transactions
     )
@@ -167,62 +197,11 @@ Deno.serve(async (req: Request) => {
       return imageUrl
     }
 
-    // Prepare order data
-    const isCanceled = !!shopifyOrder.cancelled_at
-
-    const orderData = {
-      shopify_order_id: shopifyOrder.id,
-      order_id: shopifyOrder.name || shopifyOrder.order_number?.toString() || shopifyOrder.id?.toString(),
-      order_name: shopifyOrder.name,
-      order_number: shopifyOrder.order_number?.toString(),
-      status: isCanceled ? 'canceled' : 'pending',
-      financial_status: shopifyOrder.financial_status || paymentInfo.status,
-      fulfillment_status: shopifyOrder.fulfillment_status,
-      // Use current_total_price for edited orders, fallback to total_price
-      total_price: parseFloat(shopifyOrder.current_total_price || shopifyOrder.total_price || 0),
-      subtotal_price: parseFloat(shopifyOrder.current_subtotal_price || shopifyOrder.subtotal_price || 0),
-      total_tax: parseFloat(shopifyOrder.current_total_tax || shopifyOrder.total_tax || 0),
-      total_discounts: parseFloat(shopifyOrder.current_total_discounts || shopifyOrder.total_discounts || 0),
-      total_shipping_price: parseFloat(shopifyOrder.total_shipping_price_set?.shop_money?.amount || shopifyOrder.total_shipping_price_set?.amount || 0),
-      currency: shopifyOrder.currency || 'EGP',
-      customer_name: shippingAddress.name || billingAddress.name || `${customer.first_name || ''} ${customer.last_name || ''}`.trim() || 'Unknown',
-      customer_email: customer.email || shopifyOrder.email,
-      customer_phone: shippingAddress.phone || billingAddress.phone || customer.phone || 'N/A',
-      customer_id: customer.id,
-      address: shippingAddress.address1 || shippingAddress.address2 || billingAddress.address1 || 'N/A',
-      shipping_address: shippingAddress,
-      billing_address: billingAddress,
-      billing_city: billingAddress.city,
-      shipping_city: shippingAddress.city,
-      payment_method: paymentInfo.method,
-      payment_status: paymentInfo.status,
-      payment_gateway_names: shopifyOrder.payment_gateway_names || [],
-      // Store payment transactions for gift cards and partial payments
-      payment_transactions: transactions.length > 0 ? JSON.stringify(transactions) : null,
-      shipping_method: shopifyOrder.shipping_lines?.[0]?.title,
-      tracking_number: shopifyOrder.fulfillments?.[0]?.tracking_number,
-      tracking_url: shopifyOrder.fulfillments?.[0]?.tracking_url,
-      line_items: shopifyOrder.line_items || [],
-      product_images: (shopifyOrder.line_items || []).map((item: any) => ({
-        product_id: item.product_id,
-        variant_id: item.variant_id,
-        image: extractImageUrl(item),
-        title: item.title,
-      })),
-      order_tags: shopifyOrder.tags ? shopifyOrder.tags.split(',').map((t: string) => t.trim()) : [],
-      order_note: shopifyOrder.note,
-      customer_note: shopifyOrder.customer_note,
-      notes: shopifyOrder.note || shopifyOrder.customer_note || '',
-      shopify_created_at: shopifyOrder.created_at ? new Date(shopifyOrder.created_at).toISOString() : null,
-      shopify_updated_at: shopifyOrder.updated_at ? new Date(shopifyOrder.updated_at).toISOString() : null,
-      shopify_cancelled_at: shopifyOrder.cancelled_at ? new Date(shopifyOrder.cancelled_at).toISOString() : null,
-      updated_at: new Date().toISOString(),
-    }
-
     // Check if order already exists in main orders table
+    // Fetch ALL fields to check for courier edits
     const { data: existingMain } = await supabaseClient
       .from('orders')
-      .select('id, status, assigned_courier_id, line_items')
+      .select('id, status, assigned_courier_id, line_items, delivery_fee, partial_paid_amount, collected_by, payment_sub_type, internal_comment, payment_status, payment_method')
       .eq('shopify_order_id', shopifyOrder.id)
       .maybeSingle()
 
@@ -260,13 +239,14 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // Prepare order data
+    // Prepare order data (after processing line items)
+    const isCanceled = !!shopifyOrder.cancelled_at
     const orderData = {
       shopify_order_id: shopifyOrder.id,
       order_id: shopifyOrder.name || shopifyOrder.order_number?.toString() || shopifyOrder.id?.toString(),
       order_name: shopifyOrder.name,
       order_number: shopifyOrder.order_number?.toString(),
-      status: 'pending',
+      status: isCanceled ? 'canceled' : 'pending',
       financial_status: shopifyOrder.financial_status || paymentInfo.status,
       fulfillment_status: shopifyOrder.fulfillment_status,
       // Use current_total_price for edited orders, fallback to total_price
@@ -334,14 +314,19 @@ Deno.serve(async (req: Request) => {
     }
 
     if (existingMain) {
-      // Update existing order - preserve certain fields if already managed by courier
+      // Check if order has courier edits - protect ALL courier-edited fields
+      const hasCourierEdits = existingMain.delivery_fee || 
+                             existingMain.partial_paid_amount || 
+                             existingMain.collected_by || 
+                             existingMain.payment_sub_type ||
+                             existingMain.internal_comment ||
+                             (existingMain.status && existingMain.status !== 'pending' && existingMain.status !== 'assigned')
+      
+      // Update existing order - preserve ALL courier-edited fields
       const updateData: any = {
         shopify_updated_at: orderData.shopify_updated_at,
         shopify_cancelled_at: orderData.shopify_cancelled_at,
         financial_status: orderData.financial_status,
-        payment_status: orderData.payment_status,
-        payment_method: orderData.payment_method,
-        payment_gateway_names: orderData.payment_gateway_names,
         fulfillment_status: orderData.fulfillment_status,
         // IMPORTANT: Preserve manually edited total_order_fees if it differs from Shopify
         total_order_fees: (() => {
@@ -363,9 +348,54 @@ Deno.serve(async (req: Request) => {
         updated_at: new Date().toISOString()
       }
 
-      // Only update status to canceled if it's canceled in Shopify
-      if (orderData.shopify_cancelled_at) {
-        updateData.status = 'canceled'
+      // CRITICAL: Protect ALL courier-edited fields
+      if (hasCourierEdits) {
+        // Protect status - never reset to pending if courier has processed the order
+        const processedStatuses = ['delivered', 'partial', 'canceled', 'return', 'hand_to_hand', 'receiving_part']
+        const isProcessed = existingMain.status && processedStatuses.includes(existingMain.status)
+        
+        if (orderData.shopify_cancelled_at) {
+          // Only set to canceled if it's not already processed by courier
+          if (!isProcessed && !existingMain.assigned_courier_id) {
+            updateData.status = 'canceled'
+          } else {
+            updateData.status = existingMain.status
+          }
+        } else {
+          // Always preserve status if courier has edited the order
+          updateData.status = existingMain.status
+        }
+        
+        // Protect payment info
+        updateData.payment_method = existingMain.payment_method || orderData.payment_method
+        updateData.payment_status = existingMain.payment_status || orderData.payment_status
+        updateData.collected_by = existingMain.collected_by
+        updateData.payment_sub_type = existingMain.payment_sub_type
+        updateData.delivery_fee = existingMain.delivery_fee
+        updateData.partial_paid_amount = existingMain.partial_paid_amount
+        updateData.internal_comment = existingMain.internal_comment
+        updateData.payment_gateway_names = existingMain.payment_gateway_names || orderData.payment_gateway_names
+        
+        console.log(`🔒 PROTECTING courier edits for order ${shopifyOrder.id}: status=${existingMain.status}, collected_by=${existingMain.collected_by}`)
+      } else {
+        // No courier edits yet - allow Shopify to set payment info
+        updateData.payment_status = orderData.payment_status
+        updateData.payment_method = orderData.payment_method
+        updateData.payment_gateway_names = orderData.payment_gateway_names
+        
+        // Only update status to canceled if it's canceled in Shopify
+        if (orderData.shopify_cancelled_at) {
+          if (!existingMain.assigned_courier_id) {
+            updateData.status = 'canceled'
+          } else {
+            updateData.status = existingMain.status
+          }
+        } else {
+          // If not canceled in Shopify, preserve existing status if order has been assigned
+          if (existingMain.assigned_courier_id || (existingMain.status && existingMain.status !== 'pending')) {
+            updateData.status = existingMain.status
+          }
+        }
       }
 
       await supabaseClient
@@ -373,10 +403,55 @@ Deno.serve(async (req: Request) => {
         .update(updateData)
         .eq('id', existingMain.id)
     } else {
-      // Insert new order
-      await supabaseClient
+      // Insert new order - only if it doesn't exist
+      // Use upsert but check if order exists first to avoid overwriting courier edits
+      const { data: checkExisting } = await supabaseClient
         .from('orders')
-        .upsert(mainOrderData, { onConflict: 'shopify_order_id' })
+        .select('id, status, delivery_fee, partial_paid_amount, collected_by, payment_sub_type, internal_comment')
+        .eq('shopify_order_id', shopifyOrder.id)
+        .maybeSingle()
+      
+      if (checkExisting) {
+        // Order exists but wasn't found in first query - protect courier edits
+        const hasCourierEdits = checkExisting.delivery_fee || 
+                               checkExisting.partial_paid_amount || 
+                               checkExisting.collected_by || 
+                               checkExisting.payment_sub_type ||
+                               checkExisting.internal_comment ||
+                               (checkExisting.status && checkExisting.status !== 'pending' && checkExisting.status !== 'assigned')
+        
+        if (hasCourierEdits) {
+          // Protect courier edits - only update Shopify metadata
+          const protectedUpdate: any = {
+            shopify_updated_at: orderData.shopify_updated_at,
+            shopify_cancelled_at: orderData.shopify_cancelled_at,
+            financial_status: orderData.financial_status,
+            fulfillment_status: orderData.fulfillment_status,
+            total_order_fees: orderData.total_price,
+            subtotal_price: orderData.subtotal_price,
+            total_tax: orderData.total_tax,
+            total_discounts: orderData.total_discounts,
+            line_items: orderData.line_items,
+            product_images: orderData.product_images,
+            updated_at: new Date().toISOString()
+          }
+          // Don't update status or courier-edited fields
+          await supabaseClient
+            .from('orders')
+            .update(protectedUpdate)
+            .eq('id', checkExisting.id)
+        } else {
+          // No courier edits - safe to upsert
+          await supabaseClient
+            .from('orders')
+            .upsert(mainOrderData, { onConflict: 'shopify_order_id' })
+        }
+      } else {
+        // Truly new order - safe to insert
+        await supabaseClient
+          .from('orders')
+          .upsert(mainOrderData, { onConflict: 'shopify_order_id' })
+      }
     }
 
     // Sync order items to BOTH tables

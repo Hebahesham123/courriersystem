@@ -54,27 +54,50 @@ const normalizePayment = (paymentGateway, financialStatus, transactions = []) =>
     paymentMethods.push('gift_card');
   }
   
-  // Check for Paymob
-  if (gateway.includes('paymob') || gateway.includes('pay mob')) {
-    if (!paymentMethods.includes('paymob')) paymentMethods.push('paymob');
-  }
-  if (gateway.includes('visa') || gateway.includes('credit') || gateway.includes('mastercard')) {
-    if (!paymentMethods.includes('paymob')) paymentMethods.push('paymob');
-  }
-
-  // Check for ValU
+  // Check for ValU (separate from Paymob)
   if (gateway.includes('valu')) {
     if (!paymentMethods.includes('valu')) paymentMethods.push('valu');
   }
-
-  // Check for other online payment methods
-  if (gateway.includes('card') || gateway.includes('stripe') || gateway.includes('paypal')) {
-    if (!paymentMethods.includes('paid')) paymentMethods.push('paid');
+  
+  // All card and online payment methods should be normalized to 'paymob'
+  // This includes: paymob, card, visa, mastercard, credit, debit, sohoola, sympl, tru, stripe, paypal, etc.
+  const isOnlinePayment = 
+    gateway.includes('paymob') || 
+    gateway.includes('pay mob') ||
+    gateway.includes('card') ||
+    gateway.includes('visa') ||
+    gateway.includes('mastercard') ||
+    gateway.includes('master card') ||
+    gateway.includes('credit') ||
+    gateway.includes('debit') ||
+    gateway.includes('sohoola') ||
+    gateway.includes('sympl') ||
+    gateway.includes('tru') ||
+    gateway.includes('stripe') ||
+    gateway.includes('paypal') ||
+    gateway.includes('square') ||
+    gateway.includes('razorpay') ||
+    gateway.includes('fawry') ||
+    gateway.includes('instapay') ||
+    gateway.includes('vodafone cash') ||
+    gateway.includes('vodafonecash') ||
+    gateway.includes('orange cash') ||
+    gateway.includes('orangecash') ||
+    gateway.includes('we pay') ||
+    gateway.includes('wepay');
+  
+  if (isOnlinePayment) {
+    if (!paymentMethods.includes('paymob')) paymentMethods.push('paymob');
   }
 
   // Determine payment status
+  // Paymob, Valu, and all online payment methods are always paid, regardless of financial_status
   let paymentStatus = 'cod';
-  if (status.includes('paid') && !isPartiallyPaid) {
+  if (gateway.includes('valu')) {
+    paymentStatus = 'paid';
+  } else if (isOnlinePayment) {
+    paymentStatus = 'paid';
+  } else if (status.includes('paid') && !isPartiallyPaid) {
     paymentStatus = 'paid';
   } else if (isPartiallyPaid) {
     paymentStatus = 'partially_paid';
@@ -1063,16 +1086,84 @@ async function syncShopifyOrders(updatedAtMin = null) {
             total_paid: dbOrder.total_paid,
             
             // Payment
-            // Always take Shopify payment fields when canceled; otherwise protect if courier already handled
-            payment_method: (dbOrder.status === 'canceled')
-              ? dbOrder.payment_method
-              : ((existing.status === 'pending' || !existing.status) ? dbOrder.payment_method : (existing.payment_method || dbOrder.payment_method)),
-            payment_status: (dbOrder.status === 'canceled')
-              ? (dbOrder.payment_status || 'cancelled')
-              : ((existing.status === 'pending' || !existing.status) ? dbOrder.payment_status : (existing.payment_status || dbOrder.payment_status)),
+            // CRITICAL: Protect ALL courier edits - never overwrite what courier has set
+            // Check if order has courier edits (delivery_fee, partial_paid_amount, collected_by, etc.)
+            payment_method: (() => {
+              const hasCourierEdits = existing.delivery_fee || 
+                                     existing.partial_paid_amount || 
+                                     existing.collected_by || 
+                                     existing.payment_sub_type ||
+                                     existing.internal_comment ||
+                                     (existing.status && existing.status !== 'pending' && existing.status !== 'assigned')
+              if (dbOrder.status === 'canceled') return dbOrder.payment_method
+              if (hasCourierEdits && existing.payment_method) return existing.payment_method
+              return (existing.status === 'pending' || !existing.status) ? dbOrder.payment_method : (existing.payment_method || dbOrder.payment_method)
+            })(),
+            payment_status: (() => {
+              const hasCourierEdits = existing.delivery_fee || 
+                                     existing.partial_paid_amount || 
+                                     existing.collected_by || 
+                                     existing.payment_sub_type ||
+                                     existing.internal_comment ||
+                                     (existing.status && existing.status !== 'pending' && existing.status !== 'assigned')
+              if (dbOrder.status === 'canceled') return (dbOrder.payment_status || 'cancelled')
+              if (hasCourierEdits && existing.payment_status) return existing.payment_status
+              return (existing.status === 'pending' || !existing.status) ? dbOrder.payment_status : (existing.payment_status || dbOrder.payment_status)
+            })(),
             financial_status: (dbOrder.status === 'canceled')
               ? (dbOrder.financial_status || 'voided')
               : ((existing.status === 'pending' || !existing.status) ? dbOrder.financial_status : (existing.financial_status || dbOrder.financial_status)),
+            // Preserve ALL courier-edited fields
+            collected_by: (() => {
+              const hasCourierEdits = existing.delivery_fee || 
+                                     existing.partial_paid_amount || 
+                                     existing.collected_by || 
+                                     existing.payment_sub_type ||
+                                     existing.internal_comment ||
+                                     (existing.status && existing.status !== 'pending' && existing.status !== 'assigned')
+              if (hasCourierEdits && existing.collected_by) return existing.collected_by
+              return (existing.collected_by || dbOrder.collected_by)
+            })(),
+            payment_sub_type: (() => {
+              const hasCourierEdits = existing.delivery_fee || 
+                                     existing.partial_paid_amount || 
+                                     existing.collected_by || 
+                                     existing.payment_sub_type ||
+                                     existing.internal_comment ||
+                                     (existing.status && existing.status !== 'pending' && existing.status !== 'assigned')
+              if (hasCourierEdits && existing.payment_sub_type) return existing.payment_sub_type
+              return (existing.payment_sub_type || dbOrder.payment_sub_type)
+            })(),
+            delivery_fee: (() => {
+              const hasCourierEdits = existing.delivery_fee || 
+                                     existing.partial_paid_amount || 
+                                     existing.collected_by || 
+                                     existing.payment_sub_type ||
+                                     existing.internal_comment ||
+                                     (existing.status && existing.status !== 'pending' && existing.status !== 'assigned')
+              if (hasCourierEdits && existing.delivery_fee) return existing.delivery_fee
+              return (existing.delivery_fee || dbOrder.delivery_fee)
+            })(),
+            partial_paid_amount: (() => {
+              const hasCourierEdits = existing.delivery_fee || 
+                                     existing.partial_paid_amount || 
+                                     existing.collected_by || 
+                                     existing.payment_sub_type ||
+                                     existing.internal_comment ||
+                                     (existing.status && existing.status !== 'pending' && existing.status !== 'assigned')
+              if (hasCourierEdits && existing.partial_paid_amount) return existing.partial_paid_amount
+              return (existing.partial_paid_amount || dbOrder.partial_paid_amount)
+            })(),
+            internal_comment: (() => {
+              const hasCourierEdits = existing.delivery_fee || 
+                                     existing.partial_paid_amount || 
+                                     existing.collected_by || 
+                                     existing.payment_sub_type ||
+                                     existing.internal_comment ||
+                                     (existing.status && existing.status !== 'pending' && existing.status !== 'assigned')
+              if (hasCourierEdits && existing.internal_comment) return existing.internal_comment
+              return (existing.internal_comment || dbOrder.internal_comment)
+            })(),
             payment_gateway_names: dbOrder.payment_gateway_names,
             
             // Shipping
@@ -1092,11 +1183,15 @@ async function syncShopifyOrders(updatedAtMin = null) {
             notes: dbOrder.notes,
             
             // Status - update if order is canceled in Shopify
-            // IMPORTANT: Only reset to 'pending' if the current status is 'pending' or null
-            // This prevents overwriting courier updates (delivered, partial, assigned, etc.)
-            status: dbOrder.status === 'canceled' 
-              ? 'canceled' 
-              : (existing.status === 'pending' || !existing.status ? 'pending' : existing.status),
+            // IMPORTANT: Preserve all processed statuses - never reset delivered/partial/etc. to pending
+            // Processed statuses should never be overwritten by Shopify sync
+            status: (() => {
+              const processedStatuses = ['delivered', 'partial', 'canceled', 'return', 'hand_to_hand', 'receiving_part', 'assigned']
+              const isExistingProcessed = existing.status && processedStatuses.includes(existing.status)
+              if (dbOrder.status === 'canceled') return 'canceled'
+              if (isExistingProcessed) return existing.status
+              return (existing.status === 'pending' || !existing.status ? 'pending' : existing.status)
+            })(),
             
             // Archived - update if order is archived in Shopify
             archived: dbOrder.archived, // This will be true if order is closed/fulfilled in Shopify

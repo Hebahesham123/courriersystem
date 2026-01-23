@@ -573,7 +573,9 @@ const Summary: React.FC = () => {
 
         if (selectedCourier) {
           // If a courier is selected, fetch all their orders for the date range
-          console.log('Fetching orders for selection (matching assigned date):', selectedCourier.courierName)
+          // Include orders that were assigned, created, OR updated in the date range
+          // This ensures courier updates (delivered, payment info, etc.) appear in dashboard
+          console.log('Fetching orders for selection (matching assigned/created/updated date):', selectedCourier.courierName)
           
           const isTotal = selectedCourier.courierId === 'total'
           
@@ -616,16 +618,42 @@ const Summary: React.FC = () => {
           
           const { data: legacyData, error: legacyError } = await queryLegacy
           
-          if (assignedError || legacyError) {
-            console.error('Error fetching admin summary orders:', assignedError || legacyError)
+          // Also fetch orders that were updated in the date range (to include courier updates)
+          // This ensures orders updated by courier (delivered, payment info, etc.) appear
+          let queryUpdated = supabase
+            .from("orders")
+            .select(`
+              *,
+              order_proofs (id, image_data),
+              assigned_courier:users!orders_assigned_courier_id_fkey(id, name, email)
+            `)
+            .gte("updated_at", startDateISO)
+            .lte("updated_at", endDateISO)
+
+          if (!isTotal) {
+            queryUpdated = queryUpdated.or(`assigned_courier_id.eq.${selectedCourier.courierId},original_courier_id.eq.${selectedCourier.courierId}`)
+          } else {
+            queryUpdated = queryUpdated.not("assigned_courier_id", "is", null)
+          }
+          
+          const { data: updatedData, error: updatedError } = await queryUpdated
+          
+          if (assignedError || legacyError || updatedError) {
+            console.error('Error fetching admin summary orders:', assignedError || legacyError || updatedError)
             orders = []
           } else {
-            // Merge both results, removing duplicates
+            // Merge all results, removing duplicates
             const orderMap = new Map<string, any>()
             for (const order of (assignedAtData || [])) {
               orderMap.set(order.id, order)
             }
             for (const order of (legacyData || [])) {
+              if (!orderMap.has(order.id)) {
+                orderMap.set(order.id, order)
+              }
+            }
+            // Add orders that were updated (courier changes)
+            for (const order of (updatedData || [])) {
               if (!orderMap.has(order.id)) {
                 orderMap.set(order.id, order)
               }
@@ -639,11 +667,12 @@ const Summary: React.FC = () => {
             })) as Order[]
           }
           
-          console.log(`Found ${orders.length} orders for admin selection in date range (by assigned date)`)
+          console.log(`Found ${orders.length} orders for admin selection in date range (by assigned/created/updated date)`)
           
         } else if (showAnalytics) {
           // If showing analytics, fetch ALL orders from ALL couriers for the date range
-          console.log('Fetching ALL assigned orders for analytics (by assigned date)')
+          // Include orders that were assigned, created, OR updated in the date range
+          console.log('Fetching ALL assigned orders for analytics (by assigned/created/updated date)')
           
           // Fetch by assigned_at
           const { data: assignedAtData, error: assignedError } = await supabase
@@ -670,16 +699,34 @@ const Summary: React.FC = () => {
             .gte("created_at", startDateISO)
             .lte("created_at", endDateISO)
           
-          if (assignedError || legacyError) {
-            console.error('Error fetching all analytics orders:', assignedError || legacyError)
+          // Also fetch orders that were updated in the date range (to include courier updates)
+          const { data: updatedData, error: updatedError } = await supabase
+            .from("orders")
+            .select(`
+              *,
+              order_proofs (id, image_data),
+              assigned_courier:users!orders_assigned_courier_id_fkey(id, name, email)
+            `)
+            .not("assigned_courier_id", "is", null)
+            .gte("updated_at", startDateISO)
+            .lte("updated_at", endDateISO)
+          
+          if (assignedError || legacyError || updatedError) {
+            console.error('Error fetching all analytics orders:', assignedError || legacyError || updatedError)
             orders = []
           } else {
-            // Merge results
+            // Merge all results, removing duplicates
             const orderMap = new Map<string, any>()
             for (const order of (assignedAtData || [])) {
               orderMap.set(order.id, order)
             }
             for (const order of (legacyData || [])) {
+              if (!orderMap.has(order.id)) {
+                orderMap.set(order.id, order)
+              }
+            }
+            // Add orders that were updated (courier changes)
+            for (const order of (updatedData || [])) {
               if (!orderMap.has(order.id)) {
                 orderMap.set(order.id, order)
               }
@@ -1559,9 +1606,35 @@ const Summary: React.FC = () => {
           // Use normalized payment method for non-onther orders
           const normalized = normalizePaymentMethod(sourceMethod)
           const amt = getTotalCourierAmount(o)
+          
+          // For Paymob/Valu orders that are delivered and were paid from Shopify:
+          // Include them even if amount is 0 (they were already paid online)
+          // Check payment_method, collected_by, and normalized method
+          const paymentMethodLower = (o.payment_method || '').toLowerCase()
+          const collectedByLower = (o.collected_by || '').toLowerCase()
+          const isPaymob = normalized === 'paymob' || 
+                          paymentMethodLower.includes('paymob') || 
+                          collectedByLower === 'paymob'
+          const isValu = normalized === 'valu' || 
+                        paymentMethodLower.includes('valu') || 
+                        collectedByLower === 'valu'
+          const isPaymobValu = isPaymob || isValu
+          
+          // If order is delivered and is Paymob/Valu, include it even with 0 amount
+          const isPaymobValuDelivered = isPaymobValu && o.status === 'delivered'
+          
           // Include cash on hand orders even if amount is 0 or negative (they represent collected cash)
-          if (amt > 0 || normalized === 'on_hand') {
-            result.push({ order: o, method: normalized, amount: amt })
+          // Include Paymob/Valu delivered orders even if amount is 0 (they were paid online)
+          if (amt > 0 || normalized === 'on_hand' || isPaymobValuDelivered) {
+            // For Paymob/Valu delivered orders with 0 amount, use order total (they were already paid)
+            const finalAmount = isPaymobValuDelivered && amt === 0 
+              ? toNumber(o.total_order_fees) 
+              : amt
+            // Determine the correct method (paymob or valu)
+            const finalMethod = isPaymobValuDelivered 
+              ? (isValu ? 'valu' : 'paymob')  // Prefer valu if both match, otherwise paymob
+              : normalized
+            result.push({ order: o, method: finalMethod, amount: finalAmount })
           }
         }
       }
