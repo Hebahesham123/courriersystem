@@ -448,7 +448,26 @@ Deno.serve(async (req: Request) => {
           internal_comment: (hasCourierEdits && existing.internal_comment)
             ? existing.internal_comment
             : (existing.internal_comment || orderData.internal_comment),
-          // DON'T update: status, assigned_courier_id, updated_at - these are managed by the courier system
+          // Status: Always respect Shopify cancellation, but protect other courier-edited statuses
+          status: (() => {
+            // ALWAYS respect Shopify cancellation - it's a Shopify action
+            if (orderData.shopify_cancelled_at) {
+              return 'canceled'
+            }
+            // Protect courier-processed statuses from being reset to pending
+            const processedStatuses = ['delivered', 'partial', 'return', 'hand_to_hand', 'receiving_part']
+            const isProcessed = existing.status && processedStatuses.includes(existing.status)
+            if (isProcessed) {
+              return existing.status
+            }
+            // If not processed and not canceled, preserve existing status if it's not pending/assigned
+            if (existing.status && existing.status !== 'pending' && existing.status !== 'assigned') {
+              return existing.status
+            }
+            // Default: keep existing status or use pending
+            return existing.status || 'pending'
+          })(),
+          // DON'T update: assigned_courier_id - this is managed by the courier system
         }
         
         const { error } = await supabaseClient

@@ -349,24 +349,27 @@ Deno.serve(async (req: Request) => {
       }
 
       // CRITICAL: Protect ALL courier-edited fields
+      // BUT: Always update fulfillment_status and respect Shopify cancellation
       if (hasCourierEdits) {
         // Protect status - never reset to pending if courier has processed the order
-        const processedStatuses = ['delivered', 'partial', 'canceled', 'return', 'hand_to_hand', 'receiving_part']
+        // BUT: Always respect Shopify cancellation (cancellation is a Shopify action)
+        const processedStatuses = ['delivered', 'partial', 'return', 'hand_to_hand', 'receiving_part']
         const isProcessed = existingMain.status && processedStatuses.includes(existingMain.status)
         
         if (orderData.shopify_cancelled_at) {
-          // Only set to canceled if it's not already processed by courier
-          if (!isProcessed && !existingMain.assigned_courier_id) {
-            updateData.status = 'canceled'
-          } else {
+          // ALWAYS respect Shopify cancellation - it's a Shopify action, not a courier action
+          updateData.status = 'canceled'
+          console.log(`✅ Shopify cancellation detected for order ${shopifyOrder.id} - updating status to canceled`)
+        } else {
+          // If not canceled, preserve courier-processed status
+          if (isProcessed) {
+            updateData.status = existingMain.status
+          } else if (existingMain.status && existingMain.status !== 'pending' && existingMain.status !== 'assigned') {
             updateData.status = existingMain.status
           }
-        } else {
-          // Always preserve status if courier has edited the order
-          updateData.status = existingMain.status
         }
         
-        // Protect payment info
+        // Protect payment info (courier-edited fields)
         updateData.payment_method = existingMain.payment_method || orderData.payment_method
         updateData.payment_status = existingMain.payment_status || orderData.payment_status
         updateData.collected_by = existingMain.collected_by
@@ -376,20 +379,20 @@ Deno.serve(async (req: Request) => {
         updateData.internal_comment = existingMain.internal_comment
         updateData.payment_gateway_names = existingMain.payment_gateway_names || orderData.payment_gateway_names
         
-        console.log(`🔒 PROTECTING courier edits for order ${shopifyOrder.id}: status=${existingMain.status}, collected_by=${existingMain.collected_by}`)
+        // fulfillment_status is Shopify metadata - ALWAYS update from Shopify
+        // (already set in updateData above, but ensure it's not overwritten)
+        
+        console.log(`🔒 PROTECTING courier edits for order ${shopifyOrder.id}: status=${updateData.status}, fulfillment_status=${updateData.fulfillment_status}, collected_by=${existingMain.collected_by}`)
       } else {
         // No courier edits yet - allow Shopify to set payment info
         updateData.payment_status = orderData.payment_status
         updateData.payment_method = orderData.payment_method
         updateData.payment_gateway_names = orderData.payment_gateway_names
         
-        // Only update status to canceled if it's canceled in Shopify
+        // Always respect Shopify cancellation
         if (orderData.shopify_cancelled_at) {
-          if (!existingMain.assigned_courier_id) {
-            updateData.status = 'canceled'
-          } else {
-            updateData.status = existingMain.status
-          }
+          updateData.status = 'canceled'
+          console.log(`✅ Shopify cancellation detected for order ${shopifyOrder.id} - updating status to canceled`)
         } else {
           // If not canceled in Shopify, preserve existing status if order has been assigned
           if (existingMain.assigned_courier_id || (existingMain.status && existingMain.status !== 'pending')) {

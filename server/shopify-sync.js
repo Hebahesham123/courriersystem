@@ -1182,14 +1182,22 @@ async function syncShopifyOrders(updatedAtMin = null) {
             customer_note: dbOrder.customer_note,
             notes: dbOrder.notes,
             
-            // Status - update if order is canceled in Shopify
+            // Status - ALWAYS respect Shopify cancellation, but protect other courier-edited statuses
             // IMPORTANT: Preserve all processed statuses - never reset delivered/partial/etc. to pending
-            // Processed statuses should never be overwritten by Shopify sync
+            // BUT: Cancellation is a Shopify action that should always be respected
             status: (() => {
-              const processedStatuses = ['delivered', 'partial', 'canceled', 'return', 'hand_to_hand', 'receiving_part', 'assigned']
+              // ALWAYS respect Shopify cancellation - it's a Shopify action, not a courier action
+              if (dbOrder.shopify_cancelled_at || dbOrder.status === 'canceled') {
+                return 'canceled'
+              }
+              // Protect courier-processed statuses from being reset to pending
+              const processedStatuses = ['delivered', 'partial', 'return', 'hand_to_hand', 'receiving_part', 'assigned']
               const isExistingProcessed = existing.status && processedStatuses.includes(existing.status)
-              if (dbOrder.status === 'canceled') return 'canceled'
               if (isExistingProcessed) return existing.status
+              // If not processed and not canceled, preserve existing status if it's not pending/assigned
+              if (existing.status && existing.status !== 'pending' && existing.status !== 'assigned') {
+                return existing.status
+              }
               return (existing.status === 'pending' || !existing.status ? 'pending' : existing.status)
             })(),
             
