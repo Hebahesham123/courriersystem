@@ -573,9 +573,9 @@ const Summary: React.FC = () => {
 
         if (selectedCourier) {
           // If a courier is selected, fetch all their orders for the date range
-          // Include orders that were assigned, created, OR updated in the date range
-          // This ensures courier updates (delivered, payment info, etc.) appear in dashboard
-          console.log('Fetching orders for selection (matching assigned/created/updated date):', selectedCourier.courierName)
+          // Include ONLY orders that were assigned on the selected date
+          // This ensures only orders assigned on that day appear in dashboard
+          console.log('Fetching orders for selection (matching assigned date only):', selectedCourier.courierName)
           
           const isTotal = selectedCourier.courierId === 'total'
           
@@ -618,28 +618,8 @@ const Summary: React.FC = () => {
           
           const { data: legacyData, error: legacyError } = await queryLegacy
           
-          // Also fetch orders that were updated in the date range (to include courier updates)
-          // This ensures orders updated by courier (delivered, payment info, etc.) appear
-          let queryUpdated = supabase
-            .from("orders")
-            .select(`
-              *,
-              order_proofs (id, image_data),
-              assigned_courier:users!orders_assigned_courier_id_fkey(id, name, email)
-            `)
-            .gte("updated_at", startDateISO)
-            .lte("updated_at", endDateISO)
-
-          if (!isTotal) {
-            queryUpdated = queryUpdated.or(`assigned_courier_id.eq.${selectedCourier.courierId},original_courier_id.eq.${selectedCourier.courierId}`)
-          } else {
-            queryUpdated = queryUpdated.not("assigned_courier_id", "is", null)
-          }
-          
-          const { data: updatedData, error: updatedError } = await queryUpdated
-          
-          if (assignedError || legacyError || updatedError) {
-            console.error('Error fetching admin summary orders:', assignedError || legacyError || updatedError)
+          if (assignedError || legacyError) {
+            console.error('Error fetching admin summary orders:', assignedError || legacyError)
             orders = []
           } else {
             // Merge all results, removing duplicates
@@ -648,12 +628,6 @@ const Summary: React.FC = () => {
               orderMap.set(order.id, order)
             }
             for (const order of (legacyData || [])) {
-              if (!orderMap.has(order.id)) {
-                orderMap.set(order.id, order)
-              }
-            }
-            // Add orders that were updated (courier changes)
-            for (const order of (updatedData || [])) {
               if (!orderMap.has(order.id)) {
                 orderMap.set(order.id, order)
               }
@@ -667,12 +641,12 @@ const Summary: React.FC = () => {
             })) as Order[]
           }
           
-          console.log(`Found ${orders.length} orders for admin selection in date range (by assigned/created/updated date)`)
+          console.log(`Found ${orders.length} orders for admin selection in date range (by assigned date only)`)
           
         } else if (showAnalytics) {
           // If showing analytics, fetch ALL orders from ALL couriers for the date range
-          // Include orders that were assigned, created, OR updated in the date range
-          console.log('Fetching ALL assigned orders for analytics (by assigned/created/updated date)')
+          // Include ONLY orders that were assigned on the selected date
+          console.log('Fetching ALL assigned orders for analytics (by assigned date only)')
           
           // Fetch by assigned_at
           const { data: assignedAtData, error: assignedError } = await supabase
@@ -699,20 +673,8 @@ const Summary: React.FC = () => {
             .gte("created_at", startDateISO)
             .lte("created_at", endDateISO)
           
-          // Also fetch orders that were updated in the date range (to include courier updates)
-          const { data: updatedData, error: updatedError } = await supabase
-            .from("orders")
-            .select(`
-              *,
-              order_proofs (id, image_data),
-              assigned_courier:users!orders_assigned_courier_id_fkey(id, name, email)
-            `)
-            .not("assigned_courier_id", "is", null)
-            .gte("updated_at", startDateISO)
-            .lte("updated_at", endDateISO)
-          
-          if (assignedError || legacyError || updatedError) {
-            console.error('Error fetching all analytics orders:', assignedError || legacyError || updatedError)
+          if (assignedError || legacyError) {
+            console.error('Error fetching all analytics orders:', assignedError || legacyError)
             orders = []
           } else {
             // Merge all results, removing duplicates
@@ -721,12 +683,6 @@ const Summary: React.FC = () => {
               orderMap.set(order.id, order)
             }
             for (const order of (legacyData || [])) {
-              if (!orderMap.has(order.id)) {
-                orderMap.set(order.id, order)
-              }
-            }
-            // Add orders that were updated (courier changes)
-            for (const order of (updatedData || [])) {
               if (!orderMap.has(order.id)) {
                 orderMap.set(order.id, order)
               }
