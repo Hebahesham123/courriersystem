@@ -20,3 +20,4 @@ declare module 'jsr:@supabase/functions-js/edge-runtime.d.ts' {
   // Edge runtime types
 }
 
+

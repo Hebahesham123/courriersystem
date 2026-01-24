@@ -26,3 +26,4 @@ ORDER BY table_name;
 -- 5. Try with public schema:
 -- SELECT COUNT(*) FROM public.orders;
 
+

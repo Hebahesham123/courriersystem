@@ -3517,6 +3517,11 @@ const OrdersManagement: React.FC = () => {
                         {getSortIcon('created_at')}
                       </div>
                     </th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[200px]">
+                      <div className="flex items-center justify-end gap-1">
+                        <span>Address</span>
+                      </div>
+                    </th>
                     <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[100px]">
                       <div className="flex items-center justify-end gap-1">
                         <span>Total</span>
@@ -3694,6 +3699,14 @@ const OrdersManagement: React.FC = () => {
                           <span className={`text-sm ${isCanceled ? "text-red-700 line-through" : "text-gray-900"}`}>
                             {formatShopifyDate(order.shopify_created_at || order.created_at || '')}
                           </span>
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <div className="flex items-center gap-2">
+                            <MapPin className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                            <span className={`text-sm ${isCanceled ? "text-red-700 line-through" : "text-gray-900"} truncate max-w-[200px]`} title={order.address}>
+                              {order.address || '-'}
+                            </span>
+                          </div>
                         </td>
                         <td className="px-3 py-2.5">
                           {isEditing ? (
