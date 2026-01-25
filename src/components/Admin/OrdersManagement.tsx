@@ -573,18 +573,52 @@ const OrdersManagement: React.FC = () => {
       if (error) throw error
       
       // Apply tag filter (filter in memory since tags are JSONB array)
+      // STRICT: When filtering by tag(s), ONLY show orders that have at least one of the selected tags
+      // Orders without the selected tag(s) will be excluded
       let filteredData = data || []
-      if (filters.tags.length > 0) {
-        filteredData = filteredData.filter((order: any) => {
-          const orderTags = order.order_tags || []
-          if (!Array.isArray(orderTags)) return false
-          // Check if any of the selected tags match any of the order's tags (case-insensitive, trimmed)
-          return filters.tags.some(selectedTag => 
-            orderTags.some(orderTag => 
-              String(orderTag).toLowerCase().trim() === String(selectedTag).toLowerCase().trim()
+      if (filters.tags.length > 0 && filters.tags.some(tag => tag)) {
+        // Normalize selected tags once for efficiency - remove empty/whitespace tags
+        const normalizedSelectedTags = filters.tags
+          .map(tag => String(tag).toLowerCase().trim())
+          .filter(tag => tag.length > 0) // Only keep non-empty tags
+        
+        if (normalizedSelectedTags.length > 0) {
+          filteredData = filteredData.filter((order: any) => {
+            // Get order tags - handle various formats (array, null, undefined, string)
+            let orderTags = order.order_tags
+            
+            // STRICT: Orders without tags should be excluded
+            if (!orderTags) return false
+            
+            // Handle string format (shouldn't happen but be safe)
+            if (typeof orderTags === 'string') {
+              try {
+                orderTags = JSON.parse(orderTags)
+              } catch {
+                // If parsing fails, try splitting by comma
+                orderTags = orderTags.split(',').map((t: string) => t.trim()).filter(Boolean)
+              }
+            }
+            
+            // STRICT: Ensure it's an array with at least one tag
+            if (!Array.isArray(orderTags) || orderTags.length === 0) return false
+            
+            // Normalize all order tags for comparison - remove empty/whitespace tags
+            const normalizedOrderTags = orderTags
+              .map((tag: any) => String(tag).toLowerCase().trim())
+              .filter(tag => tag.length > 0) // Only keep non-empty tags
+            
+            // STRICT: Order must have at least one tag that matches one of the selected tags
+            // If you select tag "A", only orders with tag "A" will appear
+            // Orders with only other tags (but not "A") will be excluded
+            const hasMatchingTag = normalizedSelectedTags.some(selectedTag => 
+              normalizedOrderTags.includes(selectedTag)
             )
-          )
-        })
+            
+            // Return false if no matching tag found
+            return hasMatchingTag
+          })
+        }
       }
 
       // Apply Shopify order status filter (Open, Archived, Canceled)
@@ -592,11 +626,12 @@ const OrdersManagement: React.FC = () => {
         filteredData = filteredData.filter((order: any) => {
           return filters.statuses.some(filterStatus => {
             const normalizedFilterStatus = filterStatus.toLowerCase().trim()
+            const orderStatus = (order.status || '').toLowerCase().trim()
             
             // Map Shopify order statuses to database values
             if (normalizedFilterStatus === 'open') {
               // Open: not archived AND not canceled (check both status and shopify fields)
-              const isCanceled = (order.status || '').toLowerCase() === 'canceled' || 
+              const isCanceled = orderStatus === 'canceled' || 
                                 (order.shopify_cancelled_at !== null && order.shopify_cancelled_at !== undefined)
               const isArchived = order.archived === true || 
                                (order.shopify_closed_at !== null && order.shopify_closed_at !== undefined)
@@ -607,12 +642,13 @@ const OrdersManagement: React.FC = () => {
                      (order.shopify_closed_at !== null && order.shopify_closed_at !== undefined)
             } else if (normalizedFilterStatus === 'canceled') {
               // Canceled: status = 'canceled' OR shopify_cancelled_at is set (for Shopify canceled orders)
-              return (order.status || '').toLowerCase() === 'canceled' || 
+              return orderStatus === 'canceled' || 
                      (order.shopify_cancelled_at !== null && order.shopify_cancelled_at !== undefined)
             }
             
-            // Fallback: if it's a delivery status (for backward compatibility)
-            return (order.status || '').toLowerCase() === filterStatus.toLowerCase()
+            // Fallback: exact match for delivery statuses (for backward compatibility)
+            // Use normalized values for consistent comparison
+            return orderStatus === normalizedFilterStatus
           })
         })
       }
@@ -620,12 +656,58 @@ const OrdersManagement: React.FC = () => {
       // Apply fulfillment status filter (filter in memory for case-insensitive matching like Shopify)
       if (filters.fulfillmentStatuses.length > 0) {
         filteredData = filteredData.filter((order: any) => {
-          const orderFulfillmentStatus = (order.fulfillment_status || 'unfulfilled').toLowerCase().trim()
+          // Check if order is canceled - use same logic as status filter
+          const orderStatus = (order.status || '').toLowerCase().trim()
+          const isCanceled = orderStatus === 'canceled' || 
+                           (order.shopify_cancelled_at !== null && order.shopify_cancelled_at !== undefined)
+          
+          // Get the order's fulfillment status, normalize it
+          const rawFulfillmentStatus = order.fulfillment_status || ''
+          const orderFulfillmentStatus = rawFulfillmentStatus.toLowerCase().trim()
+          
+          // Check if we're filtering by "unfulfilled"
+          const isFilteringUnfulfilled = filters.fulfillmentStatuses.some(fs => fs.toLowerCase().trim() === 'unfulfilled')
+          
+          // If filtering by "unfulfilled", ALWAYS exclude canceled orders first
+          if (isFilteringUnfulfilled && isCanceled) {
+            return false
+          }
+          
+          // Check if order matches any of the selected fulfillment statuses
           return filters.fulfillmentStatuses.some(filterStatus => {
             const normalizedFilterStatus = filterStatus.toLowerCase().trim()
-            // Direct match or handle common variations
-            return orderFulfillmentStatus === normalizedFilterStatus ||
-                   (normalizedFilterStatus === 'unfulfilled' && (!order.fulfillment_status || order.fulfillment_status === ''))
+            
+            // Handle "unfulfilled" filter explicitly - must NOT be fulfilled AND NOT canceled
+            if (normalizedFilterStatus === 'unfulfilled') {
+              // Canceled orders already excluded above, but double-check for safety
+              if (isCanceled) return false
+              
+              // Define fulfilled values
+              const fulfilledValues = ['fulfilled', 'success', 'complete', 'completed']
+              const isFulfilled = fulfilledValues.includes(orderFulfillmentStatus)
+              
+              // Exclude fulfilled orders
+              if (isFulfilled) return false
+              
+              // Include only if:
+              // 1. fulfillment_status is explicitly "unfulfilled" (case-insensitive)
+              // 2. OR fulfillment_status is empty/null/undefined (treat as unfulfilled)
+              return orderFulfillmentStatus === 'unfulfilled' || !rawFulfillmentStatus
+            }
+            
+            // Handle "fulfilled" filter explicitly - must be fulfilled AND NOT canceled
+            if (normalizedFilterStatus === 'fulfilled') {
+              // Exclude canceled orders
+              if (isCanceled) return false
+              
+              const fulfilledValues = ['fulfilled', 'success', 'complete', 'completed']
+              return fulfilledValues.includes(orderFulfillmentStatus)
+            }
+            
+            // For other statuses, do exact match (case-insensitive)
+            // Also exclude canceled orders from other fulfillment status filters
+            if (isCanceled) return false
+            return orderFulfillmentStatus === normalizedFilterStatus
           })
         })
       }

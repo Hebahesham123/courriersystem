@@ -589,6 +589,21 @@ const OrdersList: React.FC = () => {
               if (orderIndex >= 0) {
                 const currentOrder = prevOrders[orderIndex]
                 
+                // If order was just assigned (assigned_at changed or newly set), remove dashes
+                const wasJustAssigned = payload.new.assigned_at && 
+                  (payload.new.assigned_at !== currentOrder.assigned_at || !currentOrder.assigned_at)
+                if (wasJustAssigned) {
+                  recentlyUpdatedOrderIds.current.delete(payload.new.id)
+                  storedModifiedOrderIds.current.delete(payload.new.id)
+                  // Update localStorage
+                  try {
+                    const arr = Array.from(storedModifiedOrderIds.current)
+                    localStorage.setItem("courierModifiedOrders", JSON.stringify(arr))
+                  } catch (e) {
+                    console.warn("Failed to update courierModifiedOrders", e)
+                  }
+                }
+                
                 // CRITICAL: Protect ALL courier edits - never allow status or payment info to be reset
                 // If order has been processed by courier, preserve ALL courier-edited fields
                 const processedStatuses = ['delivered', 'partial', 'canceled', 'return', 'hand_to_hand', 'receiving_part']
@@ -698,6 +713,16 @@ const OrdersList: React.FC = () => {
               }
               // If order not found and it's assigned to this courier, add it
               if (payload.new.assigned_courier_id === user.id) {
+                // Remove dashes for newly assigned order
+                recentlyUpdatedOrderIds.current.delete(payload.new.id)
+                storedModifiedOrderIds.current.delete(payload.new.id)
+                // Update localStorage
+                try {
+                  const arr = Array.from(storedModifiedOrderIds.current)
+                  localStorage.setItem("courierModifiedOrders", JSON.stringify(arr))
+                } catch (e) {
+                  console.warn("Failed to update courierModifiedOrders", e)
+                }
                 return [...prevOrders, payload.new as Order]
               }
               return prevOrders
@@ -708,6 +733,16 @@ const OrdersList: React.FC = () => {
               // Check if order already exists
               if (prevOrders.some(o => o.id === payload.new.id)) {
                 return prevOrders
+              }
+              // Remove dashes for newly assigned order
+              recentlyUpdatedOrderIds.current.delete(payload.new.id)
+              storedModifiedOrderIds.current.delete(payload.new.id)
+              // Update localStorage
+              try {
+                const arr = Array.from(storedModifiedOrderIds.current)
+                localStorage.setItem("courierModifiedOrders", JSON.stringify(arr))
+              } catch (e) {
+                console.warn("Failed to update courierModifiedOrders", e)
               }
               return [payload.new as Order, ...prevOrders]
             })
@@ -1055,6 +1090,29 @@ const OrdersList: React.FC = () => {
           delivery_fee: o.delivery_fee,
           collected_by: o.collected_by
         })))
+      }
+
+      // Remove dashes from orders that were just assigned (assigned_at is recent, within last 5 minutes)
+      const now = new Date().getTime()
+      const fiveMinutesAgo = now - (5 * 60 * 1000)
+      
+      allOrders.forEach(order => {
+        if (order.assigned_at) {
+          const assignedTime = new Date(order.assigned_at).getTime()
+          // If order was assigned recently, remove from tracking sets
+          if (assignedTime > fiveMinutesAgo) {
+            recentlyUpdatedOrderIds.current.delete(order.id)
+            storedModifiedOrderIds.current.delete(order.id)
+          }
+        }
+      })
+      
+      // Update localStorage after clearing recently assigned orders
+      try {
+        const arr = Array.from(storedModifiedOrderIds.current)
+        localStorage.setItem("courierModifiedOrders", JSON.stringify(arr))
+      } catch (e) {
+        console.warn("Failed to update courierModifiedOrders", e)
       }
 
       // Sort by order number (numeric part of order_id)
@@ -2139,14 +2197,28 @@ const OrdersList: React.FC = () => {
         return
       }
 
-      // Persist modified marker locally so it survives reload
+      // Remove dashes by removing from tracking sets
+      recentlyUpdatedOrderIds.current.delete(selectedOrder.id)
+      storedModifiedOrderIds.current.delete(selectedOrder.id)
+      
+      // Remove from localStorage as well
       try {
-        storedModifiedOrderIds.current.add(selectedOrder.id)
         const arr = Array.from(storedModifiedOrderIds.current)
         localStorage.setItem("courierModifiedOrders", JSON.stringify(arr))
       } catch (e) {
-        console.warn("Failed to persist courierModifiedOrders", e)
+        console.warn("Failed to update courierModifiedOrders", e)
       }
+
+      // Move order to the last position (order data already updated optimistically)
+      setOrders(prevOrders => {
+        // Find the updated order and move it to the end
+        const updatedOrder = prevOrders.find(o => o.id === selectedOrder.id)
+        if (updatedOrder) {
+          const otherOrders = prevOrders.filter(o => o.id !== selectedOrder.id)
+          return [...otherOrders, updatedOrder]
+        }
+        return prevOrders
+      })
 
       // Success - no need to refetch, already updated optimistically
     } catch (error: any) {
@@ -2776,9 +2848,6 @@ const deleteDuplicatedOrder = async (order: Order) => {
                 order.payment_sub_type === "exchange" ||
                 isExchangeNote
               const showSpecialBadge = isReceivingPartStatus || isExchangeStatus
-              const showDashedBorder =
-                recentlyUpdatedOrderIds.current.has(order.id) ||
-                storedModifiedOrderIds.current.has(order.id)
 
               return (
                 <div
@@ -2854,27 +2923,16 @@ const deleteDuplicatedOrder = async (order: Order) => {
                     }
                   }}
                   className={`relative bg-white rounded-2xl shadow-lg overflow-hidden transition-all active:scale-[0.98] cursor-pointer hover:shadow-xl border-2 ${
-                    showDashedBorder
-                      ? "border-amber-400 border-dashed bg-amber-50"
-                      : order.order_id.includes("(نسخة)")
-                        ? "border-green-300 bg-green-50"
-                        : isReceivingPartStatus
-                          ? "border-indigo-300 bg-indigo-50"
-                          : isExchangeStatus
-                            ? "border-purple-300 bg-purple-50"
-                            : order.status === "assigned"
-                              ? "border-blue-300 bg-blue-50"
-                              : "border-gray-200"
-                  } ${showDashedBorder ? "line-through decoration-amber-700/70 decoration-2" : ""}`}
-                  style={
-                    showDashedBorder
-                      ? {
-                          backgroundImage:
-                            "repeating-linear-gradient(135deg, rgba(251,191,36,0.14) 0, rgba(251,191,36,0.14) 10px, rgba(255,255,255,0.6) 10px, rgba(255,255,255,0.6) 20px), repeating-linear-gradient(45deg, rgba(251,191,36,0.14) 0, rgba(251,191,36,0.14) 10px, rgba(255,255,255,0.6) 10px, rgba(255,255,255,0.6) 20px)",
-                          backgroundSize: "18px 18px, 18px 18px",
-                        }
-                      : undefined
-                  }
+                    order.order_id.includes("(نسخة)")
+                      ? "border-green-300 bg-green-50"
+                      : isReceivingPartStatus
+                        ? "border-indigo-300 bg-indigo-50"
+                        : isExchangeStatus
+                          ? "border-purple-300 bg-purple-50"
+                          : order.status === "assigned"
+                            ? "border-blue-300 bg-blue-50"
+                            : "border-gray-200"
+                  }`}
                 >
                   {showSpecialBadge && (
                     <div className="absolute top-2 right-2 z-30 flex gap-2 pointer-events-none">
