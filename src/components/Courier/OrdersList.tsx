@@ -236,6 +236,9 @@ const OrdersList: React.FC = () => {
   const [selectedPhoneNumber, setSelectedPhoneNumber] = useState<string>("")
   const [selectedImage, setSelectedImage] = useState<string | null>(null)
   const [imageModalOpen, setImageModalOpen] = useState(false)
+  const [imageClickPosition, setImageClickPosition] = useState<{ x: number; y: number } | null>(null)
+  const clickedImageRef = useRef<HTMLElement | null>(null)
+  const clickedItemIndex = useRef<number | null>(null)
   const [cardPosition, setCardPosition] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
   // Initialize isMobile based on window width (check if window is available for SSR)
   const [isMobile, setIsMobile] = useState(() => {
@@ -340,17 +343,38 @@ const OrdersList: React.FC = () => {
     return Math.min(Math.max(viewportTop - 12, minOffset), maxOffset)
   }, [cardPosition])
 
-  // Close image modal on ESC key
+  // Close image modal on ESC key and update position on scroll to keep it "stuck" to image
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && imageModalOpen) {
         setImageModalOpen(false)
         setSelectedImage(null)
+        setImageClickPosition(null)
+        clickedImageRef.current = null
       }
     }
     window.addEventListener('keydown', handleEscape)
-    return () => window.removeEventListener('keydown', handleEscape)
-  }, [imageModalOpen])
+    
+    // Force re-render on scroll to update modal position (keeps it "stuck" to image)
+    const handleScroll = () => {
+      if (imageModalOpen && clickedImageRef.current) {
+        // Trigger re-render by updating position state
+        setImageClickPosition(prev => prev ? { ...prev } : null)
+      }
+    }
+    
+    // Listen to all scroll events (window and modal content)
+    window.addEventListener('scroll', handleScroll, true)
+    const modalContent = document.querySelector('[data-modal-content]')
+    modalContent?.addEventListener('scroll', handleScroll, true)
+    
+    return () => {
+      window.removeEventListener('keydown', handleEscape)
+      window.removeEventListener('scroll', handleScroll, true)
+      modalContent?.removeEventListener('scroll', handleScroll, true)
+      document.body.style.overflow = ''
+    }
+  }, [imageModalOpen, selectedImage])
 
   // Close order modal on ESC key
   useEffect(() => {
@@ -3669,7 +3693,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                               return (
                                 <div 
                                   key={idx}
-                                  className={`rounded-lg sm:rounded-xl border-2 p-2 sm:p-4 transition-all duration-300 hover:shadow-md ${
+                                  className={`rounded-lg sm:rounded-xl border-2 p-2 sm:p-4 transition-all duration-300 hover:shadow-md relative ${
                                     isRemoved
                                       ? 'bg-red-50 border-red-200 text-red-700 opacity-90'
                                       : isUnfulfilled
@@ -3677,16 +3701,84 @@ const deleteDuplicatedOrder = async (order: Order) => {
                                         : 'bg-white border-gray-100 hover:border-blue-300'
                                   }`}
                                 >
+                                  {/* Image Modal - Rendered inside product item container, "stuck" to card */}
+                                  {imageModalOpen && selectedImage && clickedItemIndex.current === idx && (
+                                    <>
+                                      {/* Backdrop */}
+                                      <div 
+                                        className="fixed inset-0 bg-black bg-opacity-30 z-[10000]"
+                                        onClick={() => {
+                                          setImageModalOpen(false)
+                                          setSelectedImage(null)
+                                          setImageClickPosition(null)
+                                          clickedImageRef.current = null
+                                          clickedItemIndex.current = null
+                                        }}
+                                      />
+                                      {/* Modal positioned relative to product item - centered */}
+                                      <div 
+                                        className="absolute bg-white rounded-2xl shadow-2xl p-3 sm:p-4 flex flex-col z-[10001]"
+                                        style={{
+                                          left: '50%',
+                                          top: '50%',
+                                          transform: 'translate(-50%, -50%)',
+                                          width: '300px',
+                                          maxWidth: 'calc(100vw - 16px)',
+                                          maxHeight: 'calc(100vh - 16px)',
+                                        }}
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                      <button
+                                        onClick={(e) => {
+                                          e.preventDefault()
+                                          e.stopPropagation()
+                                          setImageModalOpen(false)
+                                          setSelectedImage(null)
+                                          setImageClickPosition(null)
+                                          clickedImageRef.current = null
+                                          clickedItemIndex.current = null
+                                        }}
+                                        className="absolute top-2 right-2 z-10 bg-white hover:bg-gray-100 text-gray-800 rounded-full p-1.5 sm:p-2 shadow-lg transition-colors"
+                                        aria-label="Close"
+                                      >
+                                        <X className="w-4 h-4 sm:w-5 sm:h-5" />
+                                      </button>
+                                      <div className="flex items-center justify-center overflow-hidden rounded-lg mt-1">
+                                        <img
+                                          src={selectedImage}
+                                          alt="Product Image"
+                                          className="max-w-full max-h-[250px] sm:max-h-[400px] w-auto h-auto object-contain"
+                                          onClick={(e) => e.stopPropagation()}
+                                          onError={(e) => {
+                                            const target = e.target as HTMLImageElement
+                                            target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect width="400" height="400" fill="%23f3f4f6"/%3E%3Ctext x="50%25" y="50%25" textAnchor="middle" dy=".3em" fill="%239ca3af" fontSize="16"%3EImage Not Available%3C/text%3E%3C/svg%3E'
+                                            target.onerror = null
+                                          }}
+                                        />
+                                      </div>
+                                    </div>
+                                    </>
+                                  )}
                                   <div className="flex gap-2 sm:gap-4">
                                     {/* Product Image - Clickable */}
                                     <div 
+                                      data-product-image={idx}
+                                      ref={(el) => {
+                                        if (el && itemImage && itemImage !== 'data:image/svg+xml' && !itemImage.includes('placeholder')) {
+                                          clickedImageRef.current = el
+                                        }
+                                      }}
                                       className={`w-14 h-14 sm:w-24 sm:h-24 rounded-lg sm:rounded-xl overflow-hidden border-2 flex-shrink-0 relative ${
                                         itemImage && itemImage !== 'data:image/svg+xml' && !itemImage.includes('placeholder') 
                                           ? `cursor-pointer hover:shadow-md transition-all ${isRemoved ? 'border-red-200 bg-red-100' : 'border-gray-200 bg-gray-100 hover:border-blue-400'}`
                                           : isRemoved ? 'border-red-200 bg-red-100' : 'border-gray-200 bg-gray-100'
                                       }`}
-                                      onClick={() => {
+                                      onClick={(e) => {
+                                        e.preventDefault()
+                                        e.stopPropagation()
                                         if (itemImage && itemImage !== 'data:image/svg+xml' && !itemImage.includes('placeholder')) {
+                                          clickedImageRef.current = e.currentTarget
+                                          clickedItemIndex.current = idx
                                           setSelectedImage(itemImage)
                                           setImageModalOpen(true)
                                         }
@@ -3893,12 +3985,28 @@ const deleteDuplicatedOrder = async (order: Order) => {
                       </div>
                       {selectedOrder.subtotal_price !== undefined && (
                         <div className="flex justify-between items-center pt-1.5 sm:pt-2 mt-1.5 sm:mt-2 border-t-2 border-gray-300">
-                          <span className="text-base sm:text-lg font-bold text-gray-800">المجموع الفرعي:</span>
-                          <span className="text-lg sm:text-2xl font-bold text-gray-800">
+                          <span className="text-xs sm:text-sm font-bold text-gray-800">المجموع الفرعي:</span>
+                          <span className="text-sm sm:text-base font-bold text-gray-800">
                             {selectedOrder.subtotal_price.toFixed(2)} ج.م
                           </span>
                         </div>
                       )}
+                      {(() => {
+                        const { fulfilledTotal } = getFulfillmentTotals(selectedOrder)
+                        const adminTotal = Number.parseFloat(String(selectedOrder.total_order_fees ?? 0)) || 0
+                        const hasAdminTotal = adminTotal > 0
+                        const collectibleAmount = hasAdminTotal ? adminTotal : Math.max(0, fulfilledTotal)
+                        return (
+                          <div className="flex justify-between items-center pt-1.5 sm:pt-2 mt-1.5 sm:mt-2 border-t-2 border-gray-300 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg px-3 py-2.5">
+                            <span className="text-xs sm:text-sm font-bold text-green-700">المبلغ للتحصيل:</span>
+                            <div className="text-right">
+                              <span className="block text-base sm:text-xl font-bold text-green-800">
+                                {collectibleAmount.toFixed(2)} ج.م
+                              </span>
+                            </div>
+                          </div>
+                        )
+                      })()}
                       {selectedOrder.payment_gateway_names && selectedOrder.payment_gateway_names.length > 0 && (
                         <div className="mt-2 sm:mt-3 pt-2 sm:pt-3 border-t border-gray-200">
                           <p className="text-[10px] sm:text-xs text-gray-600 mb-0.5 sm:mb-1">بوابة الدفع:</p>
@@ -4065,12 +4173,28 @@ const deleteDuplicatedOrder = async (order: Order) => {
                       </div>
                       {selectedOrder.subtotal_price !== undefined && (
                         <div className="border-t-2 border-gray-300 pt-3 mt-3 flex justify-between items-center bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg px-3 py-2.5">
-                          <span className="text-base sm:text-lg font-bold text-gray-800">المجموع الفرعي:</span>
-                          <span className="text-lg sm:text-2xl font-bold text-gray-800">
+                          <span className="text-xs sm:text-sm font-bold text-gray-800">المجموع الفرعي:</span>
+                          <span className="text-sm sm:text-base font-bold text-gray-800">
                             {selectedOrder.subtotal_price.toFixed(2)} ج.م
                           </span>
                         </div>
                       )}
+                      {(() => {
+                        const { fulfilledTotal } = getFulfillmentTotals(selectedOrder)
+                        const adminTotal = Number.parseFloat(String(selectedOrder.total_order_fees ?? 0)) || 0
+                        const hasAdminTotal = adminTotal > 0
+                        const collectibleAmount = hasAdminTotal ? adminTotal : Math.max(0, fulfilledTotal)
+                        return (
+                          <div className="border-t-2 border-gray-300 pt-3 mt-3 flex justify-between items-center bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg px-3 py-2.5">
+                            <span className="text-xs sm:text-sm font-bold text-green-700">المبلغ للتحصيل:</span>
+                            <div className="text-right">
+                              <span className="block text-base sm:text-xl font-bold text-green-800">
+                                {collectibleAmount.toFixed(2)} ج.م
+                              </span>
+                            </div>
+                          </div>
+                        )
+                      })()}
                       <div className="bg-blue-50/80 border border-blue-200 p-3 rounded-lg text-xs text-blue-800 mt-2 flex items-start gap-2">
                         <AlertCircle className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
                         <span><strong>ملاحظة:</strong> الرسوم منفصلة تماماً عن قيمة الطلب الأساسية ولا تُضاف إليها</span>
@@ -4708,44 +4832,6 @@ const deleteDuplicatedOrder = async (order: Order) => {
 
 
       </div>
-
-      {/* Image Modal - Large View */}
-      {imageModalOpen && selectedImage && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center p-4"
-          onClick={() => {
-            setImageModalOpen(false)
-            setSelectedImage(null)
-          }}
-        >
-          <div className="relative max-w-7xl max-h-[90vh] w-full h-full flex items-center justify-center">
-            {/* Close Button */}
-            <button
-              onClick={() => {
-                setImageModalOpen(false)
-                setSelectedImage(null)
-              }}
-              className="absolute top-4 right-4 z-10 bg-white/90 hover:bg-white text-gray-800 rounded-full p-2 shadow-lg transition-colors"
-              aria-label="Close"
-            >
-              <X className="w-6 h-6" />
-            </button>
-            
-            {/* Large Image */}
-            <img
-              src={selectedImage}
-              alt="Product Image"
-              className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
-              onClick={(e) => e.stopPropagation()}
-              onError={(e) => {
-                const target = e.target as HTMLImageElement
-                target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect width="400" height="400" fill="%23f3f4f6"/%3E%3Ctext x="50%25" y="50%25" textAnchor="middle" dy=".3em" fill="%239ca3af" fontSize="16"%3EImage Not Available%3C/text%3E%3C/svg%3E'
-                target.onerror = null
-              }}
-            />
-          </div>
-        </div>
-      )}
     </>
   )
 }

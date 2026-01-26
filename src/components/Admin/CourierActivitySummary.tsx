@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useMemo, useRef } from "react"
 import {
   Package,
   CheckCircle,
@@ -13,6 +13,8 @@ import {
   ArrowLeft,
   HandMetal,
   Receipt,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
 import { useAuth } from "../../contexts/AuthContext"
@@ -65,10 +67,11 @@ const CourierActivitySummary: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0])
-  const [dateRange, setDateRange] = useState<"today" | "yesterday" | "week" | "month" | "custom">("today")
+  const [dateRange, setDateRange] = useState<"all" | "today" | "yesterday" | "week" | "month" | "custom">("all")
   const [selectedCourier, setSelectedCourier] = useState<string | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [selectedOrders, setSelectedOrders] = useState<Order[]>([])
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null)
 
   const fetchCouriers = useCallback(async () => {
     try {
@@ -89,13 +92,17 @@ const CourierActivitySummary: React.FC = () => {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
     
-    let startDate: Date
-    let endDate = new Date()
-    endDate.setHours(23, 59, 59, 999)
+    let startDate: Date | null = null
+    let endDate: Date | null = null
 
     switch (dateRange) {
+      case "all":
+        // No date filter - return null to fetch all orders
+        return { startDate: null, endDate: null }
       case "today":
         startDate = new Date(today)
+        endDate = new Date()
+        endDate.setHours(23, 59, 59, 999)
         break
       case "yesterday":
         startDate = new Date(today)
@@ -106,10 +113,14 @@ const CourierActivitySummary: React.FC = () => {
       case "week":
         startDate = new Date(today)
         startDate.setDate(today.getDate() - 7)
+        endDate = new Date()
+        endDate.setHours(23, 59, 59, 999)
         break
       case "month":
         startDate = new Date(today)
         startDate.setDate(today.getDate() - 30)
+        endDate = new Date()
+        endDate.setHours(23, 59, 59, 999)
         break
       case "custom":
         const customDate = new Date(selectedDate)
@@ -119,7 +130,7 @@ const CourierActivitySummary: React.FC = () => {
         endDate.setHours(23, 59, 59, 999)
         break
       default:
-        startDate = new Date(today)
+        return { startDate: null, endDate: null }
     }
 
     return { startDate, endDate }
@@ -132,59 +143,47 @@ const CourierActivitySummary: React.FC = () => {
     try {
       const { startDate, endDate } = calculateDateRange()
 
-      // Fetch orders that were created, assigned, or updated in the date range
-      // Include collected_by and payment_sub_type for accurate accounting
-      const { data: ordersCreated, error: ordersCreatedError } = await supabase
+      // Build query - if no date filter, fetch all orders
+      let query = supabase
         .from("orders")
         .select("*, collected_by, payment_sub_type")
-        .gte("created_at", startDate.toISOString())
-        .lte("created_at", endDate.toISOString())
 
-      if (ordersCreatedError) throw ordersCreatedError
+      // Apply date filter only if dates are provided
+      if (startDate && endDate) {
+        query = query.or(
+          `and(created_at.gte.${startDate.toISOString()},created_at.lte.${endDate.toISOString()}),` +
+          `and(assigned_at.gte.${startDate.toISOString()},assigned_at.lte.${endDate.toISOString()}),` +
+          `and(updated_at.gte.${startDate.toISOString()},updated_at.lte.${endDate.toISOString()})`
+        )
+      }
 
-      const { data: ordersAssigned, error: ordersAssignedError } = await supabase
-        .from("orders")
-        .select("*, collected_by, payment_sub_type")
-        .not("assigned_at", "is", null)
-        .gte("assigned_at", startDate.toISOString())
-        .lte("assigned_at", endDate.toISOString())
+      const { data, error } = await query
 
-      if (ordersAssignedError) throw ordersAssignedError
+      if (error) throw error
 
-      const { data: ordersUpdated, error: ordersUpdatedError } = await supabase
-        .from("orders")
-        .select("*, collected_by, payment_sub_type")
-        .not("assigned_courier_id", "is", null)
-        .gte("updated_at", startDate.toISOString())
-        .lte("updated_at", endDate.toISOString())
-
-      if (ordersUpdatedError) throw ordersUpdatedError
-
-      // Combine and deduplicate orders
-      const allOrdersMap = new Map<string, Order>()
-      ;[...(ordersCreated || []), ...(ordersAssigned || []), ...(ordersUpdated || [])].forEach((order) => {
-        allOrdersMap.set(order.id, order)
+      // Deduplicate orders (in case an order matches multiple conditions)
+      const ordersMap = new Map<string, Order>()
+      ;(data || []).forEach((order) => {
+        ordersMap.set(order.id, order)
       })
-      
-      let allOrders = Array.from(allOrdersMap.values())
 
-      // Filter by courier if selected
+      let allOrders = Array.from(ordersMap.values())
+
+      // Filter by courier if selected (in memory - still faster than multiple queries)
       if (selectedCourier) {
         allOrders = allOrders.filter(
           (o) => o.assigned_courier_id === selectedCourier || o.original_courier_id === selectedCourier
         )
       }
 
-      // Join with courier names
-      const ordersWithCouriers = await Promise.all(
-        allOrders.map(async (order) => {
-          if (order.assigned_courier_id) {
-            const courier = couriers.find((c) => c.id === order.assigned_courier_id)
-            return { ...order, courier_name: courier?.name || "غير معروف" }
-          }
-          return order
-        })
-      )
+      // Join with courier names (synchronous - no Promise.all needed)
+      const ordersWithCouriers = allOrders.map((order) => {
+        if (order.assigned_courier_id) {
+          const courier = couriers.find((c) => c.id === order.assigned_courier_id)
+          return { ...order, courier_name: courier?.name || "غير معروف" }
+        }
+        return order
+      })
 
       setOrders(ordersWithCouriers)
     } catch (error: any) {
@@ -198,9 +197,25 @@ const CourierActivitySummary: React.FC = () => {
     fetchCouriers()
   }, [fetchCouriers])
 
+  // Debounced effect for date/courier changes to prevent excessive API calls
   useEffect(() => {
-    if (couriers.length > 0) {
+    if (couriers.length === 0) return
+
+    // Clear previous timer
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current)
+    }
+
+    // Set new timer
+    debounceTimerRef.current = setTimeout(() => {
       fetchOrders()
+    }, 300) // 300ms debounce
+
+    // Cleanup
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current)
+      }
     }
   }, [couriers, fetchOrders, dateRange, selectedDate, selectedCourier])
 
@@ -262,7 +277,23 @@ const CourierActivitySummary: React.FC = () => {
     return 0
   }
 
-  const categories: OrderCategory[] = [
+  // Helper function to check if an order was assigned on the selected date
+  const wasAssignedOnSelectedDate = useCallback((order: Order): boolean => {
+    if (!order.assigned_at) return false
+    
+    const { startDate, endDate } = calculateDateRange()
+    
+    // If "all" is selected (no date filter), show all deferred orders
+    if (startDate === null || endDate === null) {
+      return true
+    }
+    
+    const assignedDate = new Date(order.assigned_at)
+    return assignedDate >= startDate && assignedDate <= endDate
+  }, [calculateDateRange])
+
+  // Memoize categories to prevent unnecessary recalculations
+  const categories: OrderCategory[] = useMemo(() => [
     {
       id: "total",
       title: "إجمالي الطلبات",
@@ -362,10 +393,14 @@ const CourierActivitySummary: React.FC = () => {
       bgColor: "bg-orange-50",
       textColor: "text-orange-700",
       borderColor: "border-orange-300",
-      originalValue: 0,
-      collectedValue: 0,
-      orders: [],
-      ordersCount: 0,
+      originalValue: orders
+        .filter((o) => o.status === "return" && wasAssignedOnSelectedDate(o))
+        .reduce((sum, o) => sum + (Number(o.total_order_fees) || 0), 0),
+      collectedValue: orders
+        .filter((o) => o.status === "return" && wasAssignedOnSelectedDate(o))
+        .reduce((sum, o) => sum + (Number(o.delivery_fee) || 0), 0),
+      orders: orders.filter((o) => o.status === "return" && wasAssignedOnSelectedDate(o)),
+      ordersCount: orders.filter((o) => o.status === "return" && wasAssignedOnSelectedDate(o)).length,
     },
     {
       id: "hand_to_hand",
@@ -383,7 +418,7 @@ const CourierActivitySummary: React.FC = () => {
       orders: orders.filter((o) => o.status === "hand_to_hand"),
       ordersCount: orders.filter((o) => o.status === "hand_to_hand").length,
     },
-  ]
+  ], [orders, wasAssignedOnSelectedDate])
 
   const handleCategoryClick = (category: OrderCategory) => {
     if (category.ordersCount > 0) {
@@ -432,72 +467,136 @@ const CourierActivitySummary: React.FC = () => {
             </button>
           </div>
 
-          {/* Date Range Selector */}
-          <div className="mt-6 flex flex-wrap items-center gap-3">
-            <button
-              onClick={() => setDateRange("today")}
-              className={`px-4 py-2 rounded-lg transition-colors ${
-                dateRange === "today"
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-              }`}
-            >
-              اليوم
-            </button>
-            <button
-              onClick={() => setDateRange("yesterday")}
-              className={`px-4 py-2 rounded-lg transition-colors ${
-                dateRange === "yesterday"
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-              }`}
-            >
-              أمس
-            </button>
-            <button
-              onClick={() => setDateRange("week")}
-              className={`px-4 py-2 rounded-lg transition-colors ${
-                dateRange === "week"
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-              }`}
-            >
-              آخر 7 أيام
-            </button>
-            <button
-              onClick={() => setDateRange("month")}
-              className={`px-4 py-2 rounded-lg transition-colors ${
-                dateRange === "month"
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-              }`}
-            >
-              آخر 30 يوم
-            </button>
-            <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-gray-500" />
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={(e) => {
-                  setSelectedDate(e.target.value)
-                  setDateRange("custom")
+          {/* Date Range Selector - Improved UI */}
+          <div className="mt-6 space-y-4">
+            {/* Quick Date Filters - Clean Horizontal Layout */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* All Orders Button - Blue (No Filter) */}
+              <button
+                onClick={() => setDateRange("all")}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  dateRange === "all"
+                    ? "bg-blue-600 text-white shadow-md"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                }`}
+              >
+                الكل
+              </button>
+
+              {/* Today Button */}
+              <button
+                onClick={() => {
+                  const today = new Date().toISOString().split("T")[0]
+                  setSelectedDate(today)
+                  setDateRange("today")
                 }}
-                className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  dateRange === "today"
+                    ? "bg-blue-600 text-white shadow-md"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                }`}
+              >
+                اليوم
+              </button>
+
+              {/* Quick Range Filters */}
+              <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+                <button
+                  onClick={() => {
+                    const yesterday = new Date()
+                    yesterday.setDate(yesterday.getDate() - 1)
+                    setSelectedDate(yesterday.toISOString().split("T")[0])
+                    setDateRange("yesterday")
+                  }}
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                    dateRange === "yesterday"
+                      ? "bg-blue-600 text-white shadow-md"
+                      : "text-gray-700 hover:bg-gray-200"
+                  }`}
+                >
+                  أمس
+                </button>
+                <button
+                  onClick={() => setDateRange("week")}
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                    dateRange === "week"
+                      ? "bg-blue-600 text-white shadow-md"
+                      : "text-gray-700 hover:bg-gray-200"
+                  }`}
+                >
+                  7 أيام
+                </button>
+                <button
+                  onClick={() => setDateRange("month")}
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                    dateRange === "month"
+                      ? "bg-blue-600 text-white shadow-md"
+                      : "text-gray-700 hover:bg-gray-200"
+                  }`}
+                >
+                  شهر
+                </button>
+              </div>
+
+              {/* Date Picker - For filtering by specific day */}
+              <div className="flex items-center gap-2 bg-white border border-gray-300 rounded-lg px-2">
+                <button
+                  onClick={() => {
+                    const current = new Date(selectedDate)
+                    current.setDate(current.getDate() - 1)
+                    setSelectedDate(current.toISOString().split("T")[0])
+                    setDateRange("custom")
+                  }}
+                  className="p-1.5 hover:bg-gray-100 rounded transition-colors"
+                  title="اليوم السابق"
+                >
+                  <ChevronRight className="w-4 h-4 text-gray-600" />
+                </button>
+                <div className="flex items-center gap-2 px-3">
+                  <Calendar className="w-4 h-4 text-gray-500" />
+                  <input
+                    type="date"
+                    value={selectedDate}
+                    onChange={(e) => {
+                      setSelectedDate(e.target.value)
+                      setDateRange("custom")
+                    }}
+                    className="px-2 py-1.5 border-0 focus:outline-none focus:ring-0 text-sm"
+                    placeholder="اختر تاريخ"
+                  />
+                </div>
+                <button
+                  onClick={() => {
+                    const current = new Date(selectedDate)
+                    const today = new Date().toISOString().split("T")[0]
+                    if (current.toISOString().split("T")[0] < today) {
+                      current.setDate(current.getDate() + 1)
+                      setSelectedDate(current.toISOString().split("T")[0])
+                      setDateRange("custom")
+                    }
+                  }}
+                  className="p-1.5 hover:bg-gray-100 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="اليوم التالي"
+                  disabled={selectedDate >= new Date().toISOString().split("T")[0]}
+                >
+                  <ChevronLeft className="w-4 h-4 text-gray-600" />
+                </button>
+              </div>
+
+              {/* Courier Filter */}
+              <select
+                value={selectedCourier || ""}
+                onChange={(e) => setSelectedCourier(e.target.value || null)}
+                className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm"
+              >
+                <option value="">جميع المندوبين</option>
+                {couriers.map((courier) => (
+                  <option key={courier.id} value={courier.id}>
+                    {courier.name}
+                  </option>
+                ))}
+              </select>
             </div>
-            <select
-              value={selectedCourier || ""}
-              onChange={(e) => setSelectedCourier(e.target.value || null)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">جميع المندوبين</option>
-              {couriers.map((courier) => (
-                <option key={courier.id} value={courier.id}>
-                  {courier.name}
-                </option>
-              ))}
-            </select>
           </div>
         </div>
 

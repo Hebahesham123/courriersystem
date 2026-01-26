@@ -285,27 +285,9 @@ const OrdersManagement: React.FC = () => {
 
   // Date range state - default to last 3 months
   const [dateRange, setDateRange] = useState<{ from: string; to: string }>(() => {
-    // Get today's date in Egypt timezone
-    const now = new Date()
-    const egyptTimezone = 'Africa/Cairo'
-    const formatter = new Intl.DateTimeFormat('en-CA', { // 'en-CA' gives YYYY-MM-DD format
-      timeZone: egyptTimezone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    })
-    
-    // Calculate 3 months ago
-    const threeMonthsAgo = new Date(now)
-    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3)
-    
-    const fromStr = formatter.format(threeMonthsAgo)
-    const toStr = formatter.format(now)
-    
-    return {
-      from: fromStr,
-      to: toStr,
-    }
+    // Default to "all" - no date filter (empty strings)
+    // This will show all orders by default
+    return { from: '', to: '' }
   })
   const [showDatePicker, setShowDatePicker] = useState(false)
   
@@ -388,7 +370,49 @@ const OrdersManagement: React.FC = () => {
   // Track if this is the initial load
   const [isInitialLoad, setIsInitialLoad] = useState(true)
   
-  // Fetch orders and couriers when dependencies change
+  // Debounce filter changes to prevent excessive API calls
+  const filterDebounceTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const [debouncedFilters, setDebouncedFilters] = useState(filters)
+  
+  useEffect(() => {
+    // Clear previous timer
+    if (filterDebounceTimerRef.current) {
+      clearTimeout(filterDebounceTimerRef.current)
+    }
+    
+    // Set new timer - debounce filter changes by 300ms
+    filterDebounceTimerRef.current = setTimeout(() => {
+      setDebouncedFilters(filters)
+    }, 300)
+    
+    return () => {
+      if (filterDebounceTimerRef.current) {
+        clearTimeout(filterDebounceTimerRef.current)
+      }
+    }
+  }, [filters])
+  
+  // Debounce date range changes
+  const dateDebounceTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const [debouncedDateRange, setDebouncedDateRange] = useState(dateRange)
+  
+  useEffect(() => {
+    if (dateDebounceTimerRef.current) {
+      clearTimeout(dateDebounceTimerRef.current)
+    }
+    
+    dateDebounceTimerRef.current = setTimeout(() => {
+      setDebouncedDateRange(dateRange)
+    }, 300)
+    
+    return () => {
+      if (dateDebounceTimerRef.current) {
+        clearTimeout(dateDebounceTimerRef.current)
+      }
+    }
+  }, [dateRange])
+  
+  // Fetch orders and couriers when dependencies change (using debounced values)
   useEffect(() => {
     // Only show full loading on initial load, otherwise use subtle refresh indicator
     fetchOrders(false, isInitialLoad)
@@ -397,7 +421,7 @@ const OrdersManagement: React.FC = () => {
     }
     fetchCouriers()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewMode, dateRange.from, dateRange.to, filters.couriers, filters.statuses, filters.paymentStatuses, filters.fulfillmentStatuses, filters.tags, debouncedSearch, sortField])
+  }, [viewMode, debouncedDateRange.from, debouncedDateRange.to, debouncedFilters.couriers, debouncedFilters.statuses, debouncedFilters.paymentStatuses, debouncedFilters.fulfillmentStatuses, debouncedFilters.tags, debouncedSearch, sortField])
 
   // Auto-hide messages after 5 seconds
   useEffect(() => {
@@ -420,20 +444,23 @@ const OrdersManagement: React.FC = () => {
     }
     setError(null)
     try {
+      // Use debounced date range for consistency
+      const activeDateRange = debouncedDateRange || dateRange
+      
       // Only apply date filter if user has explicitly selected a date range
       // Default is to show all orders from all days
       let startOfDay: string | null = null
       let endOfDay: string | null = null
       
-      if (dateRange && dateRange.from && dateRange.to) {
+      if (activeDateRange && activeDateRange.from && activeDateRange.to) {
         // Create date range from dateRange state - properly handle timezone conversion
         // Supabase stores timestamps in UTC, so we need to convert local date range to UTC
         // Parse the date string (YYYY-MM-DD) and set to local midnight
-        const [startYear, startMonth, startDay] = dateRange.from.split('-').map(Number)
+        const [startYear, startMonth, startDay] = activeDateRange.from.split('-').map(Number)
         // Create date in local timezone (this represents midnight local time on the start date)
         const startDateLocal = new Date(startYear, startMonth - 1, startDay, 0, 0, 0, 0)
         
-        const [endYear, endMonth, endDay] = dateRange.to.split('-').map(Number)
+        const [endYear, endMonth, endDay] = activeDateRange.to.split('-').map(Number)
         // Create date in local timezone (this represents 23:59:59.999 local time on the end date)
         const endDateLocal = new Date(endYear, endMonth - 1, endDay, 23, 59, 59, 999)
         
@@ -450,18 +477,10 @@ const OrdersManagement: React.FC = () => {
         startOfDay = previousDayLocal.toISOString()
         endOfDay = nextDayLocal.toISOString()
         
-        // Debug: Log the date range to help troubleshoot
-        if (typeof window !== 'undefined' && window.console) {
-          console.log('[Date Filter] Selected date range:', dateRange.from, 'to', dateRange.to)
-          console.log('[Date Filter] Expanded UTC range for query:', startOfDay, 'to', endOfDay)
-        }
-      } else {
-        // No date filter - show all orders
-        if (typeof window !== 'undefined' && window.console) {
-          console.log('[Date Filter] No date range selected - showing all orders')
-        }
       }
 
+      // Optimized query - exclude large JSON fields that slow down loading
+      // Only fetch essential fields for list view, load details on demand
       let query = supabase
         .from("orders")
         .select(
@@ -471,27 +490,24 @@ const OrdersManagement: React.FC = () => {
           total_order_fees, subtotal_price, total_tax, total_discounts, total_shipping_price, currency,
           payment_method, payment_status, financial_status, payment_gateway_names,
           status, fulfillment_status, shipping_method, tracking_number, tracking_url,
-          line_items, product_images, order_note, customer_note, notes, order_tags,
-          shopify_created_at, shopify_cancelled_at, assigned_courier_id, original_courier_id, created_at, updated_at,
-          archived, archived_at, collected_by, payment_sub_type, delivery_fee, partial_paid_amount, internal_comment, shopify_raw_data, receive_piece_or_exchange,
+          order_note, customer_note, notes, order_tags,
+          shopify_created_at, shopify_cancelled_at, assigned_courier_id, original_courier_id, assigned_at, created_at, updated_at,
+          archived, archived_at, collected_by, payment_sub_type, delivery_fee, partial_paid_amount, internal_comment, receive_piece_or_exchange,
           users!orders_assigned_courier_id_fkey(name)
         `,
         )
+        .limit(1000) // Limit results to prevent loading too many orders at once
+      
+      // Use debounced filters for consistency
+      const activeFilters = debouncedFilters || filters
       
       // Apply archived filter based on viewMode and filters
       // If filtering by "Canceled", we need to fetch canceled orders regardless of archived status (like Shopify)
       // If filtering by "Archived", we need to fetch archived orders
-      const isFilteringByCanceled = filters.statuses.some(s => s.toLowerCase().trim() === 'canceled')
-      const isFilteringByArchived = filters.statuses.some(s => s.toLowerCase().trim() === 'archived')
+      const isFilteringByCanceled = activeFilters.statuses.some(s => s.toLowerCase().trim() === 'canceled')
+      const isFilteringByArchived = activeFilters.statuses.some(s => s.toLowerCase().trim() === 'archived')
       
-      // Debug: Log filter state
-      if (typeof window !== 'undefined' && window.console && filters.statuses.length > 0) {
-        console.log('[Order Status Filter] Filter values:', filters.statuses)
-        console.log('[Order Status Filter] Is filtering by Canceled:', isFilteringByCanceled)
-        console.log('[Order Status Filter] Is filtering by Archived:', isFilteringByArchived)
-      }
-      
-      const isFilteringByOpen = filters.statuses.some(s => s.toLowerCase().trim() === 'open')
+      const isFilteringByOpen = activeFilters.statuses.some(s => s.toLowerCase().trim() === 'open')
       
       if (isFilteringByCanceled) {
         // When filtering by "Canceled", fetch all canceled orders (archived or not, like Shopify)
@@ -531,11 +547,12 @@ const OrdersManagement: React.FC = () => {
       query = query.order(sortField.field, { ascending })
 
       // Apply multi-select courier filter
-      if (filters.couriers.length > 0) {
+      // Date filtering by assigned_at is handled in-memory below when both courier and date filters are applied
+      if (activeFilters.couriers.length > 0) {
         if (viewMode === "archived") {
-          query = query.in("original_courier_id", filters.couriers)
+          query = query.in("original_courier_id", activeFilters.couriers)
         } else {
-          query = query.in("assigned_courier_id", filters.couriers)
+          query = query.in("assigned_courier_id", activeFilters.couriers)
         }
       }
 
@@ -543,16 +560,16 @@ const OrdersManagement: React.FC = () => {
       // This allows complex logic: Open = not archived AND not canceled
 
       // Apply payment status filter
-      if (filters.paymentStatuses.length > 0) {
-        query = query.in("payment_status", filters.paymentStatuses)
+      if (activeFilters.paymentStatuses.length > 0) {
+        query = query.in("payment_status", activeFilters.paymentStatuses)
       }
 
       // Note: Fulfillment status filter is applied in memory after fetching (see below)
       // This allows case-insensitive matching like Shopify
 
-      if (filters.mobile) query = query.ilike("mobile_number", `%${filters.mobile}%`)
-      if (filters.payment) query = query.ilike("payment_method", `%${filters.payment}%`)
-      if (filters.orderId) query = query.ilike("order_id", `%${filters.orderId}%`)
+      if (activeFilters.mobile) query = query.ilike("mobile_number", `%${activeFilters.mobile}%`)
+      if (activeFilters.payment) query = query.ilike("payment_method", `%${activeFilters.payment}%`)
+      if (activeFilters.orderId) query = query.ilike("order_id", `%${activeFilters.orderId}%`)
       
       // Apply search query (searches in multiple fields including Shopify fields)
       if (debouncedSearch) {
@@ -578,7 +595,7 @@ const OrdersManagement: React.FC = () => {
       let filteredData = data || []
       if (filters.tags.length > 0 && filters.tags.some(tag => tag)) {
         // Normalize selected tags once for efficiency - remove empty/whitespace tags
-        const normalizedSelectedTags = filters.tags
+        const normalizedSelectedTags = activeFilters.tags
           .map(tag => String(tag).toLowerCase().trim())
           .filter(tag => tag.length > 0) // Only keep non-empty tags
         
@@ -622,9 +639,9 @@ const OrdersManagement: React.FC = () => {
       }
 
       // Apply Shopify order status filter (Open, Archived, Canceled)
-      if (filters.statuses.length > 0) {
+      if (activeFilters.statuses.length > 0) {
         filteredData = filteredData.filter((order: any) => {
-          return filters.statuses.some(filterStatus => {
+          return activeFilters.statuses.some(filterStatus => {
             const normalizedFilterStatus = filterStatus.toLowerCase().trim()
             const orderStatus = (order.status || '').toLowerCase().trim()
             
@@ -654,7 +671,7 @@ const OrdersManagement: React.FC = () => {
       }
 
       // Apply fulfillment status filter (filter in memory for case-insensitive matching like Shopify)
-      if (filters.fulfillmentStatuses.length > 0) {
+      if (activeFilters.fulfillmentStatuses.length > 0) {
         filteredData = filteredData.filter((order: any) => {
           // Check if order is canceled - use same logic as status filter
           const orderStatus = (order.status || '').toLowerCase().trim()
@@ -666,7 +683,7 @@ const OrdersManagement: React.FC = () => {
           const orderFulfillmentStatus = rawFulfillmentStatus.toLowerCase().trim()
           
           // Check if we're filtering by "unfulfilled"
-          const isFilteringUnfulfilled = filters.fulfillmentStatuses.some(fs => fs.toLowerCase().trim() === 'unfulfilled')
+          const isFilteringUnfulfilled = activeFilters.fulfillmentStatuses.some(fs => fs.toLowerCase().trim() === 'unfulfilled')
           
           // If filtering by "unfulfilled", ALWAYS exclude canceled orders first
           if (isFilteringUnfulfilled && isCanceled) {
@@ -674,7 +691,7 @@ const OrdersManagement: React.FC = () => {
           }
           
           // Check if order matches any of the selected fulfillment statuses
-          return filters.fulfillmentStatuses.some(filterStatus => {
+          return activeFilters.fulfillmentStatuses.some(filterStatus => {
             const normalizedFilterStatus = filterStatus.toLowerCase().trim()
             
             // Handle "unfulfilled" filter explicitly - must NOT be fulfilled AND NOT canceled
@@ -715,12 +732,23 @@ const OrdersManagement: React.FC = () => {
       // Filter orders by local date to match Shopify-style display logic
       // Only apply date filter if user has explicitly selected a date range
       // Default is to show all orders from all days
-      if (dateRange && dateRange.from && dateRange.to && !debouncedSearch) {
+      if (activeDateRange && activeDateRange.from && activeDateRange.to && !debouncedSearch) {
         filteredData = filteredData.filter((order: any) => {
-          if (!order.created_at && !order.shopify_created_at) return false
+          // When courier filter is applied, use assigned_at to show orders assigned on that date
+          // Otherwise, use shopify_created_at or created_at
+          let timestamp: string | null = null
           
-          // Use shopify_created_at if available (for Shopify orders), otherwise created_at
-          const timestamp = order.shopify_created_at || order.created_at
+          if (activeFilters.couriers.length > 0 && viewMode !== "archived") {
+            // When filtering by courier, use assigned_at (when order was assigned to this courier)
+            // Fallback to created_at for legacy orders without assigned_at
+            timestamp = order.assigned_at || order.created_at
+          } else {
+            // For general date filtering, use shopify_created_at if available, otherwise created_at
+            timestamp = order.shopify_created_at || order.created_at
+          }
+          
+          if (!timestamp) return false
+          
           const utcDate = new Date(timestamp)
           
           if (isNaN(utcDate.getTime())) return false
@@ -738,8 +766,8 @@ const OrdersManagement: React.FC = () => {
           const [orderYear, orderMonth, orderDay] = formatted.split('-').map(Number)
           
           // Get selected date range
-          const [startYear, startMonth, startDay] = dateRange.from.split('-').map(Number)
-          const [endYear, endMonth, endDay] = dateRange.to.split('-').map(Number)
+          const [startYear, startMonth, startDay] = activeDateRange.from.split('-').map(Number)
+          const [endYear, endMonth, endDay] = activeDateRange.to.split('-').map(Number)
           
           const orderDateOnly = new Date(orderYear, orderMonth - 1, orderDay)
           const startDateOnly = new Date(startYear, startMonth - 1, startDay)
@@ -961,7 +989,7 @@ const OrdersManagement: React.FC = () => {
     setDateRange({ from: todayStr, to: todayStr })
   }
   
-  const setDateRangePreset = (preset: 'today' | 'yesterday' | 'week' | 'month') => {
+  const setDateRangePreset = (preset: 'all' | 'today' | 'yesterday' | 'week' | 'month') => {
     // Get today's date in Egypt timezone to match Shopify
     const now = new Date()
     const egyptTimezone = 'Africa/Cairo'
@@ -973,9 +1001,17 @@ const OrdersManagement: React.FC = () => {
     })
     
     switch (preset) {
+      case 'all':
+        // Clear date filter to show all orders - update debounced value immediately
+        const allRange = { from: '', to: '' }
+        setDateRange(allRange)
+        setDebouncedDateRange(allRange) // Update immediately without debounce
+        break
       case 'today':
         const todayStr = formatter.format(now)
-        setDateRange({ from: todayStr, to: todayStr })
+        const todayRange = { from: todayStr, to: todayStr }
+        setDateRange(todayRange)
+        setDebouncedDateRange(todayRange) // Update immediately without debounce
         break
       case 'yesterday':
         const yesterday = new Date(now)
@@ -1003,18 +1039,27 @@ const OrdersManagement: React.FC = () => {
   }
 
   const formatSelectedDate = () => {
-    // Always show date range (default is last 3 months)
+    // Show "All" when no date filter is applied
     if (!dateRange || !dateRange.from || !dateRange.to) {
-      return "آخر 3 أشهر"
+      return "الكل"
     }
     
     const fromDate = new Date(dateRange.from + "T12:00:00")
     const toDate = new Date(dateRange.to + "T12:00:00")
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
+    
+    // Get today's date in Egypt timezone to match the date format used in setDateRangePreset
+    const now = new Date()
+    const egyptTimezone = 'Africa/Cairo'
+    const formatter = new Intl.DateTimeFormat('en-CA', { // 'en-CA' gives YYYY-MM-DD format
+      timeZone: egyptTimezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    })
+    const todayStr = formatter.format(now)
     
     const isSameDay = dateRange.from === dateRange.to
-    const isToday = dateRange.from === today.toISOString().split("T")[0] && isSameDay
+    const isToday = dateRange.from === todayStr && isSameDay
     
     if (isToday) {
       return "اليوم"
@@ -3185,28 +3230,36 @@ const OrdersManagement: React.FC = () => {
             <div className="flex items-center gap-1.5">
               {/* Quick Presets - Compact */}
               <button
+                onClick={() => setDateRangePreset('all')}
+                className={`px-2 py-1 text-xs rounded transition-colors ${
+                  (!dateRange || !dateRange.from || !dateRange.to) 
+                    ? 'bg-blue-600 text-white' 
+                    : 'hover:bg-blue-50'
+                }`}
+              >
+                الكل
+              </button>
+              <button
                 onClick={() => setDateRangePreset('today')}
-                className="px-2 py-1 text-xs rounded hover:bg-blue-50 transition-colors"
+                className={`px-2 py-1 text-xs rounded transition-colors ${
+                  (() => {
+                    if (!dateRange?.from || !dateRange?.to) return false
+                    const now = new Date()
+                    const egyptTimezone = 'Africa/Cairo'
+                    const formatter = new Intl.DateTimeFormat('en-CA', {
+                      timeZone: egyptTimezone,
+                      year: 'numeric',
+                      month: '2-digit',
+                      day: '2-digit',
+                    })
+                    const todayStr = formatter.format(now)
+                    return dateRange.from === todayStr && dateRange.from === dateRange.to
+                  })()
+                    ? 'bg-blue-600 text-white' 
+                    : 'hover:bg-blue-50'
+                }`}
               >
                 اليوم
-              </button>
-              <button
-                onClick={() => setDateRangePreset('yesterday')}
-                className="px-2 py-1 text-xs rounded hover:bg-blue-50 transition-colors"
-              >
-                أمس
-              </button>
-              <button
-                onClick={() => setDateRangePreset('week')}
-                className="px-2 py-1 text-xs rounded hover:bg-blue-50 transition-colors"
-              >
-                7 أيام
-              </button>
-              <button
-                onClick={() => setDateRangePreset('month')}
-                className="px-2 py-1 text-xs rounded hover:bg-blue-50 transition-colors"
-              >
-                شهر
               </button>
               
               {/* Date Navigation - Compact */}
@@ -3216,12 +3269,6 @@ const OrdersManagement: React.FC = () => {
                 title="السابق"
               >
                 <ChevronRight className="w-4 h-4 text-gray-600" />
-              </button>
-              <button
-                onClick={goToToday}
-                className="px-2.5 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-xs font-medium"
-              >
-                اليوم
               </button>
               <button
                 onClick={goToNextDay}

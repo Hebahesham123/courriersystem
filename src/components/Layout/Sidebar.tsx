@@ -210,11 +210,9 @@ const Sidebar: React.FC = () => {
 
   return (
     <>
-      {/* Mobile Menu Toggle Button */}
+      {/* Mobile Menu Toggle Button - Always on the right */}
       <button
-        className={`fixed top-4 z-50 p-3 bg-gray-900 hover:bg-gray-800 text-white rounded-xl shadow-lg transition-all duration-200 lg:hidden ${
-          isRTL ? "right-4" : "left-4"
-        }`}
+        className="fixed top-4 right-4 z-50 p-3 bg-gray-900 hover:bg-gray-800 text-white rounded-xl shadow-lg transition-all duration-200 lg:hidden"
         onClick={toggleSidebar}
         aria-label="فتح القائمة الجانبية"
       >
@@ -230,12 +228,12 @@ const Sidebar: React.FC = () => {
         />
       )}
 
-      {/* Sidebar Container */}
+      {/* Sidebar Container - Always on the right side */}
       <aside
-        className={`fixed top-0 ${isRTL ? "right-0" : "left-0"} z-50 h-full bg-gradient-to-b from-gray-900 via-gray-800 to-gray-900 text-white shadow-2xl transition-all duration-300 ease-in-out ${
+        className={`fixed top-0 right-0 z-50 h-full bg-gradient-to-b from-gray-900 via-gray-800 to-gray-900 text-white shadow-2xl transition-all duration-300 ease-in-out ${
           isCollapsed ? "w-20" : "w-72 sm:w-80"
         } ${
-          sidebarOpen ? "translate-x-0" : isRTL ? "translate-x-full" : "-translate-x-full"
+          sidebarOpen ? "translate-x-0" : "translate-x-full"
         } lg:translate-x-0 lg:static`}
         dir={isRTL ? "rtl" : "ltr"}
         role="navigation"
