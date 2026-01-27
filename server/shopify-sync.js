@@ -1187,7 +1187,11 @@ async function syncShopifyOrders(updatedAtMin = null) {
             // BUT: Cancellation is a Shopify action that should always be respected
             status: (() => {
               // ALWAYS respect Shopify cancellation - it's a Shopify action, not a courier action
-              if (dbOrder.shopify_cancelled_at || dbOrder.status === 'canceled') {
+              // Check for both cancelled_at and financial_status voided (Shopify can void orders without cancelled_at)
+              const isCanceled = dbOrder.shopify_cancelled_at || 
+                                dbOrder.status === 'canceled' ||
+                                (dbOrder.financial_status && dbOrder.financial_status.toLowerCase() === 'voided')
+              if (isCanceled) {
                 return 'canceled'
               }
               // Protect courier-processed statuses from being reset to pending

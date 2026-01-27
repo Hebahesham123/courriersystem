@@ -648,8 +648,10 @@ const OrdersManagement: React.FC = () => {
             // Map Shopify order statuses to database values
             if (normalizedFilterStatus === 'open') {
               // Open: not archived AND not canceled (check both status and shopify fields)
+              // Also check financial_status for voided orders
               const isCanceled = orderStatus === 'canceled' || 
-                                (order.shopify_cancelled_at !== null && order.shopify_cancelled_at !== undefined)
+                                (order.shopify_cancelled_at !== null && order.shopify_cancelled_at !== undefined) ||
+                                (order.financial_status && order.financial_status.toLowerCase() === 'voided')
               const isArchived = order.archived === true || 
                                (order.shopify_closed_at !== null && order.shopify_closed_at !== undefined)
               return !isArchived && !isCanceled
@@ -658,9 +660,10 @@ const OrdersManagement: React.FC = () => {
               return order.archived === true || 
                      (order.shopify_closed_at !== null && order.shopify_closed_at !== undefined)
             } else if (normalizedFilterStatus === 'canceled') {
-              // Canceled: status = 'canceled' OR shopify_cancelled_at is set (for Shopify canceled orders)
+              // Canceled: status = 'canceled' OR shopify_cancelled_at is set OR financial_status is voided
               return orderStatus === 'canceled' || 
-                     (order.shopify_cancelled_at !== null && order.shopify_cancelled_at !== undefined)
+                     (order.shopify_cancelled_at !== null && order.shopify_cancelled_at !== undefined) ||
+                     (order.financial_status && order.financial_status.toLowerCase() === 'voided')
             }
             
             // Fallback: exact match for delivery statuses (for backward compatibility)

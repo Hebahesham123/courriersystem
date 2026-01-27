@@ -356,10 +356,13 @@ Deno.serve(async (req: Request) => {
         const processedStatuses = ['delivered', 'partial', 'return', 'hand_to_hand', 'receiving_part']
         const isProcessed = existingMain.status && processedStatuses.includes(existingMain.status)
         
-        if (orderData.shopify_cancelled_at) {
+        // Check for both cancelled_at and financial_status voided (Shopify can void orders without cancelled_at)
+        const isShopifyCanceled = orderData.shopify_cancelled_at || 
+                                 (orderData.financial_status && orderData.financial_status.toLowerCase() === 'voided')
+        if (isShopifyCanceled) {
           // ALWAYS respect Shopify cancellation - it's a Shopify action, not a courier action
           updateData.status = 'canceled'
-          console.log(`✅ Shopify cancellation detected for order ${shopifyOrder.id} - updating status to canceled`)
+          console.log(`✅ Shopify cancellation/void detected for order ${shopifyOrder.id} - updating status to canceled`)
         } else {
           // If not canceled, preserve courier-processed status
           if (isProcessed) {

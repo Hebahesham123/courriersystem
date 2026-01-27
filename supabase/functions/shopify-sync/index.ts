@@ -300,7 +300,15 @@ Deno.serve(async (req: Request) => {
 
       // Prepare order data for orders table (frontend reads from here)
       // Determine initial status - preserve existing status if order was already processed
-      let initialStatus = shopifyOrder.cancelled_at ? 'canceled' : 'pending'
+      // Check for both cancelled_at and financial_status voided (Shopify can void orders without cancelled_at)
+      const financialStatusLower = (shopifyOrder.financial_status || '').toLowerCase()
+      const isCanceled = shopifyOrder.cancelled_at || financialStatusLower === 'voided'
+      let initialStatus = isCanceled ? 'canceled' : 'pending'
+      
+      // Log voided orders for debugging
+      if (financialStatusLower === 'voided') {
+        console.log(`⚠️ VOIDED ORDER DETECTED: Order ${shopifyOrder.id || shopifyOrder.name} has financial_status=voided, setting status=canceled`)
+      }
       let initialPaymentMethod = paymentInfo.method
       let initialPaymentStatus = paymentInfo.status
       let initialCollectedBy = null
@@ -321,8 +329,14 @@ Deno.serve(async (req: Request) => {
           }
         }
         // Only override to canceled if Shopify says canceled AND order wasn't already processed
-        if (shopifyOrder.cancelled_at && !processedStatuses.includes(existing.status || '')) {
+        // Check for both cancelled_at and financial_status voided
+        const financialStatusLower = (shopifyOrder.financial_status || '').toLowerCase()
+        const isShopifyCanceled = shopifyOrder.cancelled_at || financialStatusLower === 'voided'
+        if (isShopifyCanceled && !processedStatuses.includes(existing.status || '')) {
           initialStatus = 'canceled'
+          if (financialStatusLower === 'voided') {
+            console.log(`⚠️ VOIDED ORDER UPDATE: Order ${shopifyOrder.id || shopifyOrder.name} has financial_status=voided, updating status to canceled`)
+          }
         }
       }
       
@@ -451,7 +465,13 @@ Deno.serve(async (req: Request) => {
           // Status: Always respect Shopify cancellation, but protect other courier-edited statuses
           status: (() => {
             // ALWAYS respect Shopify cancellation - it's a Shopify action
-            if (orderData.shopify_cancelled_at) {
+            // Check for both cancelled_at and financial_status voided
+            const financialStatusLower = (orderData.financial_status || '').toLowerCase()
+            const isShopifyCanceled = orderData.shopify_cancelled_at || financialStatusLower === 'voided'
+            if (isShopifyCanceled) {
+              if (financialStatusLower === 'voided') {
+                console.log(`⚠️ VOIDED ORDER UPDATE (with courier): Order ${shopifyOrder.id || shopifyOrder.name} has financial_status=voided, forcing status to canceled`)
+              }
               return 'canceled'
             }
             // Protect courier-processed statuses from being reset to pending
