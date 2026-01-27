@@ -1849,16 +1849,16 @@ const Summary: React.FC = () => {
                         <h2 className="text-base font-bold text-gray-900">📦 ملخص الطلبات (v2)</h2>
                       </div>
                     </div>
-                    <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-2">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-1.5">
                       {/* Total Orders */}
                       <div
-                        className="bg-gradient-to-br from-gray-50 to-white border-2 border-gray-200 rounded-lg p-3 cursor-pointer hover:border-blue-400 hover:shadow-md transition-all duration-200 group"
+                        className="bg-gradient-to-br from-gray-50 to-white border border-gray-200 rounded-lg p-2 cursor-pointer hover:border-blue-400 hover:shadow-md transition-all duration-200 group"
                         onClick={() => openOrders(metrics.allOrders, "إجمالي الطلبات")}
                       >
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 bg-gradient-to-br from-gray-400 to-gray-500 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
-                              <Package className="w-4 h-4 text-white" />
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-6 h-6 bg-gradient-to-br from-gray-400 to-gray-500 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
+                              <Package className="w-3 h-3 text-white" />
                             </div>
                             <div>
                               <h3 className="text-xs font-bold text-gray-900 group-hover:text-blue-600 transition-colors">إجمالي الطلبات</h3>
@@ -1866,10 +1866,10 @@ const Summary: React.FC = () => {
                             </div>
                           </div>
                         </div>
-                        <div className="pt-2 border-t border-gray-200">
+                        <div className="pt-1.5 border-t border-gray-200">
                           <div className="flex justify-between items-center">
                             <span className="text-xs text-gray-600">القيمة:</span>
-                            <span className="text-sm font-bold text-gray-900 group-hover:text-blue-600 transition-colors">
+                            <span className="text-xs font-bold text-gray-900 group-hover:text-blue-600 transition-colors">
                               {metrics.totalOrdersOriginalValue.toFixed(2)} ج.م
                             </span>
                           </div>
@@ -1877,13 +1877,13 @@ const Summary: React.FC = () => {
                       </div>
                       {/* Pending Orders (New from Shopify) */}
                       <div
-                        className="bg-gradient-to-br from-yellow-50 to-white border-2 border-yellow-200 rounded-lg p-3 cursor-pointer hover:border-yellow-400 hover:shadow-md transition-all duration-200 group"
+                        className="bg-gradient-to-br from-yellow-50 to-white border border-yellow-200 rounded-lg p-2 cursor-pointer hover:border-yellow-400 hover:shadow-md transition-all duration-200 group"
                         onClick={() => openOrders(metrics.pending?.orders || [], "الطلبات المعلقة")}
                       >
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 bg-gradient-to-br from-yellow-400 to-yellow-500 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
-                              <Clock className="w-4 h-4 text-white" />
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-6 h-6 bg-gradient-to-br from-yellow-400 to-yellow-500 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
+                              <Clock className="w-3 h-3 text-white" />
                             </div>
                             <div>
                               <h3 className="text-xs font-bold text-yellow-900 group-hover:text-yellow-600 transition-colors">الطلبات المعلقة</h3>
@@ -1891,10 +1891,10 @@ const Summary: React.FC = () => {
                             </div>
                           </div>
                         </div>
-                        <div className="pt-2 border-t border-yellow-200">
+                        <div className="pt-1.5 border-t border-yellow-200">
                           <div className="flex justify-between items-center">
                             <span className="text-xs text-yellow-700">القيمة:</span>
-                            <span className="text-sm font-bold text-yellow-900">
+                            <span className="text-xs font-bold text-yellow-900">
                               {(metrics.pending?.originalValue || 0).toFixed(2)} ج.م
                             </span>
                           </div>
@@ -1902,13 +1902,13 @@ const Summary: React.FC = () => {
                       </div>
                       {/* Assigned Orders (Assigned to courier but not started) */}
                       <div
-                        className="bg-gradient-to-br from-blue-50 to-white border-2 border-blue-200 rounded-lg p-3 cursor-pointer hover:border-blue-400 hover:shadow-md transition-all duration-200 group"
+                        className="bg-gradient-to-br from-blue-50 to-white border border-blue-200 rounded-lg p-2 cursor-pointer hover:border-blue-400 hover:shadow-md transition-all duration-200 group"
                         onClick={() => openOrders(metrics.assigned?.orders || [], "الطلبات المكلفة")}
                       >
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 bg-gradient-to-br from-blue-400 to-blue-500 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
-                              <Truck className="w-4 h-4 text-white" />
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-6 h-6 bg-gradient-to-br from-blue-400 to-blue-500 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
+                              <Truck className="w-3 h-3 text-white" />
                             </div>
                             <div>
                               <h3 className="text-xs font-bold text-blue-900 group-hover:text-blue-600 transition-colors">الطلبات المكلفة</h3>
@@ -1916,10 +1916,10 @@ const Summary: React.FC = () => {
                             </div>
                           </div>
                         </div>
-                        <div className="pt-2 border-t border-blue-200">
+                        <div className="pt-1.5 border-t border-blue-200">
                           <div className="flex justify-between items-center">
                             <span className="text-xs text-blue-700">القيمة:</span>
-                            <span className="text-sm font-bold text-blue-900">
+                            <span className="text-xs font-bold text-blue-900">
                               {(metrics.assigned?.originalValue || 0).toFixed(2)} ج.م
                             </span>
                           </div>
@@ -1927,13 +1927,13 @@ const Summary: React.FC = () => {
                       </div>
                       {/* Delivered Orders */}
                       <div
-                        className="bg-gradient-to-br from-green-50 to-white border-2 border-green-200 rounded-lg p-3 cursor-pointer hover:border-green-400 hover:shadow-md transition-all duration-200 group"
+                        className="bg-gradient-to-br from-green-50 to-white border border-green-200 rounded-lg p-2 cursor-pointer hover:border-green-400 hover:shadow-md transition-all duration-200 group"
                         onClick={() => openOrders(metrics.delivered.orders, "الطلبات المسلمة")}
                       >
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
-                              <CheckCircle className="w-4 h-4 text-white" />
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-6 h-6 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
+                              <CheckCircle className="w-3 h-3 text-white" />
                             </div>
                             <div>
                               <h3 className="text-xs font-bold text-green-900 group-hover:text-green-600 transition-colors">الطلبات المسلمة</h3>
@@ -1941,16 +1941,16 @@ const Summary: React.FC = () => {
                             </div>
                           </div>
                         </div>
-                        <div className="space-y-1.5 pt-2 border-t border-green-200">
+                        <div className="space-y-1 pt-1.5 border-t border-green-200">
                           <div className="flex justify-between items-center">
                             <span className="text-xs text-green-700">القيمة:</span>
-                            <span className="text-sm font-bold text-green-900">
+                            <span className="text-xs font-bold text-green-900">
                               {metrics.delivered.originalValue.toFixed(2)} ج.م
                             </span>
                           </div>
                           <div className="flex justify-between items-center">
                             <span className="text-xs text-green-700">المحصل:</span>
-                            <span className="text-sm font-bold text-green-900">
+                            <span className="text-xs font-bold text-green-900">
                               {metrics.delivered.courierCollected.toFixed(2)} ج.م
                             </span>
                           </div>
@@ -1958,13 +1958,13 @@ const Summary: React.FC = () => {
                       </div>
                       {/* Canceled Orders */}
                       <div
-                        className="bg-gradient-to-br from-red-50 to-white border-2 border-red-200 rounded-lg p-3 cursor-pointer hover:border-red-400 hover:shadow-md transition-all duration-200 group"
+                        className="bg-gradient-to-br from-red-50 to-white border border-red-200 rounded-lg p-2 cursor-pointer hover:border-red-400 hover:shadow-md transition-all duration-200 group"
                         onClick={() => openOrders(metrics.canceled.orders, "الطلبات الملغاة")}
                       >
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 bg-gradient-to-br from-red-500 to-red-600 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
-                              <XCircle className="w-4 h-4 text-white" />
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-6 h-6 bg-gradient-to-br from-red-500 to-red-600 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
+                              <XCircle className="w-3 h-3 text-white" />
                             </div>
                             <div>
                               <h3 className="text-xs font-bold text-red-900 group-hover:text-red-600 transition-colors">الطلبات الملغاة</h3>
@@ -1972,16 +1972,16 @@ const Summary: React.FC = () => {
                             </div>
                           </div>
                         </div>
-                        <div className="space-y-1.5 pt-2 border-t border-red-200">
+                        <div className="space-y-1 pt-1.5 border-t border-red-200">
                           <div className="flex justify-between items-center">
                             <span className="text-xs text-red-700">القيمة:</span>
-                            <span className="text-sm font-bold text-red-900">
+                            <span className="text-xs font-bold text-red-900">
                               {metrics.canceled.originalValue.toFixed(2)} ج.م
                             </span>
                           </div>
                           <div className="flex justify-between items-center">
                             <span className="text-xs text-red-700">المحصل:</span>
-                            <span className="text-sm font-bold text-red-900">
+                            <span className="text-xs font-bold text-red-900">
                               {metrics.canceled.courierCollected.toFixed(2)} ج.م
                             </span>
                           </div>
@@ -1989,13 +1989,13 @@ const Summary: React.FC = () => {
                       </div>
                       {/* Partial Orders */}
                       <div
-                        className="bg-gradient-to-br from-yellow-50 to-white border-2 border-yellow-200 rounded-lg p-3 cursor-pointer hover:border-yellow-400 hover:shadow-md transition-all duration-200 group"
+                        className="bg-gradient-to-br from-yellow-50 to-white border border-yellow-200 rounded-lg p-2 cursor-pointer hover:border-yellow-400 hover:shadow-md transition-all duration-200 group"
                         onClick={() => openOrders(metrics.partial.orders, "الطلبات الجزئية")}
                       >
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
-                              <HandCoins className="w-4 h-4 text-white" />
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-6 h-6 bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
+                              <HandCoins className="w-3 h-3 text-white" />
                             </div>
                             <div>
                               <h3 className="text-xs font-bold text-yellow-900 group-hover:text-yellow-600 transition-colors">الطلبات الجزئية</h3>
@@ -2003,16 +2003,16 @@ const Summary: React.FC = () => {
                             </div>
                           </div>
                         </div>
-                        <div className="space-y-1.5 pt-2 border-t border-yellow-200">
+                        <div className="space-y-1 pt-1.5 border-t border-yellow-200">
                           <div className="flex justify-between items-center">
                             <span className="text-xs text-yellow-700">القيمة:</span>
-                            <span className="text-sm font-bold text-yellow-900">
+                            <span className="text-xs font-bold text-yellow-900">
                               {metrics.partial.originalValue.toFixed(2)} ج.م
                             </span>
                           </div>
                           <div className="flex justify-between items-center">
                             <span className="text-xs text-yellow-700">المحصل:</span>
-                            <span className="text-sm font-bold text-yellow-900">
+                            <span className="text-xs font-bold text-yellow-900">
                               {metrics.partial.courierCollected.toFixed(2)} ج.م
                             </span>
                           </div>
@@ -2020,13 +2020,13 @@ const Summary: React.FC = () => {
                       </div>
                       {/* Returned Orders */}
                       <div
-                        className="bg-gradient-to-br from-orange-50 to-white border-2 border-orange-200 rounded-lg p-3 cursor-pointer hover:border-orange-400 hover:shadow-md transition-all duration-200 group"
+                        className="bg-gradient-to-br from-orange-50 to-white border border-orange-200 rounded-lg p-2 cursor-pointer hover:border-orange-400 hover:shadow-md transition-all duration-200 group"
                         onClick={() => openOrders(metrics.returned.orders, "الطلبات المؤجله")}
                       >
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
-                              <Truck className="w-4 h-4 text-white" />
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-6 h-6 bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
+                              <Truck className="w-3 h-3 text-white" />
                             </div>
                             <div>
                               <h3 className="text-xs font-bold text-orange-900 group-hover:text-orange-600 transition-colors">الطلبات المؤجله</h3>
@@ -2034,16 +2034,16 @@ const Summary: React.FC = () => {
                             </div>
                           </div>
                         </div>
-                        <div className="space-y-1.5 pt-2 border-t border-orange-200">
+                        <div className="space-y-1 pt-1.5 border-t border-orange-200">
                           <div className="flex justify-between items-center">
                             <span className="text-xs text-orange-700">القيمة:</span>
-                            <span className="text-sm font-bold text-orange-900">
+                            <span className="text-xs font-bold text-orange-900">
                               {metrics.returned.originalValue.toFixed(2)} ج.م
                             </span>
                           </div>
                           <div className="flex justify-between items-center">
                             <span className="text-xs text-orange-700">المحصل:</span>
-                            <span className="text-sm font-bold text-orange-900">
+                            <span className="text-xs font-bold text-orange-900">
                               {metrics.returned.courierCollected.toFixed(2)} ج.م
                             </span>
                           </div>
@@ -2051,13 +2051,13 @@ const Summary: React.FC = () => {
                       </div>
                       {/* Receiving Part Orders */}
                       <div
-                        className="bg-gradient-to-br from-indigo-50 to-white border-2 border-indigo-200 rounded-lg p-3 cursor-pointer hover:border-indigo-400 hover:shadow-md transition-all duration-200 group"
+                        className="bg-gradient-to-br from-indigo-50 to-white border border-indigo-200 rounded-lg p-2 cursor-pointer hover:border-indigo-400 hover:shadow-md transition-all duration-200 group"
                         onClick={() => openOrders(metrics.receivingPart.orders, "طلبات استلام قطعة")}
                       >
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
-                              <HandMetal className="w-4 h-4 text-white" />
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-6 h-6 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
+                              <HandMetal className="w-3 h-3 text-white" />
                             </div>
                             <div>
                               <h3 className="text-xs font-bold text-indigo-900 group-hover:text-indigo-600 transition-colors">طلبات استلام قطعة</h3>
@@ -2065,16 +2065,16 @@ const Summary: React.FC = () => {
                             </div>
                           </div>
                         </div>
-                        <div className="space-y-1.5 pt-2 border-t border-indigo-200">
+                        <div className="space-y-1 pt-1.5 border-t border-indigo-200">
                           <div className="flex justify-between items-center">
                             <span className="text-xs text-indigo-700">القيمة:</span>
-                            <span className="text-sm font-bold text-indigo-900">
+                            <span className="text-xs font-bold text-indigo-900">
                               {metrics.receivingPart.originalValue.toFixed(2)} ج.م
                             </span>
                           </div>
                           <div className="flex justify-between items-center">
                             <span className="text-xs text-indigo-700">المحصل:</span>
-                            <span className="text-sm font-bold text-indigo-900">
+                            <span className="text-xs font-bold text-indigo-900">
                               {metrics.receivingPart.courierCollected.toFixed(2)} ج.م
                             </span>
                           </div>
@@ -2082,13 +2082,13 @@ const Summary: React.FC = () => {
                       </div>
                       {/* Hand-to-Hand Orders */}
                       <div
-                        className="bg-gradient-to-br from-purple-50 to-white border-2 border-purple-200 rounded-lg p-3 cursor-pointer hover:border-purple-400 hover:shadow-md transition-all duration-200 group"
+                        className="bg-gradient-to-br from-purple-50 to-white border border-purple-200 rounded-lg p-2 cursor-pointer hover:border-purple-400 hover:shadow-md transition-all duration-200 group"
                         onClick={() => openOrders(metrics.handToHand.orders, "الطلبات يد بيد")}
                       >
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
-                              <RefreshCw className="w-4 h-4 text-white" />
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-6 h-6 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
+                              <RefreshCw className="w-3 h-3 text-white" />
                             </div>
                             <div>
                               <h3 className="text-xs font-bold text-purple-900 group-hover:text-purple-600 transition-colors">الطلبات يد بيد</h3>
@@ -2096,16 +2096,16 @@ const Summary: React.FC = () => {
                             </div>
                           </div>
                         </div>
-                        <div className="space-y-1.5 pt-2 border-t border-purple-200">
+                        <div className="space-y-1 pt-1.5 border-t border-purple-200">
                           <div className="flex justify-between items-center">
                             <span className="text-xs text-purple-700">القيمة:</span>
-                            <span className="text-sm font-bold text-purple-900">
+                            <span className="text-xs font-bold text-purple-900">
                               {metrics.handToHand.originalValue.toFixed(2)} ج.م
                             </span>
                           </div>
                           <div className="flex justify-between items-center">
                             <span className="text-xs text-purple-700">المحصل:</span>
-                            <span className="text-sm font-bold text-purple-900">
+                            <span className="text-xs font-bold text-purple-900">
                               {metrics.handToHand.courierCollected.toFixed(2)} ج.م
                             </span>
                           </div>
@@ -2122,10 +2122,10 @@ const Summary: React.FC = () => {
                       </div>
                       <h2 className="text-base font-bold text-gray-900">💰 ملخص المحصل والغير مُسلَّم</h2>
                     </div>
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-1.5">
                       {/* Total Collected */}
                       <div
-                        className="bg-gradient-to-br from-emerald-50 to-white border-2 border-emerald-200 rounded-lg p-3 cursor-pointer hover:border-emerald-400 hover:shadow-md transition-all duration-200 group"
+                        className="bg-gradient-to-br from-emerald-50 to-white border border-emerald-200 rounded-lg p-2 cursor-pointer hover:border-emerald-400 hover:shadow-md transition-all duration-200 group"
                         onClick={() => {
                           const collectedOrders = [
                             ...metrics.delivered.orders,
@@ -2143,20 +2143,20 @@ const Summary: React.FC = () => {
                           openOrders(collectedOrders, "إجمالي مُسلَّم فعليًا")
                         }}
                       >
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
-                              <CheckCircle className="w-4 h-4 text-white" />
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-6 h-6 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
+                              <CheckCircle className="w-3 h-3 text-white" />
                             </div>
                             <div>
                               <h3 className="text-xs font-bold text-emerald-900 group-hover:text-emerald-600 transition-colors">إجمالي مُسلَّم فعليًا</h3>
                             </div>
                           </div>
                         </div>
-                        <div className="space-y-1.5 pt-2 border-t border-emerald-200">
+                        <div className="space-y-1 pt-1.5 border-t border-emerald-200">
                           <div className="flex justify-between items-center">
                             <span className="text-xs text-emerald-700">المحصل:</span>
-                            <span className="text-base font-bold text-emerald-900">
+                            <span className="text-xs font-bold text-emerald-900">
                               {(() => {
                                 const totalCollected = 
                                   metrics.delivered.courierCollected +
@@ -2171,7 +2171,7 @@ const Summary: React.FC = () => {
                           </div>
                           <div className="flex justify-between items-center">
                             <span className="text-xs font-semibold text-emerald-700">الطلبات:</span>
-                            <span className="text-sm font-bold text-emerald-900">
+                            <span className="text-xs font-bold text-emerald-900">
                               {(() => {
                                 const collectedOrders = [
                                   ...metrics.delivered.orders,
@@ -2194,7 +2194,7 @@ const Summary: React.FC = () => {
                       </div>
                       {/* Total Not Delivered */}
                       <div
-                        className="bg-gradient-to-br from-red-50 to-white border-2 border-red-200 rounded-lg p-3 cursor-pointer hover:border-red-400 hover:shadow-md transition-all duration-200 group"
+                        className="bg-gradient-to-br from-red-50 to-white border border-red-200 rounded-lg p-2 cursor-pointer hover:border-red-400 hover:shadow-md transition-all duration-200 group"
                         onClick={() => {
                           const notDeliveredOrders = [
                             ...metrics.canceled.orders,
@@ -2204,20 +2204,20 @@ const Summary: React.FC = () => {
                           openOrders(notDeliveredOrders, "إجمالي غير مُسلَّم")
                         }}
                       >
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 bg-gradient-to-br from-red-500 to-red-600 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
-                              <XCircle className="w-4 h-4 text-white" />
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-6 h-6 bg-gradient-to-br from-red-500 to-red-600 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
+                              <XCircle className="w-3 h-3 text-white" />
                             </div>
                             <div>
                               <h3 className="text-xs font-bold text-red-900 group-hover:text-red-600 transition-colors">إجمالي غير مُسلَّم</h3>
                             </div>
                           </div>
                         </div>
-                        <div className="space-y-1.5 pt-2 border-t border-red-200">
+                        <div className="space-y-1 pt-1.5 border-t border-red-200">
                           <div className="flex justify-between items-center">
                             <span className="text-xs text-red-700">الغير مُسلَّم:</span>
-                            <span className="text-base font-bold text-red-900">
+                            <span className="text-xs font-bold text-red-900">
                               {(() => {
                                 let totalNotDelivered = 0
                                 totalNotDelivered += metrics.canceled.originalValue
@@ -2232,7 +2232,7 @@ const Summary: React.FC = () => {
                           </div>
                           <div className="flex justify-between items-center">
                             <span className="text-xs font-semibold text-red-700">الطلبات:</span>
-                            <span className="text-sm font-bold text-red-900">
+                            <span className="text-xs font-bold text-red-900">
                               {(() => {
                                 const notDeliveredCount = 
                                   metrics.canceled.count +
@@ -2272,21 +2272,21 @@ const Summary: React.FC = () => {
                         </label>
                       </div>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-2 mb-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-1.5 mb-3">
                       {/* Visa Machine */}
                       <div
-                        className={`${metrics.visaMachineOrders.count > 0 ? "bg-gradient-to-br from-slate-50 to-white border-slate-200" : "bg-gray-50 border-gray-200 opacity-60"} border-2 rounded-lg p-3 cursor-pointer hover:border-slate-400 hover:shadow-md transition-all duration-200 group`}
+                        className={`${metrics.visaMachineOrders.count > 0 ? "bg-gradient-to-br from-slate-50 to-white border-slate-200" : "bg-gray-50 border-gray-200 opacity-60"} border rounded-lg p-2 cursor-pointer hover:border-slate-400 hover:shadow-md transition-all duration-200 group`}
                         onClick={() => openOrders(metrics.visaMachineOrders.orders, "طلبات ماكينة فيزا", 'visa_machine')}
                       >
-                        <div className="flex items-center gap-2 mb-2">
-                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform ${metrics.visaMachineOrders.count > 0 ? "bg-gradient-to-br from-slate-500 to-slate-600" : "bg-gray-400"}`}>
-                            <Monitor className="w-4 h-4 text-white" />
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <div className={`w-6 h-6 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform ${metrics.visaMachineOrders.count > 0 ? "bg-gradient-to-br from-slate-500 to-slate-600" : "bg-gray-400"}`}>
+                            <Monitor className="w-3 h-3 text-white" />
                           </div>
                           <h4 className={`text-xs font-bold ${metrics.visaMachineOrders.count > 0 ? "text-slate-900 group-hover:text-slate-600" : "text-gray-500"} transition-colors`}>ماكينة فيزا</h4>
                         </div>
-                        <div className="space-y-1 pt-2 border-t border-slate-200">
-                          <p className={`text-xl font-bold ${metrics.visaMachineOrders.count > 0 ? "text-slate-900" : "text-gray-500"}`}>{metrics.visaMachineOrders.count}</p>
-                          <p className={`text-sm font-semibold ${metrics.visaMachineOrders.count > 0 ? "text-slate-700" : "text-gray-400"}`}>
+                        <div className="space-y-0.5 pt-1.5 border-t border-slate-200">
+                          <p className={`text-base font-bold ${metrics.visaMachineOrders.count > 0 ? "text-slate-900" : "text-gray-500"}`}>{metrics.visaMachineOrders.count}</p>
+                          <p className={`text-xs font-semibold ${metrics.visaMachineOrders.count > 0 ? "text-slate-700" : "text-gray-400"}`}>
                             {metrics.visaMachineOrders.amount.toFixed(2)} ج.م
                           </p>
                         </div>
@@ -2294,18 +2294,18 @@ const Summary: React.FC = () => {
 
                       {/* Instapay */}
                       <div
-                        className={`${metrics.instapayOrders.count > 0 ? "bg-gradient-to-br from-cyan-50 to-white border-cyan-200" : "bg-gray-50 border-gray-200 opacity-60"} border-2 rounded-lg p-3 cursor-pointer hover:border-cyan-400 hover:shadow-md transition-all duration-200 group`}
+                        className={`${metrics.instapayOrders.count > 0 ? "bg-gradient-to-br from-cyan-50 to-white border-cyan-200" : "bg-gray-50 border-gray-200 opacity-60"} border rounded-lg p-2 cursor-pointer hover:border-cyan-400 hover:shadow-md transition-all duration-200 group`}
                         onClick={() => openOrders(metrics.instapayOrders.orders, "طلبات إنستاباي", 'instapay')}
                       >
-                        <div className="flex items-center gap-2 mb-2">
-                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform ${metrics.instapayOrders.count > 0 ? "bg-gradient-to-br from-cyan-500 to-cyan-600" : "bg-gray-400"}`}>
-                            <Smartphone className="w-4 h-4 text-white" />
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <div className={`w-6 h-6 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform ${metrics.instapayOrders.count > 0 ? "bg-gradient-to-br from-cyan-500 to-cyan-600" : "bg-gray-400"}`}>
+                            <Smartphone className="w-3 h-3 text-white" />
                           </div>
                           <h4 className={`text-xs font-bold ${metrics.instapayOrders.count > 0 ? "text-cyan-900 group-hover:text-cyan-600" : "text-gray-500"} transition-colors`}>إنستاباي</h4>
                         </div>
-                        <div className="space-y-1 pt-2 border-t border-cyan-200">
-                          <p className={`text-xl font-bold ${metrics.instapayOrders.count > 0 ? "text-cyan-900" : "text-gray-500"}`}>{metrics.instapayOrders.count}</p>
-                          <p className={`text-sm font-semibold ${metrics.instapayOrders.count > 0 ? "text-cyan-700" : "text-gray-400"}`}>
+                        <div className="space-y-0.5 pt-1.5 border-t border-cyan-200">
+                          <p className={`text-base font-bold ${metrics.instapayOrders.count > 0 ? "text-cyan-900" : "text-gray-500"}`}>{metrics.instapayOrders.count}</p>
+                          <p className={`text-xs font-semibold ${metrics.instapayOrders.count > 0 ? "text-cyan-700" : "text-gray-400"}`}>
                             {metrics.instapayOrders.amount.toFixed(2)} ج.م
                           </p>
                         </div>
@@ -2313,18 +2313,18 @@ const Summary: React.FC = () => {
 
                       {/* Wallet */}
                       <div
-                        className={`${metrics.walletOrders.count > 0 ? "bg-gradient-to-br from-teal-50 to-white border-teal-200" : "bg-gray-50 border-gray-200 opacity-60"} border-2 rounded-lg p-3 cursor-pointer hover:border-teal-400 hover:shadow-md transition-all duration-200 group`}
+                        className={`${metrics.walletOrders.count > 0 ? "bg-gradient-to-br from-teal-50 to-white border-teal-200" : "bg-gray-50 border-gray-200 opacity-60"} border rounded-lg p-2 cursor-pointer hover:border-teal-400 hover:shadow-md transition-all duration-200 group`}
                         onClick={() => openOrders(metrics.walletOrders.orders, "طلبات المحفظة", 'wallet')}
                       >
-                        <div className="flex items-center gap-2 mb-2">
-                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform ${metrics.walletOrders.count > 0 ? "bg-gradient-to-br from-teal-500 to-teal-600" : "bg-gray-400"}`}>
-                            <Wallet className="w-4 h-4 text-white" />
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <div className={`w-6 h-6 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform ${metrics.walletOrders.count > 0 ? "bg-gradient-to-br from-teal-500 to-teal-600" : "bg-gray-400"}`}>
+                            <Wallet className="w-3 h-3 text-white" />
                           </div>
                           <h4 className={`text-xs font-bold ${metrics.walletOrders.count > 0 ? "text-teal-900 group-hover:text-teal-600" : "text-gray-500"} transition-colors`}>المحفظة</h4>
                         </div>
-                        <div className="space-y-1 pt-2 border-t border-teal-200">
-                          <p className={`text-xl font-bold ${metrics.walletOrders.count > 0 ? "text-teal-900" : "text-gray-500"}`}>{metrics.walletOrders.count}</p>
-                          <p className={`text-sm font-semibold ${metrics.walletOrders.count > 0 ? "text-teal-700" : "text-gray-400"}`}>
+                        <div className="space-y-0.5 pt-1.5 border-t border-teal-200">
+                          <p className={`text-base font-bold ${metrics.walletOrders.count > 0 ? "text-teal-900" : "text-gray-500"}`}>{metrics.walletOrders.count}</p>
+                          <p className={`text-xs font-semibold ${metrics.walletOrders.count > 0 ? "text-teal-700" : "text-gray-400"}`}>
                             {metrics.walletOrders.amount.toFixed(2)} ج.م
                           </p>
                         </div>
@@ -2332,18 +2332,18 @@ const Summary: React.FC = () => {
 
                       {/* Cash on Hand */}
                       <div
-                        className={`${metrics.cashOnHandOrders.count > 0 ? "bg-gradient-to-br from-emerald-50 to-white border-emerald-200" : "bg-gray-50 border-gray-200 opacity-60"} border-2 rounded-lg p-3 cursor-pointer hover:border-emerald-400 hover:shadow-md transition-all duration-200 group`}
+                        className={`${metrics.cashOnHandOrders.count > 0 ? "bg-gradient-to-br from-emerald-50 to-white border-emerald-200" : "bg-gray-50 border-gray-200 opacity-60"} border rounded-lg p-2 cursor-pointer hover:border-emerald-400 hover:shadow-md transition-all duration-200 group`}
                         onClick={() => openOrders(metrics.cashOnHandOrders.orders, "طلبات نقداً", 'on_hand')}
                       >
-                        <div className="flex items-center gap-2 mb-2">
-                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform ${metrics.cashOnHandOrders.count > 0 ? "bg-gradient-to-br from-emerald-500 to-emerald-600" : "bg-gray-400"}`}>
-                            <Banknote className="w-4 h-4 text-white" />
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <div className={`w-6 h-6 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform ${metrics.cashOnHandOrders.count > 0 ? "bg-gradient-to-br from-emerald-500 to-emerald-600" : "bg-gray-400"}`}>
+                            <Banknote className="w-3 h-3 text-white" />
                           </div>
                           <h4 className={`text-xs font-bold ${metrics.cashOnHandOrders.count > 0 ? "text-emerald-900 group-hover:text-emerald-600" : "text-gray-500"} transition-colors`}>نقداً</h4>
                         </div>
-                        <div className="space-y-1 pt-2 border-t border-emerald-200">
-                          <p className={`text-xl font-bold ${metrics.cashOnHandOrders.count > 0 ? "text-emerald-900" : "text-gray-500"}`}>{metrics.cashOnHandOrders.count}</p>
-                          <p className={`text-sm font-semibold ${metrics.cashOnHandOrders.count > 0 ? "text-emerald-700" : "text-gray-400"}`}>
+                        <div className="space-y-0.5 pt-1.5 border-t border-emerald-200">
+                          <p className={`text-base font-bold ${metrics.cashOnHandOrders.count > 0 ? "text-emerald-900" : "text-gray-500"}`}>{metrics.cashOnHandOrders.count}</p>
+                          <p className={`text-xs font-semibold ${metrics.cashOnHandOrders.count > 0 ? "text-emerald-700" : "text-gray-400"}`}>
                             {metrics.cashOnHandOrders.amount.toFixed(2)} ج.م
                           </p>
                         </div>
@@ -2351,39 +2351,39 @@ const Summary: React.FC = () => {
 
                       {/* Total COD */}
                       <div
-                        className={`${metrics.totalCODOrders.count > 0 ? "bg-gradient-to-br from-amber-50 to-white border-amber-200" : "bg-gray-50 border-gray-200 opacity-60"} border-2 rounded-lg p-3 cursor-pointer hover:border-amber-400 hover:shadow-md transition-all duration-200 group`}
+                        className={`${metrics.totalCODOrders.count > 0 ? "bg-gradient-to-br from-amber-50 to-white border-amber-200" : "bg-gray-50 border-gray-200 opacity-60"} border rounded-lg p-2 cursor-pointer hover:border-amber-400 hover:shadow-md transition-all duration-200 group`}
                         onClick={() => openOrders(metrics.totalCODOrders.orders, "إجمالي الدفع عند التسليم")}
                       >
-                        <div className="flex items-center gap-2 mb-2">
-                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform ${metrics.totalCODOrders.count > 0 ? "bg-gradient-to-br from-amber-500 to-amber-600" : "bg-gray-400"}`}>
-                            <HandCoins className="w-4 h-4 text-white" />
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <div className={`w-6 h-6 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform ${metrics.totalCODOrders.count > 0 ? "bg-gradient-to-br from-amber-500 to-amber-600" : "bg-gray-400"}`}>
+                            <HandCoins className="w-3 h-3 text-white" />
                           </div>
                           <h4 className={`text-xs font-bold ${metrics.totalCODOrders.count > 0 ? "text-amber-900 group-hover:text-amber-600" : "text-gray-500"} transition-colors`}>إجمالي COD</h4>
                         </div>
-                        <div className="space-y-1 pt-2 border-t border-amber-200">
-                          <p className={`text-xl font-bold ${metrics.totalCODOrders.count > 0 ? "text-amber-900" : "text-gray-500"}`}>{metrics.totalCODOrders.count}</p>
-                          <p className={`text-sm font-semibold ${metrics.totalCODOrders.count > 0 ? "text-amber-700" : "text-gray-400"}`}>
+                        <div className="space-y-0.5 pt-1.5 border-t border-amber-200">
+                          <p className={`text-base font-bold ${metrics.totalCODOrders.count > 0 ? "text-amber-900" : "text-gray-500"}`}>{metrics.totalCODOrders.count}</p>
+                          <p className={`text-xs font-semibold ${metrics.totalCODOrders.count > 0 ? "text-amber-700" : "text-gray-400"}`}>
                             {metrics.totalCODOrders.amount.toFixed(2)} ج.م
                           </p>
                         </div>
                       </div>
                     </div>
                     {/* Electronic Payments Row */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                       {/* Valu */}
                       <div
-                        className={`${metrics.valuOrders.count > 0 ? "bg-gradient-to-br from-indigo-50 to-white border-indigo-200" : "bg-gray-50 border-gray-200 opacity-60"} border-2 rounded-lg p-3 cursor-pointer hover:border-indigo-400 hover:shadow-md transition-all duration-200 group`}
+                        className={`${metrics.valuOrders.count > 0 ? "bg-gradient-to-br from-indigo-50 to-white border-indigo-200" : "bg-gray-50 border-gray-200 opacity-60"} border rounded-lg p-2 cursor-pointer hover:border-indigo-400 hover:shadow-md transition-all duration-200 group`}
                         onClick={() => openOrders(metrics.valuOrders.orders, "طلبات فاليو", 'valu')}
                       >
-                        <div className="flex items-center gap-2 mb-2">
-                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform ${metrics.valuOrders.count > 0 ? "bg-gradient-to-br from-indigo-500 to-indigo-600" : "bg-gray-400"}`}>
-                            <Wallet className="w-4 h-4 text-white" />
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <div className={`w-6 h-6 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform ${metrics.valuOrders.count > 0 ? "bg-gradient-to-br from-indigo-500 to-indigo-600" : "bg-gray-400"}`}>
+                            <Wallet className="w-3 h-3 text-white" />
                           </div>
                           <h4 className={`text-xs font-bold ${metrics.valuOrders.count > 0 ? "text-indigo-900 group-hover:text-indigo-600" : "text-gray-500"} transition-colors`}>فاليو</h4>
                         </div>
-                        <div className="space-y-1 pt-2 border-t border-indigo-200">
-                          <p className={`text-xl font-bold ${metrics.valuOrders.count > 0 ? "text-indigo-900" : "text-gray-500"}`}>{metrics.valuOrders.count}</p>
-                          <p className={`text-sm font-semibold ${metrics.valuOrders.count > 0 ? "text-indigo-700" : "text-gray-400"}`}>
+                        <div className="space-y-0.5 pt-1.5 border-t border-indigo-200">
+                          <p className={`text-base font-bold ${metrics.valuOrders.count > 0 ? "text-indigo-900" : "text-gray-500"}`}>{metrics.valuOrders.count}</p>
+                          <p className={`text-xs font-semibold ${metrics.valuOrders.count > 0 ? "text-indigo-700" : "text-gray-400"}`}>
                             {metrics.valuOrders.amount.toFixed(2)} ج.م
                           </p>
                         </div>
@@ -2391,18 +2391,18 @@ const Summary: React.FC = () => {
 
                       {/* Paymob */}
                       <div
-                        className={`${metrics.paymobOrders.count > 0 ? "bg-gradient-to-br from-blue-50 to-white border-blue-200" : "bg-gray-50 border-gray-200 opacity-60"} border-2 rounded-lg p-3 cursor-pointer hover:border-blue-400 hover:shadow-md transition-all duration-200 group`}
+                        className={`${metrics.paymobOrders.count > 0 ? "bg-gradient-to-br from-blue-50 to-white border-blue-200" : "bg-gray-50 border-gray-200 opacity-60"} border rounded-lg p-2 cursor-pointer hover:border-blue-400 hover:shadow-md transition-all duration-200 group`}
                         onClick={() => openOrders(metrics.paymobOrders.orders, "طلبات paymob", 'paymob')}
                       >
-                        <div className="flex items-center gap-2 mb-2">
-                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform ${metrics.paymobOrders.count > 0 ? "bg-gradient-to-br from-blue-500 to-blue-600" : "bg-gray-400"}`}>
-                            <CreditCard className="w-4 h-4 text-white" />
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <div className={`w-6 h-6 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform ${metrics.paymobOrders.count > 0 ? "bg-gradient-to-br from-blue-500 to-blue-600" : "bg-gray-400"}`}>
+                            <CreditCard className="w-3 h-3 text-white" />
                           </div>
                           <h4 className={`text-xs font-bold ${metrics.paymobOrders.count > 0 ? "text-blue-900 group-hover:text-blue-600" : "text-gray-500"} transition-colors`}>Paymob</h4>
                         </div>
-                        <div className="space-y-1 pt-2 border-t border-blue-200">
-                          <p className={`text-xl font-bold ${metrics.paymobOrders.count > 0 ? "text-blue-900" : "text-gray-500"}`}>{metrics.paymobOrders.count}</p>
-                          <p className={`text-sm font-semibold ${metrics.paymobOrders.count > 0 ? "text-blue-700" : "text-gray-400"}`}>
+                        <div className="space-y-0.5 pt-1.5 border-t border-blue-200">
+                          <p className={`text-base font-bold ${metrics.paymobOrders.count > 0 ? "text-blue-900" : "text-gray-500"}`}>{metrics.paymobOrders.count}</p>
+                          <p className={`text-xs font-semibold ${metrics.paymobOrders.count > 0 ? "text-blue-700" : "text-gray-400"}`}>
                             {metrics.paymobOrders.amount.toFixed(2)} ج.م
                           </p>
                         </div>
@@ -4144,28 +4144,28 @@ const Summary: React.FC = () => {
               <div
                 className={`grid ${
                   isCourier
-                    ? "grid-cols-2 gap-2 mb-4"
-                    : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-6"
+                    ? "grid-cols-2 gap-1.5 mb-4"
+                    : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-2 mb-6"
                 }`}
               >
                 {/* Visa Machine */}
                 <div
-                  className={`${metrics.visaMachineOrders.count > 0 ? "bg-slate-50 border-slate-200" : "bg-gray-50 border-gray-200 opacity-60"} border-2 rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
-                    isCourier ? "p-3" : "p-4"
+                  className={`${metrics.visaMachineOrders.count > 0 ? "bg-slate-50 border-slate-200" : "bg-gray-50 border-gray-200 opacity-60"} border rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
+                    isCourier ? "p-2" : "p-3"
                   }`}
                   onClick={() => openOrders(metrics.visaMachineOrders.orders, "طلبات ماكينة فيزا", 'visa_machine')}
                 >
-                  <div className={`flex items-center gap-3 ${isCourier ? "mb-2" : "mb-3"}`}>
-                    <Monitor className={`${metrics.visaMachineOrders.count > 0 ? "text-slate-600" : "text-gray-400"} ${isCourier ? "w-4 h-4" : "w-6 h-6"}`} />
-                    <h4 className={`font-semibold ${metrics.visaMachineOrders.count > 0 ? "text-slate-900" : "text-gray-500"} ${isCourier ? "text-xs" : "text-base"}`}>
+                  <div className={`flex items-center gap-2 ${isCourier ? "mb-1.5" : "mb-2"}`}>
+                    <Monitor className={`${metrics.visaMachineOrders.count > 0 ? "text-slate-600" : "text-gray-400"} ${isCourier ? "w-3 h-3" : "w-5 h-5"}`} />
+                    <h4 className={`font-semibold ${metrics.visaMachineOrders.count > 0 ? "text-slate-900" : "text-gray-500"} ${isCourier ? "text-xs" : "text-sm"}`}>
                       {isCourier ? "فيزا" : "ماكينة فيزا"}
                     </h4>
                   </div>
-                  <div className="space-y-1">
-                    <p className={`font-bold ${metrics.visaMachineOrders.count > 0 ? "text-slate-900" : "text-gray-500"} ${isCourier ? "text-lg" : "text-2xl"}`}>
+                  <div className="space-y-0.5">
+                    <p className={`font-bold ${metrics.visaMachineOrders.count > 0 ? "text-slate-900" : "text-gray-500"} ${isCourier ? "text-base" : "text-xl"}`}>
                       {metrics.visaMachineOrders.count}
                     </p>
-                    <p className={`font-semibold ${metrics.visaMachineOrders.count > 0 ? "text-slate-700" : "text-gray-400"} ${isCourier ? "text-sm" : "text-lg"}`}>
+                    <p className={`font-semibold ${metrics.visaMachineOrders.count > 0 ? "text-slate-700" : "text-gray-400"} ${isCourier ? "text-xs" : "text-sm"}`}>
                       {metrics.visaMachineOrders.amount.toFixed(0)} ج.م
                     </p>
                   </div>
@@ -4173,22 +4173,22 @@ const Summary: React.FC = () => {
 
                 {/* Instapay */}
                 <div
-                  className={`${metrics.instapayOrders.count > 0 ? "bg-cyan-50 border-cyan-200" : "bg-gray-50 border-gray-200 opacity-60"} border-2 rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
-                    isCourier ? "p-3" : "p-4"
+                  className={`${metrics.instapayOrders.count > 0 ? "bg-cyan-50 border-cyan-200" : "bg-gray-50 border-gray-200 opacity-60"} border rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
+                    isCourier ? "p-2" : "p-3"
                   }`}
                   onClick={() => openOrders(metrics.instapayOrders.orders, "طلبات إنستاباي", 'instapay')}
                 >
-                  <div className={`flex items-center gap-3 ${isCourier ? "mb-2" : "mb-3"}`}>
-                    <Smartphone className={`${metrics.instapayOrders.count > 0 ? "text-cyan-600" : "text-gray-400"} ${isCourier ? "w-4 h-4" : "w-6 h-6"}`} />
-                    <h4 className={`font-semibold ${metrics.instapayOrders.count > 0 ? "text-cyan-900" : "text-gray-500"} ${isCourier ? "text-xs" : "text-base"}`}>
+                  <div className={`flex items-center gap-2 ${isCourier ? "mb-1.5" : "mb-2"}`}>
+                    <Smartphone className={`${metrics.instapayOrders.count > 0 ? "text-cyan-600" : "text-gray-400"} ${isCourier ? "w-3 h-3" : "w-5 h-5"}`} />
+                    <h4 className={`font-semibold ${metrics.instapayOrders.count > 0 ? "text-cyan-900" : "text-gray-500"} ${isCourier ? "text-xs" : "text-sm"}`}>
                       {isCourier ? "إنستا" : "إنستاباي"}
                     </h4>
                   </div>
-                  <div className="space-y-1">
-                    <p className={`font-bold ${metrics.instapayOrders.count > 0 ? "text-cyan-900" : "text-gray-500"} ${isCourier ? "text-lg" : "text-2xl"}`}>
+                  <div className="space-y-0.5">
+                    <p className={`font-bold ${metrics.instapayOrders.count > 0 ? "text-cyan-900" : "text-gray-500"} ${isCourier ? "text-base" : "text-xl"}`}>
                       {metrics.instapayOrders.count}
                     </p>
-                    <p className={`font-semibold ${metrics.instapayOrders.count > 0 ? "text-cyan-700" : "text-gray-400"} ${isCourier ? "text-sm" : "text-lg"}`}>
+                    <p className={`font-semibold ${metrics.instapayOrders.count > 0 ? "text-cyan-700" : "text-gray-400"} ${isCourier ? "text-xs" : "text-sm"}`}>
                       {metrics.instapayOrders.amount.toFixed(0)} ج.م
                     </p>
                   </div>
@@ -4196,22 +4196,22 @@ const Summary: React.FC = () => {
 
                 {/* Wallet */}
                 <div
-                  className={`${metrics.walletOrders.count > 0 ? "bg-teal-50 border-teal-200" : "bg-gray-50 border-gray-200 opacity-60"} border-2 rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
-                    isCourier ? "p-3" : "p-4"
+                  className={`${metrics.walletOrders.count > 0 ? "bg-teal-50 border-teal-200" : "bg-gray-50 border-gray-200 opacity-60"} border rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
+                    isCourier ? "p-2" : "p-3"
                   }`}
                   onClick={() => openOrders(metrics.walletOrders.orders, "طلبات المحفظة", 'wallet')}
                 >
-                  <div className={`flex items-center gap-3 ${isCourier ? "mb-2" : "mb-3"}`}>
-                    <Wallet className={`${metrics.walletOrders.count > 0 ? "text-teal-600" : "text-gray-400"} ${isCourier ? "w-4 h-4" : "w-6 h-6"}`} />
-                    <h4 className={`font-semibold ${metrics.walletOrders.count > 0 ? "text-teal-900" : "text-gray-500"} ${isCourier ? "text-xs" : "text-base"}`}>
+                  <div className={`flex items-center gap-2 ${isCourier ? "mb-1.5" : "mb-2"}`}>
+                    <Wallet className={`${metrics.walletOrders.count > 0 ? "text-teal-600" : "text-gray-400"} ${isCourier ? "w-3 h-3" : "w-5 h-5"}`} />
+                    <h4 className={`font-semibold ${metrics.walletOrders.count > 0 ? "text-teal-900" : "text-gray-500"} ${isCourier ? "text-xs" : "text-sm"}`}>
                       المحفظة
                     </h4>
                   </div>
-                  <div className="space-y-1">
-                    <p className={`font-bold ${metrics.walletOrders.count > 0 ? "text-teal-900" : "text-gray-500"} ${isCourier ? "text-lg" : "text-2xl"}`}>
+                  <div className="space-y-0.5">
+                    <p className={`font-bold ${metrics.walletOrders.count > 0 ? "text-teal-900" : "text-gray-500"} ${isCourier ? "text-base" : "text-xl"}`}>
                       {metrics.walletOrders.count}
                     </p>
-                    <p className={`font-semibold ${metrics.walletOrders.count > 0 ? "text-teal-700" : "text-gray-400"} ${isCourier ? "text-sm" : "text-lg"}`}>
+                    <p className={`font-semibold ${metrics.walletOrders.count > 0 ? "text-teal-700" : "text-gray-400"} ${isCourier ? "text-xs" : "text-sm"}`}>
                       {metrics.walletOrders.amount.toFixed(0)} ج.م
                     </p>
                   </div>
@@ -4219,22 +4219,22 @@ const Summary: React.FC = () => {
 
                 {/* Cash on Hand */}
                 <div
-                  className={`${metrics.cashOnHandOrders.count > 0 ? "bg-emerald-50 border-emerald-200" : "bg-gray-50 border-gray-200 opacity-60"} border-2 rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
-                    isCourier ? "p-3" : "p-4"
+                  className={`${metrics.cashOnHandOrders.count > 0 ? "bg-emerald-50 border-emerald-200" : "bg-gray-50 border-gray-200 opacity-60"} border rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
+                    isCourier ? "p-2" : "p-3"
                   }`}
                   onClick={() => openOrders(metrics.cashOnHandOrders.orders, "طلبات نقداً", 'on_hand')}
                 >
-                  <div className={`flex items-center gap-3 ${isCourier ? "mb-2" : "mb-3"}`}>
-                    <Banknote className={`${metrics.cashOnHandOrders.count > 0 ? "text-emerald-600" : "text-gray-400"} ${isCourier ? "w-4 h-4" : "w-6 h-6"}`} />
-                    <h4 className={`font-semibold ${metrics.cashOnHandOrders.count > 0 ? "text-emerald-900" : "text-gray-500"} ${isCourier ? "text-xs" : "text-base"}`}>
+                  <div className={`flex items-center gap-2 ${isCourier ? "mb-1.5" : "mb-2"}`}>
+                    <Banknote className={`${metrics.cashOnHandOrders.count > 0 ? "text-emerald-600" : "text-gray-400"} ${isCourier ? "w-3 h-3" : "w-5 h-5"}`} />
+                    <h4 className={`font-semibold ${metrics.cashOnHandOrders.count > 0 ? "text-emerald-900" : "text-gray-500"} ${isCourier ? "text-xs" : "text-sm"}`}>
                       نقداً
                     </h4>
                   </div>
-                  <div className="space-y-1">
-                    <p className={`font-bold ${metrics.cashOnHandOrders.count > 0 ? "text-emerald-900" : "text-gray-500"} ${isCourier ? "text-lg" : "text-2xl"}`}>
+                  <div className="space-y-0.5">
+                    <p className={`font-bold ${metrics.cashOnHandOrders.count > 0 ? "text-emerald-900" : "text-gray-500"} ${isCourier ? "text-base" : "text-xl"}`}>
                       {metrics.cashOnHandOrders.count}
                     </p>
-                    <p className={`font-semibold ${metrics.cashOnHandOrders.count > 0 ? "text-emerald-700" : "text-gray-400"} ${isCourier ? "text-sm" : "text-lg"}`}>
+                    <p className={`font-semibold ${metrics.cashOnHandOrders.count > 0 ? "text-emerald-700" : "text-gray-400"} ${isCourier ? "text-xs" : "text-sm"}`}>
                       {metrics.cashOnHandOrders.amount.toFixed(0)} ج.م
                     </p>
                   </div>
@@ -4243,40 +4243,40 @@ const Summary: React.FC = () => {
                 {/* Total COD - Hidden for mobile */}
                 {!isCourier && (
                   <div
-                    className={`${metrics.totalCODOrders.count > 0 ? "bg-amber-50 border-amber-200" : "bg-gray-50 border-gray-200 opacity-60"} border-2 rounded-xl p-4 cursor-pointer hover:shadow-lg transition-all group`}
+                    className={`${metrics.totalCODOrders.count > 0 ? "bg-amber-50 border-amber-200" : "bg-gray-50 border-gray-200 opacity-60"} border rounded-xl p-3 cursor-pointer hover:shadow-lg transition-all group`}
                     onClick={() => openOrders(metrics.totalCODOrders.orders, "إجمالي الدفع عند التسليم")}
                   >
-                    <div className="flex items-center gap-3 mb-3">
-                      <HandCoins className={`w-6 h-6 ${metrics.totalCODOrders.count > 0 ? "text-amber-600" : "text-gray-400"}`} />
-                      <h4 className={`font-semibold ${metrics.totalCODOrders.count > 0 ? "text-amber-900" : "text-gray-500"}`}>إجمالي COD</h4>
+                    <div className="flex items-center gap-2 mb-2">
+                      <HandCoins className={`w-5 h-5 ${metrics.totalCODOrders.count > 0 ? "text-amber-600" : "text-gray-400"}`} />
+                      <h4 className={`text-sm font-semibold ${metrics.totalCODOrders.count > 0 ? "text-amber-900" : "text-gray-500"}`}>إجمالي COD</h4>
                     </div>
-                    <div className="space-y-1">
-                      <p className={`text-2xl font-bold ${metrics.totalCODOrders.count > 0 ? "text-amber-900" : "text-gray-500"}`}>{metrics.totalCODOrders.count}</p>
-                      <p className={`text-lg font-semibold ${metrics.totalCODOrders.count > 0 ? "text-amber-700" : "text-gray-400"}`}>{metrics.totalCODOrders.amount.toFixed(2)} ج.م</p>
+                    <div className="space-y-0.5">
+                      <p className={`text-xl font-bold ${metrics.totalCODOrders.count > 0 ? "text-amber-900" : "text-gray-500"}`}>{metrics.totalCODOrders.count}</p>
+                      <p className={`text-sm font-semibold ${metrics.totalCODOrders.count > 0 ? "text-amber-700" : "text-gray-400"}`}>{metrics.totalCODOrders.amount.toFixed(2)} ج.م</p>
                     </div>
                   </div>
                 )}
               </div>
               {/* Electronic Payments Row */}
-              <div className={`grid ${isCourier ? "grid-cols-2 gap-2" : "grid-cols-1 sm:grid-cols-2 gap-4"}`}>
+              <div className={`grid ${isCourier ? "grid-cols-2 gap-1.5" : "grid-cols-1 sm:grid-cols-2 gap-2"}`}>
                 {/* Valu */}
                 <div
-                  className={`${metrics.valuOrders.count > 0 ? "bg-indigo-50 border-indigo-200" : "bg-gray-50 border-gray-200 opacity-60"} border-2 rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
-                    isCourier ? "p-3" : "p-4"
+                  className={`${metrics.valuOrders.count > 0 ? "bg-indigo-50 border-indigo-200" : "bg-gray-50 border-gray-200 opacity-60"} border rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
+                    isCourier ? "p-2" : "p-3"
                   }`}
                   onClick={() => openOrders(metrics.valuOrders.orders, "طلبات فاليو", 'valu')}
                 >
-                  <div className={`flex items-center gap-3 ${isCourier ? "mb-2" : "mb-3"}`}>
-                    <Wallet className={`${metrics.valuOrders.count > 0 ? "text-indigo-600" : "text-gray-400"} ${isCourier ? "w-4 h-4" : "w-6 h-6"}`} />
-                    <h4 className={`font-semibold ${metrics.valuOrders.count > 0 ? "text-indigo-900" : "text-gray-500"} ${isCourier ? "text-xs" : "text-base"}`}>
+                  <div className={`flex items-center gap-2 ${isCourier ? "mb-1.5" : "mb-2"}`}>
+                    <Wallet className={`${metrics.valuOrders.count > 0 ? "text-indigo-600" : "text-gray-400"} ${isCourier ? "w-3 h-3" : "w-5 h-5"}`} />
+                    <h4 className={`font-semibold ${metrics.valuOrders.count > 0 ? "text-indigo-900" : "text-gray-500"} ${isCourier ? "text-xs" : "text-sm"}`}>
                       فاليو
                     </h4>
                   </div>
-                  <div className="space-y-1">
-                    <p className={`font-bold ${metrics.valuOrders.count > 0 ? "text-indigo-900" : "text-gray-500"} ${isCourier ? "text-lg" : "text-2xl"}`}>
+                  <div className="space-y-0.5">
+                    <p className={`font-bold ${metrics.valuOrders.count > 0 ? "text-indigo-900" : "text-gray-500"} ${isCourier ? "text-base" : "text-xl"}`}>
                       {metrics.valuOrders.count}
                     </p>
-                    <p className={`font-semibold ${metrics.valuOrders.count > 0 ? "text-indigo-700" : "text-gray-400"} ${isCourier ? "text-sm" : "text-lg"}`}>
+                    <p className={`font-semibold ${metrics.valuOrders.count > 0 ? "text-indigo-700" : "text-gray-400"} ${isCourier ? "text-xs" : "text-sm"}`}>
                       {metrics.valuOrders.amount.toFixed(0)} ج.م
                     </p>
                   </div>
@@ -4284,20 +4284,20 @@ const Summary: React.FC = () => {
 
                 {/* Paymob */}
                 <div
-                  className={`${metrics.paymobOrders.count > 0 ? "bg-blue-50 border-blue-200" : "bg-gray-50 border-gray-200 opacity-60"} border-2 rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
-                    isCourier ? "p-3" : "p-4"
+                  className={`${metrics.paymobOrders.count > 0 ? "bg-blue-50 border-blue-200" : "bg-gray-50 border-gray-200 opacity-60"} border rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
+                    isCourier ? "p-2" : "p-3"
                   }`}
                   onClick={() => openOrders(metrics.paymobOrders.orders, "طلبات paymob", 'paymob')}
                 >
-                  <div className={`flex items-center gap-3 ${isCourier ? "mb-2" : "mb-3"}`}>
-                    <CreditCard className={`${metrics.paymobOrders.count > 0 ? "text-blue-600" : "text-gray-400"} ${isCourier ? "w-4 h-4" : "w-6 h-6"}`} />
-                    <h4 className={`font-semibold ${metrics.paymobOrders.count > 0 ? "text-blue-900" : "text-gray-500"} ${isCourier ? "text-xs" : "text-base"}`}>Paymob</h4>
+                  <div className={`flex items-center gap-2 ${isCourier ? "mb-1.5" : "mb-2"}`}>
+                    <CreditCard className={`${metrics.paymobOrders.count > 0 ? "text-blue-600" : "text-gray-400"} ${isCourier ? "w-3 h-3" : "w-5 h-5"}`} />
+                    <h4 className={`font-semibold ${metrics.paymobOrders.count > 0 ? "text-blue-900" : "text-gray-500"} ${isCourier ? "text-xs" : "text-sm"}`}>Paymob</h4>
                   </div>
-                  <div className="space-y-1">
-                    <p className={`font-bold ${metrics.paymobOrders.count > 0 ? "text-blue-900" : "text-gray-500"} ${isCourier ? "text-lg" : "text-2xl"}`}>
+                  <div className="space-y-0.5">
+                    <p className={`font-bold ${metrics.paymobOrders.count > 0 ? "text-blue-900" : "text-gray-500"} ${isCourier ? "text-base" : "text-xl"}`}>
                       {metrics.paymobOrders.count}
                     </p>
-                    <p className={`font-semibold ${metrics.paymobOrders.count > 0 ? "text-blue-700" : "text-gray-400"} ${isCourier ? "text-sm" : "text-lg"}`}>
+                    <p className={`font-semibold ${metrics.paymobOrders.count > 0 ? "text-blue-700" : "text-gray-400"} ${isCourier ? "text-xs" : "text-sm"}`}>
                       {metrics.paymobOrders.amount.toFixed(0)} ج.م
                     </p>
                   </div>
