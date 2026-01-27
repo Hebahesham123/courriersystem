@@ -22,6 +22,7 @@ import {
   DollarSign,
   ClipboardList,
   Monitor,
+  RefreshCw,
 } from "lucide-react"
 import { useAuth } from "../../contexts/AuthContext"
 import { useLanguage } from "../../contexts/LanguageContext"
@@ -146,6 +147,13 @@ const Sidebar: React.FC = () => {
       label: t("uploadOrders") || "Upload Orders",
       color: "text-purple-400",
       description: "رفع ملفات الطلبات",
+    },
+    {
+      path: "/admin/receive-piece-exchange",
+      icon: RefreshCw,
+      label: "استلام قطعه أو تبديل",
+      color: "text-purple-600",
+      description: "إدارة طلبات الاستلام والتبديل",
     },
   ]
 

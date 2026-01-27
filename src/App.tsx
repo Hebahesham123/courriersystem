@@ -25,6 +25,7 @@ import CourierTracking from "./components/Admin/CourierTracking"
 import CourierTrackingDetail from "./components/Admin/CourierTrackingDetail"
 import Tracking from "./components/Admin/Tracking"
 import Trach from "./components/Admin/Trach"
+import ReceivePieceOrExchange from "./components/Admin/ReceivePieceOrExchange"
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles?: string[] }> = ({
   children,
@@ -215,6 +216,16 @@ const AppRoutes: React.FC = () => {
               <ProtectedRoute allowedRoles={["admin"]}>
                 <AppLayout>
                   <Trach />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/receive-piece-exchange"
+            element={
+              <ProtectedRoute allowedRoles={["admin"]}>
+                <AppLayout>
+                  <ReceivePieceOrExchange onBack={() => window.history.back()} />
                 </AppLayout>
               </ProtectedRoute>
             }

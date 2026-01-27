@@ -95,6 +95,7 @@ interface Order {
   order_items?: OrderItem[]
   order_note?: string | null
   customer_note?: string | null
+  receive_piece_or_exchange?: string | null
 }
 
 const statusLabels: Record<string, { label: string; icon: React.ComponentType<any>; color: string; bgColor: string }> =
@@ -971,40 +972,66 @@ const OrdersList: React.FC = () => {
     }
     try {
       const dateToUse = dateOverride || selectedDate
-      const startDate = new Date(dateToUse)
-      startDate.setHours(0, 0, 0, 0)
-      const endDate = new Date(dateToUse)
-      endDate.setHours(23, 59, 59, 999)
+      // Build a wider time window to safely cover timezone shifts, then filter in-memory by Cairo date
+      // This ensures orders assigned on the selected date appear correctly regardless of timezone
+      const targetDate = dateToUse // YYYY-MM-DD format
+      const startWindow = new Date(`${targetDate}T00:00:00Z`)
+      startWindow.setDate(startWindow.getDate() - 1) // Start 1 day before to cover timezone shifts
+      const endWindow = new Date(`${targetDate}T23:59:59.999Z`)
+      endWindow.setDate(endWindow.getDate() + 1) // End 1 day after to cover timezone shifts
+
+      // Helper function to convert UTC timestamp to Cairo date (YYYY-MM-DD)
+      const toCairoYMD = (ts: string | null): string => {
+        if (!ts) return ""
+        return new Intl.DateTimeFormat("en-CA", {
+          timeZone: "Africa/Cairo",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).format(new Date(ts))
+      }
 
       // Get orders assigned to this courier on the selected date (based on assigned_at)
       // Orders appear on the day they were assigned by admin, regardless of when courier edits them
       // But we fetch the latest version to show any updates (status, payment info, etc.)
+      // IMPORTANT: Include orders with receive_piece_or_exchange status - they should appear for couriers
       
-      // Step 1: Get order IDs that were assigned on the selected date
-      // Primary: assigned_at in range
+      // Step 1: Get order IDs that were assigned within the time window
+      // Primary: assigned_at in range (includes all orders assigned to this courier, including receive_piece/exchange)
       const { data: assignedAtOrders, error: assignedAtError } = await supabase
         .from("orders")
-        .select("id")
+        .select("id, assigned_at")
         .eq("assigned_courier_id", user.id)
-        .gte("assigned_at", startDate.toISOString())
-        .lte("assigned_at", endDate.toISOString())
+        .not("assigned_at", "is", null)
+        .gte("assigned_at", startWindow.toISOString())
+        .lte("assigned_at", endWindow.toISOString())
 
       // Fallback: created_at in range for rows without assigned_at (legacy)
       const { data: createdAtOrders, error: createdAtError } = await supabase
         .from("orders")
-        .select("id")
+        .select("id, created_at")
         .eq("assigned_courier_id", user.id)
         .is("assigned_at", null)
-        .gte("created_at", startDate.toISOString())
-        .lte("created_at", endDate.toISOString())
+        .gte("created_at", startWindow.toISOString())
+        .lte("created_at", endWindow.toISOString())
 
-      // Collect all order IDs that were assigned on this date
+      // Filter by Cairo timezone date in memory
       const assignedOrderIds = new Set<string>()
       if (assignedAtOrders) {
-        assignedAtOrders.forEach(order => assignedOrderIds.add(order.id))
+        assignedAtOrders.forEach(order => {
+          const cairoDate = toCairoYMD(order.assigned_at)
+          if (cairoDate === targetDate) {
+            assignedOrderIds.add(order.id)
+          }
+        })
       }
       if (createdAtOrders) {
-        createdAtOrders.forEach(order => assignedOrderIds.add(order.id))
+        createdAtOrders.forEach(order => {
+          const cairoDate = toCairoYMD(order.created_at)
+          if (cairoDate === targetDate) {
+            assignedOrderIds.add(order.id)
+          }
+        })
       }
 
       if (assignedAtError) {
@@ -1024,6 +1051,7 @@ const OrdersList: React.FC = () => {
           .select("*")
           .eq("assigned_courier_id", user.id)
           .in("id", orderIdsArray)
+          // Include orders with receive_piece_or_exchange status - don't filter them out
           .order("assigned_at", { ascending: false })
 
         if (latestError) {
@@ -2874,11 +2902,18 @@ const deleteDuplicatedOrder = async (order: Order) => {
                 noteText.includes("استلام قط") || noteText.includes("استلام قطعة") || noteText.includes("استلام قطعه")
               const isExchangeNote =
                 noteText.includes("تبديل") || noteText.includes("استبدال") || noteText.includes("exchange")
+              
+              // Check receive_piece_or_exchange field first (primary indicator from admin)
+              const isReceivePieceFromField = order.receive_piece_or_exchange === "receive_piece"
+              const isExchangeFromField = order.receive_piece_or_exchange === "exchange"
+              
               const isReceivingPartStatus =
+                isReceivePieceFromField ||
                 order.status === "receiving_part" ||
                 order.payment_sub_type === "receiving_part" ||
                 isReceivingPartNote
               const isExchangeStatus =
+                isExchangeFromField ||
                 order.status === "hand_to_hand" ||
                 order.payment_sub_type === "hand_to_hand" ||
                 order.payment_sub_type === "exchange" ||

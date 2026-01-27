@@ -1,5 +1,6 @@
 "use client"
 import React, { useState, useEffect, useCallback } from "react"
+import { useNavigate } from "react-router-dom"
 import {
   Package,
   UserPlus,
@@ -39,8 +40,18 @@ interface Courier {
   email: string
 }
 
-const ReceivePieceOrExchange: React.FC<{ onBack: () => void }> = ({ onBack }) => {
+const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
   const { user } = useAuth()
+  const navigate = useNavigate()
+  
+  const handleBack = () => {
+    if (onBack) {
+      onBack()
+    } else {
+      navigate("/admin/orders")
+    }
+  }
+  
   const [orders, setOrders] = useState<Order[]>([])
   const [couriers, setCouriers] = useState<Courier[]>([])
   const [loading, setLoading] = useState(true)
@@ -56,24 +67,11 @@ const ReceivePieceOrExchange: React.FC<{ onBack: () => void }> = ({ onBack }) =>
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([])
   const [assignSelectedLoading, setAssignSelectedLoading] = useState(false)
   const [dateRange, setDateRange] = useState<{ from: string; to: string }>(() => {
-    // Get today's date
-    const now = new Date()
-    const formatter = new Intl.DateTimeFormat('en-CA', { // 'en-CA' gives YYYY-MM-DD format
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    })
-    
-    // Calculate 3 months ago
-    const threeMonthsAgo = new Date(now)
-    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3)
-    
-    const fromStr = formatter.format(threeMonthsAgo)
-    const toStr = formatter.format(now)
-    
+    // Default to no date filter - show all orders
+    // Admin can filter by date range if needed
     return {
-      from: fromStr,
-      to: toStr,
+      from: '',
+      to: '',
     }
   })
   const [showDatePicker, setShowDatePicker] = useState(false)
@@ -105,13 +103,13 @@ const ReceivePieceOrExchange: React.FC<{ onBack: () => void }> = ({ onBack }) =>
         `)
         .in("receive_piece_or_exchange", ["receive_piece", "exchange"])
 
-      // Apply date filter
-      if (dateRange.from) {
+      // Apply date filter only if date range is specified
+      // Filter by shopify_created_at (original order creation date)
+      if (dateRange.from && dateRange.to) {
         const fromDate = new Date(dateRange.from)
         fromDate.setHours(0, 0, 0, 0)
         query = query.gte("shopify_created_at", fromDate.toISOString())
-      }
-      if (dateRange.to) {
+        
         const toDate = new Date(dateRange.to)
         toDate.setHours(23, 59, 59, 999)
         query = query.lte("shopify_created_at", toDate.toISOString())
@@ -377,7 +375,7 @@ const ReceivePieceOrExchange: React.FC<{ onBack: () => void }> = ({ onBack }) =>
       <div className="mb-6 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <button
-            onClick={onBack}
+            onClick={handleBack}
             className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
           >
             <ArrowRight className="w-5 h-5" />
@@ -432,7 +430,7 @@ const ReceivePieceOrExchange: React.FC<{ onBack: () => void }> = ({ onBack }) =>
                 <span className="text-sm text-gray-700">
                   {dateRange.from && dateRange.to
                     ? `${dateRange.from} - ${dateRange.to}`
-                    : "اختر التاريخ"}
+                    : "الكل"}
                 </span>
               </button>
               {showDatePicker && (
@@ -470,6 +468,25 @@ const ReceivePieceOrExchange: React.FC<{ onBack: () => void }> = ({ onBack }) =>
                         />
                       </div>
                       <div className="flex gap-2">
+                        <button
+                          onClick={() => {
+                            const now = new Date()
+                            const formatter = new Intl.DateTimeFormat('en-CA', {
+                              year: 'numeric',
+                              month: '2-digit',
+                              day: '2-digit',
+                            })
+                            const todayStr = formatter.format(now)
+                            setDateRange({
+                              from: todayStr,
+                              to: todayStr,
+                            })
+                            setShowDatePicker(false)
+                          }}
+                          className="flex-1 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm transition-colors"
+                        >
+                          اليوم
+                        </button>
                         <button
                           onClick={() => {
                             const now = new Date()
