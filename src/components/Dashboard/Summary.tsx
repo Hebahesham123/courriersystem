@@ -3473,7 +3473,7 @@ const Summary: React.FC = () => {
               </div>
               <div
                 className={`grid ${
-                  isCourier ? "grid-cols-1 gap-3" : "grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6"
+                  isCourier ? "grid-cols-1 gap-3" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"
                 }`}
               >
                 {/* Total Orders */}
@@ -3510,42 +3510,6 @@ const Summary: React.FC = () => {
                   </div>
                   <div className="opacity-0 group-hover:opacity-100 transition-opacity mt-3">
                     <Eye className={`text-gray-600 mx-auto ${isCourier ? "w-4 h-4" : "w-5 h-5"}`} />
-                  </div>
-                </div>
-                {/* Pending Orders */}
-                <div
-                  className={`bg-yellow-50 border-2 border-yellow-200 rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
-                    isCourier ? "p-4" : "p-6"
-                  }`}
-                  onClick={() => openOrders(metrics.pending?.orders || [], "الطلبات المعلقة")}
-                >
-                  <div className={`flex items-center gap-4 ${isCourier ? "mb-2" : "mb-4"}`}>
-                    <div
-                      className={`bg-yellow-200 rounded-xl flex items-center justify-center ${
-                        isCourier ? "w-8 h-8" : "w-12 h-12"
-                      }`}
-                    >
-                      <Clock className={`text-yellow-700 ${isCourier ? "w-4 h-4" : "w-6 h-6"}`} />
-                    </div>
-                    <div>
-                      <h3 className={`font-bold text-yellow-900 ${isCourier ? "text-sm" : "text-lg"}`}>
-                        {isCourier ? "المعلقة" : "الطلبات المعلقة"}
-                      </h3>
-                      <p className={`text-yellow-700 ${isCourier ? "text-xs" : "text-sm"}`}>
-                        {metrics.pending?.count || 0} طلب
-                      </p>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <div className={`flex justify-between items-center pt-2 border-t border-yellow-300`}>
-                      <span className={`font-bold text-yellow-700 ${isCourier ? "text-xs" : "text-sm"}`}>القيمة:</span>
-                      <span className={`font-bold text-yellow-900 ${isCourier ? "text-sm" : "text-xl"}`}>
-                        {(metrics.pending?.originalValue || 0).toFixed(0)} ج.م
-                      </span>
-                    </div>
-                  </div>
-                  <div className="opacity-0 group-hover:opacity-100 transition-opacity mt-3">
-                    <Eye className={`text-yellow-600 mx-auto ${isCourier ? "w-4 h-4" : "w-5 h-5"}`} />
                   </div>
                 </div>
                 {/* Assigned Orders */}

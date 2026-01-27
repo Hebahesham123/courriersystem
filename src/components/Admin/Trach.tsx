@@ -342,7 +342,8 @@ const Trach: React.FC = () => {
     }
   }
 
-  const isRTL = language === "ar"
+  // Always use LTR layout regardless of language (keep everything on the left)
+  const isRTL = false
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50" dir={isRTL ? "rtl" : "ltr"}>

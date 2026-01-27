@@ -182,18 +182,23 @@ const translations = {
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined)
 
 export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [language, setLanguage] = useState<"en" | "ar">("en")
+  const [language, setLanguage] = useState<"en" | "ar">("ar")
 
   useEffect(() => {
     const savedLang = localStorage.getItem("language") as "en" | "ar" | null
     if (savedLang) {
       setLanguage(savedLang)
+    } else {
+      // Default to Arabic if no saved language
+      setLanguage("ar")
+      localStorage.setItem("language", "ar")
     }
   }, [])
 
   useEffect(() => {
     localStorage.setItem("language", language)
-    document.documentElement.dir = language === "ar" ? "rtl" : "ltr"
+    // Always use LTR direction regardless of language (keep everything on the left)
+    document.documentElement.dir = "ltr"
     document.documentElement.lang = language
 
     // Optional: set font class on body

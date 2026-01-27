@@ -51,7 +51,8 @@ const Sidebar: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [notifications] = useState() // Example notification count
 
-  const isRTL = language === "ar"
+  // Always use LTR layout regardless of language (keep everything on the left)
+  const isRTL = false
 
   // Close sidebar on route change (mobile)
   useEffect(() => {

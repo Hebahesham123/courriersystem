@@ -55,7 +55,8 @@ const CourierFeesManagement: React.FC = () => {
     showActiveOnly: true
   })
 
-  const isRTL = language === 'ar'
+  // Always use LTR layout regardless of language (keep everything on the left)
+  const isRTL = false
 
   useEffect(() => {
     fetchCouriers()

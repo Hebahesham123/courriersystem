@@ -231,6 +231,11 @@ input:focus, select:focus, textarea:focus {
   font-feature-settings: "rlig" 1, "calt" 1, "liga" 1; /* Ensure ligatures are enabled */
 }
 
+/* Force right text alignment for LTR (English) to match Arabic style */
+[dir="ltr"], [dir="ltr"] * {
+  text-align: right !important;
+}
+
 /* Force Arabic fonts on all form elements for mobile compatibility */
 [dir="rtl"] select,
 [dir="rtl"] option,

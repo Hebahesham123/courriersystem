@@ -7,13 +7,15 @@ const Header: React.FC = () => {
   const { user, signOut } = useAuth()
   const { language, setLanguage, t } = useLanguage()
 
-  const isRTL = language === 'ar'
+  // Always use LTR layout regardless of language (keep everything on the left)
+  const isRTL = false
 
   const handleLanguageToggle = () => {
     const newLang = language === 'en' ? 'ar' : 'en'
     setLanguage(newLang)
     localStorage.setItem('language', newLang)
-    document.documentElement.dir = newLang === 'ar' ? 'rtl' : 'ltr'
+    // Always use LTR direction regardless of language (keep everything on the left)
+    document.documentElement.dir = 'ltr'
     document.documentElement.lang = newLang
   }
 

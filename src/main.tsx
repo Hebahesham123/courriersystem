@@ -13,12 +13,13 @@ const hideLoader = () => {
   }
 }
 
-// Set up direction and font based on saved language
-const language = localStorage.getItem('language') === 'ar' ? 'ar' : 'en'
+// Set up direction and font based on saved language (default to Arabic)
+const savedLanguage = localStorage.getItem('language')
+const language = savedLanguage === 'ar' || savedLanguage === 'en' ? savedLanguage : 'ar'
 
-// Apply language and direction to document root
+// Apply language and direction to document root (always LTR - left to right)
 document.documentElement.lang = language
-document.documentElement.dir = language === 'ar' ? 'rtl' : 'ltr'
+document.documentElement.dir = 'ltr'
 
 // Add appropriate font class to <body>
 const rootElement = document.getElementById('root')

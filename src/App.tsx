@@ -291,7 +291,8 @@ const AppWrapper = () => {
   const { language } = useLanguage()
 
   useEffect(() => {
-    document.documentElement.setAttribute("dir", language === "ar" ? "rtl" : "ltr")
+    // Always use LTR direction regardless of language (keep everything on the left)
+    document.documentElement.setAttribute("dir", "ltr")
     document.documentElement.lang = language
   }, [language])
 

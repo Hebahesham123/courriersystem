@@ -593,7 +593,7 @@ const OrdersManagement: React.FC = () => {
       // STRICT: When filtering by tag(s), ONLY show orders that have at least one of the selected tags
       // Orders without the selected tag(s) will be excluded
       let filteredData = data || []
-      if (filters.tags.length > 0 && filters.tags.some(tag => tag)) {
+      if (activeFilters.tags.length > 0 && activeFilters.tags.some(tag => tag)) {
         // Normalize selected tags once for efficiency - remove empty/whitespace tags
         const normalizedSelectedTags = activeFilters.tags
           .map(tag => String(tag).toLowerCase().trim())
@@ -732,7 +732,7 @@ const OrdersManagement: React.FC = () => {
       // Filter orders by local date to match Shopify-style display logic
       // Only apply date filter if user has explicitly selected a date range
       // Default is to show all orders from all days
-      if (activeDateRange && activeDateRange.from && activeDateRange.to && !debouncedSearch) {
+      if (activeDateRange && activeDateRange.from && activeDateRange.to) {
         filteredData = filteredData.filter((order: any) => {
           // When courier filter is applied, use assigned_at to show orders assigned on that date
           // Otherwise, use shopify_created_at or created_at
@@ -805,7 +805,7 @@ const OrdersManagement: React.FC = () => {
       setLoading(false)
       setRefreshing(false)
     }
-  }, [viewMode, dateRange.from, dateRange.to, filters.couriers, filters.statuses, filters.paymentStatuses, filters.fulfillmentStatuses, filters.tags, debouncedSearch, sortField])
+  }, [viewMode, debouncedDateRange.from, debouncedDateRange.to, debouncedFilters.couriers, debouncedFilters.statuses, debouncedFilters.paymentStatuses, debouncedFilters.fulfillmentStatuses, debouncedFilters.tags, debouncedSearch, sortField])
 
   // Keep a ref to the latest fetchOrders to use inside real-time subscription without re-subscribing
   const fetchOrdersRef = useRef(fetchOrders)
