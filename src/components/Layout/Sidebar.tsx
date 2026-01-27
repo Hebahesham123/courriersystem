@@ -51,9 +51,6 @@ const Sidebar: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [notifications] = useState() // Example notification count
 
-  // Always use LTR layout regardless of language (keep everything on the left)
-  const isRTL = false
-
   // Close sidebar on route change (mobile)
   useEffect(() => {
     setSidebarOpen(false)
@@ -219,9 +216,9 @@ const Sidebar: React.FC = () => {
 
   return (
     <>
-      {/* Mobile Menu Toggle Button - Always on the right */}
+      {/* Mobile Menu Toggle Button - Always on the left */}
       <button
-        className="fixed top-4 right-4 z-50 p-3 bg-gray-900 hover:bg-gray-800 text-white rounded-xl shadow-lg transition-all duration-200 lg:hidden"
+        className="fixed top-4 left-4 z-50 p-3 bg-gray-900 hover:bg-gray-800 text-white rounded-xl shadow-lg transition-all duration-200 lg:hidden"
         onClick={toggleSidebar}
         aria-label="فتح القائمة الجانبية"
       >
@@ -237,14 +234,14 @@ const Sidebar: React.FC = () => {
         />
       )}
 
-      {/* Sidebar Container - Always on the right side */}
+      {/* Sidebar Container - Always on the left side */}
       <aside
-        className={`fixed top-0 right-0 z-50 h-full bg-gradient-to-b from-gray-900 via-gray-800 to-gray-900 text-white shadow-2xl transition-all duration-300 ease-in-out ${
+        className={`fixed top-0 left-0 z-50 h-full bg-gradient-to-b from-gray-900 via-gray-800 to-gray-900 text-white shadow-2xl transition-all duration-300 ease-in-out ${
           isCollapsed ? "w-20" : "w-72 sm:w-80"
         } ${
-          sidebarOpen ? "translate-x-0" : "translate-x-full"
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
         } lg:translate-x-0 lg:static`}
-        dir={isRTL ? "rtl" : "ltr"}
+        dir="ltr"
         role="navigation"
         aria-label="القائمة الرئيسية"
       >
@@ -253,18 +250,10 @@ const Sidebar: React.FC = () => {
           {/* Collapse Button */}
           <button
             onClick={toggleCollapse}
-            className={`absolute ${
-              isRTL ? "-left-4" : "-right-4"
-            } top-8 bg-gray-800 hover:bg-gray-700 text-white rounded-full p-2 shadow-lg border border-gray-600 z-10 transition-all duration-200 hidden lg:flex items-center justify-center`}
+            className="absolute -right-4 top-8 bg-gray-800 hover:bg-gray-700 text-white rounded-full p-2 shadow-lg border border-gray-600 z-10 transition-all duration-200 hidden lg:flex items-center justify-center"
             aria-label={isCollapsed ? "توسيع القائمة" : "طي القائمة"}
           >
             {isCollapsed ? (
-              isRTL ? (
-                <ChevronLeft className="w-4 h-4" />
-              ) : (
-                <ChevronRight className="w-4 h-4" />
-              )
-            ) : isRTL ? (
               <ChevronRight className="w-4 h-4" />
             ) : (
               <ChevronLeft className="w-4 h-4" />
@@ -274,9 +263,7 @@ const Sidebar: React.FC = () => {
           {/* Close Button (Mobile) */}
           <button
             onClick={() => setSidebarOpen(false)}
-            className={`absolute top-4 ${
-              isRTL ? "left-4" : "right-4"
-            } text-white bg-gray-700 hover:bg-gray-600 p-2 rounded-xl lg:hidden transition-colors duration-200`}
+            className="absolute top-4 right-4 text-white bg-gray-700 hover:bg-gray-600 p-2 rounded-xl lg:hidden transition-colors duration-200"
             aria-label="إغلاق القائمة"
           >
             <X className="w-5 h-5" />
@@ -292,7 +279,7 @@ const Sidebar: React.FC = () => {
                 <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-gray-900 animate-pulse"></div>
               </div>
               {!isCollapsed && (
-                <div className={`${isRTL ? "mr-3" : "ml-3"} flex-1`}>
+                <div className="ml-3 flex-1">
                   <h1 className="text-lg font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
                     CourierPro
                   </h1>
@@ -312,7 +299,7 @@ const Sidebar: React.FC = () => {
                 <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-gray-800 animate-pulse"></div>
               </div>
               {!isCollapsed && (
-                <div className={`${isRTL ? "mr-2.5" : "ml-2.5"} flex-1 min-w-0`}>
+                <div className="ml-2.5 flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
                     <div className="text-sm font-semibold text-white truncate">{user?.name || "مستخدم"}</div>
                     {user?.role === "admin" && <Shield className="w-3.5 h-3.5 text-yellow-400" />}
@@ -348,9 +335,7 @@ const Sidebar: React.FC = () => {
                   {/* Active Indicator */}
                   {isActive && (
                     <div
-                      className={`absolute ${isRTL ? "right-0" : "left-0"} top-0 bottom-0 w-1 bg-gradient-to-b from-blue-400 via-purple-400 to-pink-400 ${
-                        isRTL ? "rounded-l-full" : "rounded-r-full"
-                      } shadow-lg shadow-blue-400/50`}
+                      className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-blue-400 via-purple-400 to-pink-400 rounded-r-full shadow-lg shadow-blue-400/50"
                     />
                   )}
 
@@ -367,7 +352,7 @@ const Sidebar: React.FC = () => {
 
                   {/* Label and Description */}
                   {!isCollapsed && (
-                    <div className={`${isRTL ? "mr-3" : "ml-3"} flex-1 min-w-0`}>
+                    <div className="ml-3 flex-1 min-w-0">
                       <div className={`truncate font-semibold ${isActive ? "text-white" : "text-gray-200"}`}>{item.label}</div>
                       {item.description && (
                         <div className={`text-xs truncate mt-0.5 ${isActive ? "text-blue-100" : "text-gray-400"}`}>{item.description}</div>

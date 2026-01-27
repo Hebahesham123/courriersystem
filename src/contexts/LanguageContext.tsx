@@ -182,36 +182,41 @@ const translations = {
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined)
 
 export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // Always force Arabic language
   const [language, setLanguage] = useState<"en" | "ar">("ar")
 
   useEffect(() => {
-    const savedLang = localStorage.getItem("language") as "en" | "ar" | null
-    if (savedLang) {
-      setLanguage(savedLang)
-    } else {
-      // Default to Arabic if no saved language
-      setLanguage("ar")
-      localStorage.setItem("language", "ar")
-    }
+    // Always set to Arabic, ignore saved language
+    setLanguage("ar")
+    localStorage.setItem("language", "ar")
   }, [])
 
   useEffect(() => {
-    localStorage.setItem("language", language)
-    // Always use LTR direction regardless of language (keep everything on the left)
+    // Always force Arabic language
+    const forcedLanguage = "ar"
+    localStorage.setItem("language", forcedLanguage)
+    // Always use LTR direction (keep everything on the left)
     document.documentElement.dir = "ltr"
-    document.documentElement.lang = language
+    document.documentElement.lang = forcedLanguage
 
-    // Optional: set font class on body
+    // Set Arabic font
     document.getElementById('root')?.classList.remove("font-sans", "font-arabic")
-    document.getElementById('root')?.classList.add(language === "ar" ? "font-arabic" : "font-sans")
-  }, [language])
+    document.getElementById('root')?.classList.add("font-arabic")
+  }, [])
 
   const t = (key: string): string => {
-    return translations[language][key as keyof typeof translations["en"]] || key
+    // Always use Arabic translations
+    return translations["ar"][key as keyof typeof translations["ar"]] || key
+  }
+  
+  // Override setLanguage to always set Arabic
+  const forceArabic = (lang: "en" | "ar") => {
+    setLanguage("ar")
+    localStorage.setItem("language", "ar")
   }
 
   return (
-    <LanguageContext.Provider value={{ language, setLanguage, t }}>
+    <LanguageContext.Provider value={{ language: "ar", setLanguage: forceArabic, t }}>
       {children}
     </LanguageContext.Provider>
   )
