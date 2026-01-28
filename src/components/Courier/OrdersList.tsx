@@ -77,6 +77,7 @@ interface Order {
   internal_comment: string | null
   collected_by: string | null
   assigned_courier_id: string | null
+  assigned_at?: string | null
   notes?: string | null
   created_at: string
   updated_at: string
@@ -2920,6 +2921,92 @@ const deleteDuplicatedOrder = async (order: Order) => {
                 isExchangeNote
               const showSpecialBadge = isReceivingPartStatus || isExchangeStatus
 
+              // Helper function to convert timestamp to YYYY-MM-DD format (Cairo timezone)
+              const toCairoYMD = (ts: string | null): string => {
+                if (!ts) return ""
+                try {
+                  return new Intl.DateTimeFormat("en-CA", {
+                    timeZone: "Africa/Cairo",
+                    year: "numeric",
+                    month: "2-digit",
+                    day: "2-digit",
+                  }).format(new Date(ts))
+                } catch {
+                  return ""
+                }
+              }
+
+              // Check if order was assigned today
+              const orderAssignedDate = order.assigned_at ? toCairoYMD(order.assigned_at) : (order.created_at ? toCairoYMD(order.created_at) : "")
+              const isAssignedToday = orderAssignedDate === getTodayDateString()
+
+              // Check if order was assigned with an existing status (not "assigned" or "pending")
+              // This means the order already had a status when assigned to courier today
+              const hasExistingStatus = order.status && order.status !== "assigned" && order.status !== "pending"
+
+              // Check if courier has made edits to the order
+              // An order is considered "edited by courier" if:
+              // 1. Delivery fee is set (and > 0)
+              // 2. Partial paid amount is set (and > 0)
+              // 3. Collected by is set (courier marked who collected)
+              // 4. Payment sub type is set (courier changed payment method)
+              // 5. Internal comment is set (courier added a comment)
+              const hasCourierEdits = 
+                (order.delivery_fee !== null && order.delivery_fee !== undefined && Number(order.delivery_fee) > 0) ||
+                (order.partial_paid_amount !== null && order.partial_paid_amount !== undefined && Number(order.partial_paid_amount) > 0) ||
+                (order.collected_by !== null && order.collected_by !== undefined && order.collected_by.trim() !== "") ||
+                (order.payment_sub_type !== null && order.payment_sub_type !== undefined && order.payment_sub_type.trim() !== "") ||
+                (order.internal_comment !== null && order.internal_comment !== undefined && order.internal_comment.trim() !== "")
+
+              // Check if courier made changes AFTER assignment (for today's orders)
+              // If order was assigned today with an existing status, we need to check if courier modified it
+              // We'll check if updated_at is significantly after assigned_at (more than 2 minutes difference)
+              // This indicates the courier made changes after the order was assigned
+              let courierModifiedAfterAssignment = false
+              if (isAssignedToday && order.assigned_at && order.updated_at) {
+                const assignedTime = new Date(order.assigned_at).getTime()
+                const updatedTime = new Date(order.updated_at).getTime()
+                // If updated_at is more than 2 minutes after assigned_at, courier likely changed something
+                const timeDiff = updatedTime - assignedTime
+                courierModifiedAfterAssignment = timeDiff > 120000 // 2 minutes in milliseconds
+              }
+
+              // Circle logic for TODAY's orders:
+              // - If order assigned with existing status (canceled, delivered, etc.) AND no changes after assignment -> GREEN
+              // - If courier makes edits OR modifies after assignment -> RED
+              // Circle logic for PREVIOUS DAYS' orders:
+              // - Green if not edited, Red if edited
+              let shouldShowGreenCircle = false
+              let shouldShowRedCircle = false
+
+              if (isAssignedToday) {
+                // Today's orders:
+                // - If assigned with existing status (canceled, delivered, etc.) and not modified after assignment -> GREEN
+                // - If modified after assignment -> RED
+                // - If assigned with "assigned" or "pending" status, check if courier made edits
+                if (hasExistingStatus) {
+                  // Order was assigned with an existing status (like "canceled")
+                  // Show green if not modified after assignment (regardless of existing fields)
+                  if (!courierModifiedAfterAssignment) {
+                    shouldShowGreenCircle = true // Still has original status, no changes after assignment
+                  } else {
+                    shouldShowRedCircle = true // Courier modified after assignment
+                  }
+                } else {
+                  // Order assigned with "assigned" or "pending" status
+                  // Check if courier made edits (delivery_fee, partial_paid_amount, etc.)
+                  if (!hasCourierEdits) {
+                    shouldShowGreenCircle = true // No edits yet
+                  } else {
+                    shouldShowRedCircle = true // Courier made edits
+                  }
+                }
+              } else {
+                // Previous days' orders: Green if not edited, Red if edited
+                shouldShowGreenCircle = !hasCourierEdits
+                shouldShowRedCircle = hasCourierEdits
+              }
+
               return (
                 <div
                   key={order.id}
@@ -3005,6 +3092,22 @@ const deleteDuplicatedOrder = async (order: Order) => {
                             : "border-gray-200"
                   }`}
                 >
+                  {/* Circle Indicator - Shows order status */}
+                  {/* Today's orders: Green by default, Red if courier made changes */}
+                  {/* Previous days' orders: Green if not edited, Red if edited */}
+                  {shouldShowGreenCircle ? (
+                    <div className="absolute -top-4 -right-4 z-40 pointer-events-none">
+                      <div className="w-10 h-10 bg-green-600 rounded-full border-4 border-white shadow-2xl animate-pulse flex items-center justify-center">
+                        <div className="w-4 h-4 bg-green-400 rounded-full"></div>
+                      </div>
+                    </div>
+                  ) : shouldShowRedCircle ? (
+                    <div className="absolute -top-4 -right-4 z-40 pointer-events-none">
+                      <div className="w-10 h-10 bg-red-600 rounded-full border-4 border-white shadow-2xl animate-pulse flex items-center justify-center">
+                        <div className="w-4 h-4 bg-red-400 rounded-full"></div>
+                      </div>
+                    </div>
+                  ) : null}
                   {showSpecialBadge && (
                     <div className="absolute top-2 right-2 z-30 flex gap-2 pointer-events-none">
                       {isExchangeStatus && (

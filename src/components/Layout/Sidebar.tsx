@@ -23,6 +23,7 @@ import {
   ClipboardList,
   Monitor,
   RefreshCw,
+  Globe,
 } from "lucide-react"
 import { useAuth } from "../../contexts/AuthContext"
 import { useLanguage } from "../../contexts/LanguageContext"
@@ -45,7 +46,7 @@ interface UserProfile {
 
 const Sidebar: React.FC = () => {
   const { user,  } = useAuth()
-  const { t, language } = useLanguage()
+  const { t, language, setLanguage } = useLanguage()
   const location = useLocation()
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -56,13 +57,23 @@ const Sidebar: React.FC = () => {
     setSidebarOpen(false)
   }, [location.pathname])
 
-  // Always keep admin sidebar visible (desktop) by default
+  // Always keep sidebar visible (desktop) by default for all users
   useEffect(() => {
-    if (user?.role === "admin") {
-      setSidebarOpen(true)
-      setIsCollapsed(false)
+    // On desktop (lg breakpoint), sidebar should always be visible
+    const handleResize = () => {
+      if (window.innerWidth >= 1024) {
+        setSidebarOpen(true)
+      }
     }
-  }, [user?.role])
+    
+    // Set initial state
+    if (window.innerWidth >= 1024) {
+      setSidebarOpen(true)
+    }
+    
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   // Handle escape key to close sidebar
   useEffect(() => {
@@ -234,16 +245,16 @@ const Sidebar: React.FC = () => {
         />
       )}
 
-      {/* Sidebar Container - Always on the left side */}
+      {/* Sidebar Container - Always on the left side, always visible on desktop */}
       <aside
         className={`fixed top-0 left-0 z-50 h-full bg-gradient-to-b from-gray-900 via-gray-800 to-gray-900 text-white shadow-2xl transition-all duration-300 ease-in-out ${
           isCollapsed ? "w-20" : "w-72 sm:w-80"
         } ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
-        } lg:translate-x-0 lg:static`}
+        } lg:translate-x-0 lg:static lg:block`}
         dir="ltr"
         role="navigation"
-        aria-label="القائمة الرئيسية"
+        aria-label={language === "ar" ? "القائمة الرئيسية" : "Main Menu"}
       >
         {/* Header Section */}
         <div className="relative">
@@ -376,13 +387,46 @@ const Sidebar: React.FC = () => {
         </nav>
 
         {/* Footer Section - Enhanced */}
-        <div className="p-3 border-t border-gray-700/50 bg-gradient-to-r from-gray-800/30 to-gray-900/30">
+        <div className="p-3 border-t border-gray-700/50 bg-gradient-to-r from-gray-800/30 to-gray-900/30 space-y-2">
+          {/* Language Toggle Button - Always visible */}
+          <button
+            onClick={() => setLanguage(language === "en" ? "ar" : "en")}
+            className={`w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg transition-all duration-200 ${
+              isCollapsed 
+                ? "justify-center" 
+                : "justify-between"
+            } ${
+              language === "ar"
+                ? "bg-gradient-to-r from-blue-600 via-blue-500 to-purple-600 text-white shadow-lg shadow-blue-500/30"
+                : "bg-gray-800/60 hover:bg-gray-700/60 text-gray-300 hover:text-white border border-gray-700/50"
+            }`}
+            title={isCollapsed ? (language === "en" ? "العربية" : "English") : undefined}
+          >
+            <div className="flex items-center gap-2">
+              <Globe className="w-4 h-4" />
+              {!isCollapsed && (
+                <span className="text-sm font-medium">
+                  {language === "en" ? "العربية" : "English"}
+                </span>
+              )}
+            </div>
+            {!isCollapsed && (
+              <span className="text-xs font-semibold px-2 py-0.5 rounded bg-white/20">
+                {language === "en" ? "EN" : "AR"}
+              </span>
+            )}
+          </button>
+
           {!isCollapsed && (
             <div className="p-2.5 bg-gradient-to-r from-gray-800/60 to-gray-700/60 rounded-lg border border-gray-700/50">
-              <div className="text-xs text-gray-400 mb-1.5 font-medium">حالة النظام</div>
+              <div className="text-xs text-gray-400 mb-1.5 font-medium">
+                {language === "ar" ? "حالة النظام" : "System Status"}
+              </div>
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse shadow-lg shadow-green-500/50"></div>
-                <span className="text-xs text-green-400 font-semibold">متصل</span>
+                <span className="text-xs text-green-400 font-semibold">
+                  {language === "ar" ? "متصل" : "Online"}
+                </span>
               </div>
             </div>
           )}

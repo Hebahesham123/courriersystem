@@ -182,41 +182,51 @@ const translations = {
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined)
 
 export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Always force Arabic language
-  const [language, setLanguage] = useState<"en" | "ar">("ar")
+  // Initialize language from localStorage or default to Arabic
+  const [language, setLanguage] = useState<"en" | "ar">(() => {
+    const saved = localStorage.getItem("language") as "en" | "ar" | null
+    return saved === "en" || saved === "ar" ? saved : "ar"
+  })
 
   useEffect(() => {
-    // Always set to Arabic, ignore saved language
-    setLanguage("ar")
-    localStorage.setItem("language", "ar")
+    // Load saved language preference
+    const saved = localStorage.getItem("language") as "en" | "ar" | null
+    if (saved === "en" || saved === "ar") {
+      setLanguage(saved)
+    }
   }, [])
 
   useEffect(() => {
-    // Always force Arabic language
-    const forcedLanguage = "ar"
-    localStorage.setItem("language", forcedLanguage)
+    // Apply language settings
+    localStorage.setItem("language", language)
     // Always use LTR direction (keep everything on the left)
     document.documentElement.dir = "ltr"
-    document.documentElement.lang = forcedLanguage
+    document.documentElement.lang = language
 
-    // Set Arabic font
-    document.getElementById('root')?.classList.remove("font-sans", "font-arabic")
-    document.getElementById('root')?.classList.add("font-arabic")
-  }, [])
+    // Set font based on language
+    const root = document.getElementById('root')
+    if (root) {
+      root.classList.remove("font-sans", "font-arabic")
+      if (language === "ar") {
+        root.classList.add("font-arabic")
+      } else {
+        root.classList.add("font-sans")
+      }
+    }
+  }, [language])
 
   const t = (key: string): string => {
-    // Always use Arabic translations
-    return translations["ar"][key as keyof typeof translations["ar"]] || key
+    return translations[language][key as keyof typeof translations[typeof language]] || key
   }
   
-  // Override setLanguage to always set Arabic
-  const forceArabic = (lang: "en" | "ar") => {
-    setLanguage("ar")
-    localStorage.setItem("language", "ar")
+  // Allow language switching
+  const handleSetLanguage = (lang: "en" | "ar") => {
+    setLanguage(lang)
+    localStorage.setItem("language", lang)
   }
 
   return (
-    <LanguageContext.Provider value={{ language: "ar", setLanguage: forceArabic, t }}>
+    <LanguageContext.Provider value={{ language, setLanguage: handleSetLanguage, t }}>
       {children}
     </LanguageContext.Provider>
   )
