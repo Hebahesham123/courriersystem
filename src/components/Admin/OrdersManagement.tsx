@@ -71,7 +71,7 @@ interface Order {
   total_shipping_price?: number
   currency?: string
   payment_method: string
-  payment_status?: "paid" | "pending" | "cod"
+  payment_status?: "paid" | "pending" | "cod" | "cancelled" | "canceled" | "voided"
   financial_status?: string
   payment_gateway_names?: string[]
   status: string
@@ -86,6 +86,7 @@ interface Order {
   notes?: string
   order_tags?: string[]
   shopify_created_at?: string
+  shopify_cancelled_at?: string
   assigned_courier_id: string | null
   original_courier_id?: string | null
   courier_name?: string
@@ -1023,19 +1024,19 @@ const OrdersManagement: React.FC = () => {
         setDateRange({ from: yesterdayStr, to: yesterdayStr })
         break
       case 'week':
-        const weekAgo = new Date(today)
+        const weekAgo = new Date(now)
         weekAgo.setDate(weekAgo.getDate() - 7)
         setDateRange({ 
           from: weekAgo.toISOString().split("T")[0], 
-          to: today.toISOString().split("T")[0] 
+          to: new Date(now).toISOString().split("T")[0] 
         })
         break
       case 'month':
-        const monthAgo = new Date(today)
+        const monthAgo = new Date(now)
         monthAgo.setMonth(monthAgo.getMonth() - 1)
         setDateRange({ 
           from: monthAgo.toISOString().split("T")[0], 
-          to: today.toISOString().split("T")[0] 
+          to: new Date(now).toISOString().split("T")[0] 
         })
         break
     }
@@ -1333,16 +1334,18 @@ const OrdersManagement: React.FC = () => {
   const handleOpenReceivePieceOrExchange = () => {
     // If orders are selected, mark them as receive_piece first, then open the page
     if (selectedOrders.length > 0) {
-      supabase
+      const updatePromise = supabase
         .from("orders")
         .update({ receive_piece_or_exchange: "receive_piece" })
         .in("id", selectedOrders)
+      
+      Promise.resolve(updatePromise)
         .then(() => {
           setShowReceivePieceOrExchange(true)
           setSelectedOrders([]) // Clear selection
         })
         .catch((error: any) => {
-          setError("خطأ في تحديد الطلبات: " + error.message)
+          setError("خطأ في تحديد الطلبات: " + (error?.message || 'Unknown error'))
         })
     } else {
       // Just open the page to view/manage existing orders
@@ -1443,46 +1446,240 @@ const OrdersManagement: React.FC = () => {
     setError(null)
 
     try {
+      // Fetch full order data including shopify_order_id and base_order_id
       const { data: currentOrders } = await supabase
         .from("orders")
-        .select("id, assigned_courier_id, original_courier_id")
+        .select("*")
         .in("id", selectedOrders)
 
-      const nowIso = new Date().toISOString()
-      for (const order of currentOrders || []) {
-        const updateData: any = {
-          assigned_courier_id: selectedCourier,
-          status: "assigned",
-          updated_at: nowIso, // Explicitly update updated_at so order appears on assignment date
-          assigned_at: nowIso, // Track the actual assignment date (never overwritten by sync)
-        }
-
-        if (!order.original_courier_id && order.assigned_courier_id) {
-          updateData.original_courier_id = order.assigned_courier_id
-        } else if (!order.original_courier_id) {
-          updateData.original_courier_id = selectedCourier
-        }
-
-        const { error } = await supabase.from("orders").update(updateData).eq("id", order.id)
-
-        if (error) throw error
+      if (!currentOrders || currentOrders.length === 0) {
+        throw new Error("No orders found")
       }
 
-      // Update local state instead of refetching all orders
-      setOrders((prevOrders) =>
-        prevOrders.map((order) =>
-          selectedOrders.includes(order.id)
-            ? {
-                ...order,
-                assigned_courier_id: selectedCourier,
-                status: "assigned",
-                courier_name: couriers.find((c) => c.id === selectedCourier)?.name || undefined,
-                updated_at: nowIso, // Include updated_at so order appears in today's view
-                assigned_at: nowIso, // Track assignment date
+      const nowIso = new Date().toISOString()
+      const today = new Date().getDate() // Get day of month (1-31)
+      const newOrderIds: string[] = []
+
+      for (const order of currentOrders) {
+        // Check if this is a Shopify order that should get a date suffix
+        const isShopifyOrder = order.shopify_order_id != null
+        const isBaseOrder = order.base_order_id == null
+
+        if (isShopifyOrder && isBaseOrder) {
+          // Create a new date-suffixed order for Shopify orders
+          const baseOrderId = order.order_id
+          const dateSuffix = today.toString().padStart(2, '0')
+          const newOrderId = `${baseOrderId}-${dateSuffix}`
+
+          // Check if this date-suffixed order already exists for today
+          const { data: existingDateOrder } = await supabase
+            .from("orders")
+            .select("id, status, delivery_fee, partial_paid_amount, collected_by, assigned_courier_id")
+            .eq("order_id", newOrderId)
+            .eq("base_order_id", order.id)
+            .maybeSingle()
+
+          if (existingDateOrder) {
+            console.log("📋 Found existing date-suffixed order for today:", {
+              orderId: existingDateOrder.id,
+              order_id: newOrderId,
+              currentStatus: existingDateOrder.status,
+              currentDeliveryFee: existingDateOrder.delivery_fee,
+              currentCourier: existingDateOrder.assigned_courier_id,
+              willResetTo: "assigned"
+            })
+          }
+
+          // If date-suffixed order exists, DELETE it first to bypass the protect_courier_edits trigger
+          // Then create a fresh one - this ensures new courier gets completely clean order
+          if (existingDateOrder) {
+            console.log("🔄 Reassigning date-suffixed order - deleting old and creating fresh:", {
+              oldOrderId: existingDateOrder.id,
+              order_id: newOrderId,
+              newCourier: selectedCourier,
+              reason: "Bypass protect_courier_edits trigger that prevents status reset"
+            })
+
+            // Delete the old date-suffixed order (this will also delete its order_items via CASCADE)
+            const { error: deleteError } = await supabase
+              .from("orders")
+              .delete()
+              .eq("id", existingDateOrder.id)
+
+            if (deleteError) {
+              console.error("❌ Error deleting old date-suffixed order:", deleteError)
+              throw deleteError
+            }
+
+            console.log("✅ Old date-suffixed order deleted, creating fresh one...")
+          }
+          
+          // Create new date-suffixed order (either first time or after deleting old one)
+          // Get base order's original payment values (from Shopify)
+          const { data: baseOrderData } = await supabase
+            .from("orders")
+            .select("payment_method, payment_status, financial_status")
+            .eq("id", order.id)
+            .single()
+
+          // Create new order data - explicitly set all fields to avoid copying courier edits
+          const newOrderData: any = {
+            // Basic order info
+            order_id: newOrderId,
+            base_order_id: order.id,
+            shopify_order_id: null, // Don't sync this with Shopify
+            
+            // Customer info (from base order - these don't change)
+            customer_name: order.customer_name,
+            customer_email: order.customer_email,
+            customer_phone: order.customer_phone,
+            customer_id: order.customer_id,
+            mobile_number: order.mobile_number,
+            
+            // Address (from base order)
+            address: order.address,
+            billing_address: order.billing_address,
+            shipping_address: order.shipping_address,
+            billing_city: order.billing_city,
+            shipping_city: order.shipping_city,
+            billing_country: order.billing_country,
+            shipping_country: order.shipping_country,
+            billing_zip: order.billing_zip,
+            shipping_zip: order.shipping_zip,
+            
+            // Financial info (from base order)
+            total_order_fees: order.total_order_fees,
+            subtotal_price: order.subtotal_price,
+            total_tax: order.total_tax,
+            total_discounts: order.total_discounts,
+            total_shipping_price: order.total_shipping_price,
+            currency: order.currency,
+            
+            // Payment info - use base order's original values
+            payment_method: baseOrderData?.payment_method || order.payment_method,
+            payment_status: baseOrderData?.payment_status || order.payment_status,
+            financial_status: baseOrderData?.financial_status || order.financial_status,
+            payment_gateway_names: order.payment_gateway_names,
+            
+            // Order items and metadata (from base order)
+            line_items: order.line_items,
+            product_images: order.product_images,
+            order_tags: order.order_tags,
+            order_note: order.order_note,
+            customer_note: order.customer_note,
+            notes: order.notes,
+            
+            // Shipping info (from base order)
+            shipping_method: order.shipping_method,
+            tracking_number: order.tracking_number,
+            tracking_url: order.tracking_url,
+            fulfillment_status: order.fulfillment_status,
+            
+            // Shopify timestamps (from base order)
+            shopify_created_at: order.shopify_created_at,
+            shopify_updated_at: order.shopify_updated_at,
+            shopify_cancelled_at: order.shopify_cancelled_at,
+            shopify_closed_at: order.shopify_closed_at,
+            
+            // Assignment info - NEW for this courier
+            assigned_courier_id: selectedCourier,
+            status: "assigned", // ALWAYS start with "assigned" - never copy status from base order
+            assigned_at: nowIso,
+            updated_at: nowIso,
+            created_at: nowIso,
+            
+            // CRITICAL: Reset ALL courier-editable fields to null (new courier starts completely fresh)
+            delivery_fee: null,
+            partial_paid_amount: null,
+            collected_by: null,
+            payment_sub_type: null,
+            internal_comment: null,
+            
+            // Other fields
+            archived: order.archived || false,
+            receive_piece_or_exchange: order.receive_piece_or_exchange,
+          }
+
+          // Preserve original_courier_id logic
+          if (!order.original_courier_id && order.assigned_courier_id) {
+            newOrderData.original_courier_id = order.assigned_courier_id
+          } else if (!order.original_courier_id) {
+            newOrderData.original_courier_id = selectedCourier
+          }
+
+          // Insert the new date-suffixed order
+          const { data: newOrder, error: insertError } = await supabase
+            .from("orders")
+            .insert(newOrderData)
+            .select()
+            .single()
+
+          if (insertError) throw insertError
+          newOrderIds.push(newOrder.id)
+
+          // Copy order items if they exist
+          const { data: orderItems } = await supabase
+            .from("order_items")
+            .select("*")
+            .eq("order_id", order.id)
+
+          if (orderItems && orderItems.length > 0) {
+            const newOrderItems = orderItems.map((item: any) => {
+              const newItem = { ...item }
+              delete newItem.id
+              return {
+                ...newItem,
+                order_id: newOrder.id,
+                created_at: nowIso,
+                updated_at: nowIso,
               }
-            : order
-        )
-      )
+            })
+
+            const { error: itemsError } = await supabase
+              .from("order_items")
+              .insert(newOrderItems)
+
+            if (itemsError) throw itemsError
+          }
+
+          // IMPORTANT: Unassign the base order so courier only sees the date-suffixed order
+          const { error: unassignError } = await supabase
+            .from("orders")
+            .update({
+              assigned_courier_id: null,
+              status: "pending",
+              assigned_at: null,
+            })
+            .eq("id", order.id)
+
+          if (unassignError) {
+            console.error("Error unassigning base order:", unassignError)
+            // Don't throw - continue with assignment
+          }
+        } else {
+          // For non-Shopify orders or already date-suffixed orders, update directly
+          const updateData: any = {
+            assigned_courier_id: selectedCourier,
+            status: "assigned",
+            updated_at: nowIso,
+            assigned_at: nowIso,
+          }
+
+          if (!order.original_courier_id && order.assigned_courier_id) {
+            updateData.original_courier_id = order.assigned_courier_id
+          } else if (!order.original_courier_id) {
+            updateData.original_courier_id = selectedCourier
+          }
+
+          const { error } = await supabase.from("orders").update(updateData).eq("id", order.id)
+
+          if (error) throw error
+          newOrderIds.push(order.id)
+        }
+      }
+
+      // Refresh orders to show the new date-suffixed orders
+      await fetchOrders()
 
       setSelectedOrders([])
       setSelectedCourier("")

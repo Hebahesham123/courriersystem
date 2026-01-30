@@ -198,11 +198,13 @@ Deno.serve(async (req: Request) => {
     }
 
     // Check if order already exists in main orders table
+    // IMPORTANT: Only sync base orders (where base_order_id IS NULL) to avoid affecting date-suffixed assignment orders
     // Fetch ALL fields to check for courier edits
     const { data: existingMain } = await supabaseClient
       .from('orders')
-      .select('id, status, assigned_courier_id, line_items, delivery_fee, partial_paid_amount, collected_by, payment_sub_type, internal_comment, payment_status, payment_method')
+      .select('id, status, assigned_courier_id, line_items, delivery_fee, partial_paid_amount, collected_by, payment_sub_type, internal_comment, payment_status, payment_method, base_order_id')
       .eq('shopify_order_id', shopifyOrder.id)
+      .is('base_order_id', null) // Only sync base orders
       .maybeSingle()
 
     // PRESERVE REMOVED ITEMS in line_items JSON

@@ -992,23 +992,26 @@ async function syncShopifyOrders(updatedAtMin = null) {
       }
 
       // 1. First, check if order already exists in our database
+      // IMPORTANT: Only sync base orders (where base_order_id IS NULL) to avoid affecting date-suffixed assignment orders
       let existing = null;
       
-      // Try to find by shopify_order_id (most reliable)
+      // Try to find by shopify_order_id (most reliable) - only base orders
       const { data: byShopifyId } = await supabase
         .from('orders')
-        .select('id, shopify_order_id, order_id, status, payment_method, payment_status, financial_status, line_items')
+        .select('id, shopify_order_id, order_id, status, payment_method, payment_status, financial_status, line_items, base_order_id')
         .eq('shopify_order_id', shopifyOrder.id)
+        .is('base_order_id', null) // Only sync base orders
         .maybeSingle();
       
       existing = byShopifyId;
       
-      // If not found, try by order name/id string
+      // If not found, try by order name/id string - only base orders
       if (!existing && (shopifyOrder.name || shopifyOrder.order_number)) {
         const { data: byName } = await supabase
           .from('orders')
-          .select('id, shopify_order_id, order_id, status, payment_method, payment_status, financial_status, line_items')
+          .select('id, shopify_order_id, order_id, status, payment_method, payment_status, financial_status, line_items, base_order_id')
           .eq('order_id', shopifyOrder.name || shopifyOrder.order_number.toString())
+          .is('base_order_id', null) // Only sync base orders
           .maybeSingle();
         existing = byName;
       }

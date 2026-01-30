@@ -298,11 +298,22 @@ const OrdersList: React.FC = () => {
 
   // Helper function to get today's date in YYYY-MM-DD format (local timezone)
   const getTodayDateString = () => {
-    const today = new Date()
-    const year = today.getFullYear()
-    const month = (today.getMonth() + 1).toString().padStart(2, "0")
-    const day = today.getDate().toString().padStart(2, "0")
-    return `${year}-${month}-${day}`
+    // Use Cairo timezone to match toCairoYMD function
+    try {
+      return new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Africa/Cairo",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(new Date())
+    } catch {
+      // Fallback to local time if Intl fails
+      const today = new Date()
+      const year = today.getFullYear()
+      const month = (today.getMonth() + 1).toString().padStart(2, "0")
+      const day = today.getDate().toString().padStart(2, "0")
+      return `${year}-${month}-${day}`
+    }
   }
 
   const [selectedDate, setSelectedDate] = useState<string>(getTodayDateString())
@@ -2958,53 +2969,95 @@ const deleteDuplicatedOrder = async (order: Order) => {
                 (order.payment_sub_type !== null && order.payment_sub_type !== undefined && order.payment_sub_type.trim() !== "") ||
                 (order.internal_comment !== null && order.internal_comment !== undefined && order.internal_comment.trim() !== "")
 
-              // Check if courier made changes AFTER assignment (for today's orders)
-              // If order was assigned today with an existing status, we need to check if courier modified it
-              // We'll check if updated_at is significantly after assigned_at (more than 2 minutes difference)
-              // This indicates the courier made changes after the order was assigned
-              let courierModifiedAfterAssignment = false
-              if (isAssignedToday && order.assigned_at && order.updated_at) {
-                const assignedTime = new Date(order.assigned_at).getTime()
-                const updatedTime = new Date(order.updated_at).getTime()
-                // If updated_at is more than 2 minutes after assigned_at, courier likely changed something
-                const timeDiff = updatedTime - assignedTime
-                courierModifiedAfterAssignment = timeDiff > 120000 // 2 minutes in milliseconds
-              }
+              // Define processed statuses
+              const processedStatuses = ['delivered', 'partial', 'canceled', 'return', 'hand_to_hand', 'receiving_part']
+              const isProcessed = order.status && processedStatuses.includes(order.status)
 
-              // Circle logic for TODAY's orders:
-              // - If order assigned with existing status (canceled, delivered, etc.) AND no changes after assignment -> GREEN
-              // - If courier makes edits OR modifies after assignment -> RED
-              // Circle logic for PREVIOUS DAYS' orders:
-              // - Green if not edited, Red if edited
-              let shouldShowGreenCircle = false
-              let shouldShowRedCircle = false
+              // Check if order was updated today
+              const orderUpdatedDate = order.updated_at ? toCairoYMD(order.updated_at) : ""
+              const isUpdatedToday = orderUpdatedDate === getTodayDateString()
 
-              if (isAssignedToday) {
-                // Today's orders:
-                // - If assigned with existing status (canceled, delivered, etc.) and not modified after assignment -> GREEN
-                // - If modified after assignment -> RED
-                // - If assigned with "assigned" or "pending" status, check if courier made edits
-                if (hasExistingStatus) {
-                  // Order was assigned with an existing status (like "canceled")
-                  // Show green if not modified after assignment (regardless of existing fields)
-                  if (!courierModifiedAfterAssignment) {
-                    shouldShowGreenCircle = true // Still has original status, no changes after assignment
-                  } else {
-                    shouldShowRedCircle = true // Courier modified after assignment
-                  }
-                } else {
-                  // Order assigned with "assigned" or "pending" status
-                  // Check if courier made edits (delivery_fee, partial_paid_amount, etc.)
-                  if (!hasCourierEdits) {
-                    shouldShowGreenCircle = true // No edits yet
-                  } else {
-                    shouldShowRedCircle = true // Courier made edits
+              // Check if order was created today
+              const orderCreatedDate = order.created_at ? toCairoYMD(order.created_at) : ""
+              const isCreatedToday = orderCreatedDate === getTodayDateString()
+
+              // Check if order was created/assigned on a previous day
+              // This helps identify orders that existed before today
+              const wasCreatedBeforeToday = orderCreatedDate !== "" && orderCreatedDate < getTodayDateString()
+              // For assigned date, only check assigned_at (not fallback to created_at)
+              const assignedDateOnly = order.assigned_at ? toCairoYMD(order.assigned_at) : ""
+              const wasAssignedBeforeToday = assignedDateOnly !== "" && assignedDateOnly < getTodayDateString()
+              // Order existed before today if it was created before today OR assigned before today
+              const existedBeforeToday = wasCreatedBeforeToday || wasAssignedBeforeToday
+
+              // Check if order was assigned today with an existing processed status
+              // Orders assigned today with status "canceled" or "return" (that existed before assignment) should be RED
+              // These are orders that were already processed before being assigned to courier today
+              // We check if order was created before today (meaning status existed before assignment)
+              const assignedTodayWithExistingProcessedStatus = isAssignedToday && isProcessed && hasExistingStatus && wasCreatedBeforeToday
+
+              // Check if courier made an update today
+              // Yellow should ONLY show when courier actually begins making edits today
+              // This means: order was assigned today AND updated today AND has courier edits AND update happened after assignment
+              // No yellow should appear for orders assigned before today (we can't verify if edits were made today vs previous days)
+              // Also, if order was created before today, existing edits are from previous days, so don't show yellow
+              let courierUpdatedToday = false
+              
+              // Yellow ONLY shows if:
+              // 1. Order was assigned today (so we can track when edits were made)
+              // 2. Order was created today OR order was created before today but courier made NEW edits today
+              // 3. Order was updated today
+              // 4. Order has courier edits (courier actually worked on it)
+              // 5. Update happened significantly after assignment (5+ minutes) to avoid system syncs
+              // This ensures yellow only appears when courier actively makes changes today, not from system syncs
+              // Orders assigned before today should NOT show yellow (they should be red if processed, green if not)
+              if (isAssignedToday && isUpdatedToday && hasCourierEdits && order.updated_at && order.assigned_at) {
+                // If order was created before today, existing edits are from previous days
+                // Only show yellow if order was created today (so edits are new) OR if we can verify edits were made today
+                // For orders created before today, we can't easily verify if edits are new, so don't show yellow
+                if (!wasCreatedBeforeToday) {
+                  // Order was created today, so edits are new
+                  const updateTime = new Date(order.updated_at).getTime()
+                  const assignedTime = new Date(order.assigned_at).getTime()
+                  const timeDiff = updateTime - assignedTime
+                  // If updated more than 5 minutes after assignment, courier made changes today
+                  // This ensures we don't catch system syncs that happen right after assignment
+                  if (timeDiff > 300000) { // 5 minutes in milliseconds
+                    courierUpdatedToday = true
                   }
                 }
+                // If order was created before today, don't show yellow (edits are from previous days)
+              }
+
+              // Check if order was processed on a previous day (not today)
+              // An order is considered "processed on previous day" if:
+              // - It has a processed status
+              // - AND (it was assigned before today OR it was assigned today with existing status like canceled/return)
+              // - AND courier did not update it today
+              const wasProcessedOnPreviousDay = isProcessed && (
+                wasAssignedBeforeToday || 
+                assignedTodayWithExistingProcessedStatus
+              ) && !courierUpdatedToday
+
+              // Circle logic:
+              // Priority: YELLOW (courier updated today) > RED (processed on previous day) > GREEN (new order)
+              // - RED: orders that have process on previous days (processed status from previous days)
+              //        OR orders assigned today with existing processed status (canceled/return from before)
+              // - GREEN: new orders that don't have any process on them (not processed)
+              // - YELLOW: when user makes an update on this day (courier updated today)
+              let shouldShowGreenCircle = false
+              let shouldShowRedCircle = false
+              let shouldShowYellowCircle = false
+
+              if (courierUpdatedToday) {
+                // Courier made an update on this day -> YELLOW
+                shouldShowYellowCircle = true
+              } else if (wasProcessedOnPreviousDay || assignedTodayWithExistingProcessedStatus) {
+                // Order was processed on a previous day OR assigned today with existing processed status -> RED
+                shouldShowRedCircle = true
               } else {
-                // Previous days' orders: Green if not edited, Red if edited
-                shouldShowGreenCircle = !hasCourierEdits
-                shouldShowRedCircle = hasCourierEdits
+                // New order without any process -> GREEN
+                shouldShowGreenCircle = true
               }
 
               return (
@@ -3093,18 +3146,25 @@ const deleteDuplicatedOrder = async (order: Order) => {
                   }`}
                 >
                   {/* Circle Indicator - Shows order status */}
-                  {/* Today's orders: Green by default, Red if courier made changes */}
-                  {/* Previous days' orders: Green if not edited, Red if edited */}
-                  {shouldShowGreenCircle ? (
+                  {/* RED: orders that have process on previous days */}
+                  {/* GREEN: new orders that don't have any process on them */}
+                  {/* YELLOW: when user makes an update on this day */}
+                  {shouldShowYellowCircle ? (
                     <div className="absolute -top-4 -right-4 z-40 pointer-events-none">
-                      <div className="w-10 h-10 bg-green-600 rounded-full border-4 border-white shadow-2xl animate-pulse flex items-center justify-center">
-                        <div className="w-4 h-4 bg-green-400 rounded-full"></div>
+                      <div className="w-10 h-10 bg-yellow-600 rounded-full border-4 border-white shadow-2xl animate-pulse flex items-center justify-center">
+                        <div className="w-4 h-4 bg-yellow-400 rounded-full"></div>
                       </div>
                     </div>
                   ) : shouldShowRedCircle ? (
                     <div className="absolute -top-4 -right-4 z-40 pointer-events-none">
                       <div className="w-10 h-10 bg-red-600 rounded-full border-4 border-white shadow-2xl animate-pulse flex items-center justify-center">
                         <div className="w-4 h-4 bg-red-400 rounded-full"></div>
+                      </div>
+                    </div>
+                  ) : shouldShowGreenCircle ? (
+                    <div className="absolute -top-4 -right-4 z-40 pointer-events-none">
+                      <div className="w-10 h-10 bg-green-600 rounded-full border-4 border-white shadow-2xl animate-pulse flex items-center justify-center">
+                        <div className="w-4 h-4 bg-green-400 rounded-full"></div>
                       </div>
                     </div>
                   ) : null}

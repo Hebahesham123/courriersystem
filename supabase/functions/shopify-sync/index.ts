@@ -258,10 +258,12 @@ Deno.serve(async (req: Request) => {
       }
 
       // Check if order exists in orders table (where frontend reads from)
+      // IMPORTANT: Only sync base orders (where base_order_id IS NULL) to avoid affecting date-suffixed assignment orders
       const { data: existing } = await supabaseClient
         .from('orders')
-        .select('id, assigned_courier_id, updated_at, status, payment_method, payment_status, financial_status, line_items')
+        .select('id, assigned_courier_id, updated_at, status, payment_method, payment_status, financial_status, line_items, base_order_id')
         .eq('shopify_order_id', shopifyOrder.id)
+        .is('base_order_id', null) // Only sync base orders
         .maybeSingle()
 
       // PRESERVE REMOVED ITEMS in line_items JSON
