@@ -167,6 +167,14 @@ const RequestsManagement: React.FC = () => {
     }
   }
 
+  // Clear note input when opening/closing detail modal or switching requests
+  useEffect(() => {
+    if (!showDetailModal || !selectedRequest) {
+      setNewNote('')
+      setNoteImageFile(null)
+    }
+  }, [showDetailModal, selectedRequest?.id])
+
   const validateFile = (file: File, type: 'image' | 'video'): boolean => {
     const maxSize = type === 'image' ? 5 * 1024 * 1024 : 50 * 1024 * 1024 // 5MB for images, 50MB for videos
     const allowedImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
@@ -367,6 +375,12 @@ const RequestsManagement: React.FC = () => {
       return
     }
 
+    // Validate that at least note text or image is provided
+    if (!newNote.trim() && !noteImageFile) {
+      alert('Please enter a note text or select an image to attach.')
+      return
+    }
+
     try {
       let noteImageUrl = null
       
@@ -375,13 +389,16 @@ const RequestsManagement: React.FC = () => {
         const uploadedImageUrl = await uploadNoteImage(noteImageFile)
         if (uploadedImageUrl) {
           noteImageUrl = uploadedImageUrl
+        } else {
+          alert('Failed to upload image. Please try again.')
+          return
         }
       }
 
       // Prepare note data - note text can be empty if only image
       const noteText = newNote.trim() || null
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('request_notes')
         .insert([{
           request_id: selectedRequest.id,
@@ -389,16 +406,32 @@ const RequestsManagement: React.FC = () => {
           author: 'admin',
           image_url: noteImageUrl,
         }])
+        .select()
 
-      if (error) throw error
+      if (error) {
+        console.error('Error adding note:', error)
+        alert(`Failed to save note: ${error.message}`)
+        throw error
+      }
       
-      console.log('Note saved successfully with image_url:', noteImageUrl)
+      console.log('Note saved successfully:', data)
+      alert('Note saved successfully!')
       
+      // Refresh notes for the current request
       await fetchNotes()
+      
+      // Clear the input fields
       setNewNote('')
-      setNoteImageFile(null) // Clear the note image file
+      setNoteImageFile(null)
+      
+      // Reset file input
+      const fileInput = document.querySelector('input[type="file"][accept="image/*"]') as HTMLInputElement
+      if (fileInput) {
+        fileInput.value = ''
+      }
     } catch (error) {
       console.error('Error adding note:', error)
+      // Error alert already shown above
     }
   }
 
@@ -1077,6 +1110,8 @@ const RequestsManagement: React.FC = () => {
                        <div className="flex space-x-2">
                          <button
                            onClick={() => {
+                             setNewNote('')
+                             setNoteImageFile(null)
                              setSelectedRequest(request)
                              setShowDetailModal(true)
                            }}
@@ -1087,6 +1122,8 @@ const RequestsManagement: React.FC = () => {
                          </button>
                          <button
                            onClick={() => {
+                             setNewNote('')
+                             setNoteImageFile(null)
                              setSelectedRequest(request)
                              setShowDetailModal(true)
                              // Focus on notes section
@@ -1140,7 +1177,11 @@ const RequestsManagement: React.FC = () => {
                       <span>Delete</span>
                     </button>
                     <button
-                      onClick={() => setShowDetailModal(false)}
+                      onClick={() => {
+                        setShowDetailModal(false)
+                        setNewNote('')
+                        setNoteImageFile(null)
+                      }}
                       className="text-gray-400 hover:text-gray-600"
                     >
                       <X className="w-6 h-6" />
@@ -1353,6 +1394,12 @@ const RequestsManagement: React.FC = () => {
                            placeholder="Add note text (optional)..."
                            value={newNote}
                            onChange={(e) => setNewNote(e.target.value)}
+                           onKeyDown={(e) => {
+                             if (e.key === 'Enter' && (newNote.trim() || noteImageFile)) {
+                               e.preventDefault()
+                               addNote()
+                             }
+                           }}
                            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                          />
                          <button
@@ -1360,7 +1407,7 @@ const RequestsManagement: React.FC = () => {
                            disabled={!newNote.trim() && !noteImageFile}
                            className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white px-4 py-2 rounded-lg transition-colors disabled:cursor-not-allowed"
                          >
-                           Add
+                           Add Note
                          </button>
                        </div>
                        
@@ -1468,7 +1515,11 @@ const RequestsManagement: React.FC = () => {
 
                              <div className="p-6 border-t border-gray-200 flex justify-end space-x-3">
                  <button
-                   onClick={() => setShowDetailModal(false)}
+                   onClick={() => {
+                     setShowDetailModal(false)
+                     setNewNote('')
+                     setNoteImageFile(null)
+                   }}
                    className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
                  >
                    Cancel
@@ -1477,6 +1528,8 @@ const RequestsManagement: React.FC = () => {
                    onClick={() => {
                      updateRequest(selectedRequest.id, selectedRequest)
                      setShowDetailModal(false)
+                     setNewNote('')
+                     setNoteImageFile(null)
                    }}
                    disabled={uploading}
                    className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white px-4 py-2 rounded-lg transition-colors flex items-center space-x-2"
