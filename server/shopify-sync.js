@@ -720,7 +720,11 @@ async function convertShopifyOrderToDB(shopifyOrder, imageMap = {}, existingOrde
     product_images: productImages,
     
     // Order metadata
-    order_tags: shopifyOrder.tags ? shopifyOrder.tags.split(',').map(t => t.trim()) : [],
+    // IMPORTANT: Handle empty strings - if tags is empty string, return empty array
+    // Also filter out any empty strings that might result from splitting
+    order_tags: shopifyOrder.tags && shopifyOrder.tags.trim() 
+      ? shopifyOrder.tags.split(',').map(t => t.trim()).filter(t => t.length > 0) 
+      : [],
     order_note: shopifyOrder.note || null,
     customer_note: shopifyOrder.customer_note || null,
     notes: shopifyOrder.note || shopifyOrder.customer_note || '',
@@ -1440,6 +1444,12 @@ app.post('/api/shopify/sync-order/:shopifyId', async (req, res) => {
             }
             return dbOrder.total_order_fees
           })(),
+          // IMPORTANT: Always update order_tags from Shopify to reflect tag changes (additions/removals)
+          // This ensures tags deleted in Shopify are removed from the system
+          order_tags: dbOrder.order_tags,
+          order_note: dbOrder.order_note,
+          customer_note: dbOrder.customer_note,
+          notes: dbOrder.notes,
           updated_at: new Date().toISOString()
         })
         .eq('id', existing.id)
@@ -1447,6 +1457,14 @@ app.post('/api/shopify/sync-order/:shopifyId', async (req, res) => {
         .single();
         
       if (error) throw error;
+      
+      // Log tag update for debugging
+      const existingTags = existing.order_tags || [];
+      const newTags = dbOrder.order_tags || [];
+      if (JSON.stringify(existingTags) !== JSON.stringify(newTags)) {
+        console.log(`🏷️  Tags updated for order ${dbOrder.order_id}: ${JSON.stringify(existingTags)} → ${JSON.stringify(newTags)}`);
+      }
+      
       updatedOrder = result;
     } else {
       // Insert new

@@ -387,7 +387,11 @@ Deno.serve(async (req: Request) => {
           image: extractImageUrl(item),
           title: item.title,
         })),
-        order_tags: shopifyOrder.tags ? shopifyOrder.tags.split(',').map((t: string) => t.trim()) : [],
+        // IMPORTANT: Handle empty strings - if tags is empty string, return empty array
+        // Also filter out any empty strings that might result from splitting
+        order_tags: shopifyOrder.tags && shopifyOrder.tags.trim() 
+          ? shopifyOrder.tags.split(',').map((t: string) => t.trim()).filter((t: string) => t.length > 0) 
+          : [],
         order_note: shopifyOrder.note,
         customer_note: shopifyOrder.customer_note,
         notes: shopifyOrder.note || shopifyOrder.customer_note || '',
@@ -442,6 +446,11 @@ Deno.serve(async (req: Request) => {
           total_discounts: orderData.total_discounts,
           line_items: orderData.line_items,
           product_images: orderData.product_images,
+          // IMPORTANT: Always update order_tags from Shopify to reflect tag changes (additions/removals)
+          order_tags: orderData.order_tags,
+          order_note: orderData.order_note,
+          customer_note: orderData.customer_note,
+          notes: orderData.notes,
           // Protect ALL courier-edited fields if order has courier edits
           payment_method: (hasCourierEdits && existing.payment_method)
             ? existing.payment_method

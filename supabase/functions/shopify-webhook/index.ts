@@ -282,7 +282,11 @@ Deno.serve(async (req: Request) => {
         image: extractImageUrl(item),
         title: item.title,
       })),
-      order_tags: shopifyOrder.tags ? shopifyOrder.tags.split(',').map((t: string) => t.trim()) : [],
+      // IMPORTANT: Handle empty strings - if tags is empty string, return empty array
+      // Also filter out any empty strings that might result from splitting
+      order_tags: shopifyOrder.tags && shopifyOrder.tags.trim() 
+        ? shopifyOrder.tags.split(',').map((t: string) => t.trim()).filter((t: string) => t.length > 0) 
+        : [],
       order_note: shopifyOrder.note,
       customer_note: shopifyOrder.customer_note,
       notes: shopifyOrder.note || shopifyOrder.customer_note || '',
@@ -347,7 +351,17 @@ Deno.serve(async (req: Request) => {
         total_discounts: orderData.total_discounts,
         line_items: orderData.line_items,
         product_images: orderData.product_images,
+        // IMPORTANT: Always update order_tags from Shopify to reflect tag changes (additions/removals)
+        order_tags: orderData.order_tags,
+        order_note: orderData.order_note,
+        customer_note: orderData.customer_note,
+        notes: orderData.notes,
         updated_at: new Date().toISOString()
+      }
+      
+      // Log tag update for debugging
+      if (JSON.stringify(existingMain.order_tags || []) !== JSON.stringify(orderData.order_tags || [])) {
+        console.log(`🏷️  Tags updated for order ${shopifyOrder.id}: ${JSON.stringify(existingMain.order_tags || [])} → ${JSON.stringify(orderData.order_tags || [])}`)
       }
 
       // CRITICAL: Protect ALL courier-edited fields
@@ -441,8 +455,19 @@ Deno.serve(async (req: Request) => {
             total_discounts: orderData.total_discounts,
             line_items: orderData.line_items,
             product_images: orderData.product_images,
+            // IMPORTANT: Always update order_tags from Shopify to reflect tag changes (additions/removals)
+            order_tags: orderData.order_tags,
+            order_note: orderData.order_note,
+            customer_note: orderData.customer_note,
+            notes: orderData.notes,
             updated_at: new Date().toISOString()
           }
+          
+          // Log tag update for debugging
+          if (JSON.stringify(checkExisting.order_tags || []) !== JSON.stringify(orderData.order_tags || [])) {
+            console.log(`🏷️  Tags updated for order ${shopifyOrder.id}: ${JSON.stringify(checkExisting.order_tags || [])} → ${JSON.stringify(orderData.order_tags || [])}`)
+          }
+          
           // Don't update status or courier-edited fields
           await supabaseClient
             .from('orders')
@@ -463,36 +488,43 @@ Deno.serve(async (req: Request) => {
     }
 
     // Sync order items to BOTH tables
-    if (shopifyOrder.line_items && shopifyOrder.line_items.length > 0 && order) {
-      const shopifyItems = shopifyOrder.line_items.map((item: any) => ({
-        shopify_line_item_id: item.id,
-        shopify_order_id: shopifyOrder.id,
-        order_id: order.id, // Reference to shopify_orders table
-        product_id: item.product_id,
-        variant_id: item.variant_id,
-        title: item.title || '',
-        variant_title: item.variant_title,
-        quantity: item.quantity || 1,
-        price: parseFloat(item.price || 0),
-        total_discount: parseFloat(item.total_discount || 0),
-        sku: item.sku,
-        vendor: item.vendor,
-        product_type: item.product_type,
-        image_url: extractImageUrl(item),
-        shopify_raw_data: item,
-      }))
+    // IMPORTANT: Always sync items when line_items are present, regardless of shopify_orders table status
+    // This ensures new items added in Shopify are properly synced
+    // Note: We check for line_items array existence, not length, to handle empty arrays (all items removed)
+    if (shopifyOrder.line_items && Array.isArray(shopifyOrder.line_items)) {
+      // Sync shopify_order_items if order exists in shopify_orders table
+      if (order) {
+        const shopifyItems = shopifyOrder.line_items.map((item: any) => ({
+          shopify_line_item_id: item.id,
+          shopify_order_id: shopifyOrder.id,
+          order_id: order.id, // Reference to shopify_orders table
+          product_id: item.product_id,
+          variant_id: item.variant_id,
+          title: item.title || '',
+          variant_title: item.variant_title,
+          quantity: item.quantity || 1,
+          price: parseFloat(item.price || 0),
+          total_discount: parseFloat(item.total_discount || 0),
+          sku: item.sku,
+          vendor: item.vendor,
+          product_type: item.product_type,
+          image_url: extractImageUrl(item),
+          shopify_raw_data: item,
+        }))
 
-      // Sync shopify_order_items
-      await supabaseClient
-        .from('shopify_order_items')
-        .delete()
-        .eq('shopify_order_id', shopifyOrder.id)
+        // Sync shopify_order_items
+        await supabaseClient
+          .from('shopify_order_items')
+          .delete()
+          .eq('shopify_order_id', shopifyOrder.id)
 
-      await supabaseClient
-        .from('shopify_order_items')
-        .insert(shopifyItems)
+        await supabaseClient
+          .from('shopify_order_items')
+          .insert(shopifyItems)
+      }
 
-      // ALSO sync to order_items table for the main system
+      // ALWAYS sync to order_items table for the main system (even if shopify_orders table has issues)
+      // This ensures items added/removed in Shopify are properly reflected in the system
       const { data: mainOrder } = await supabaseClient
         .from('orders')
         .select('id')
@@ -500,6 +532,7 @@ Deno.serve(async (req: Request) => {
         .single()
 
       if (mainOrder) {
+        console.log(`🔄 Syncing ${shopifyOrder.line_items.length} items for order ${shopifyOrder.id} (main order ID: ${mainOrder.id})`)
         // 1. Fetch current items in DB for this order
         const { data: existingItemsDB } = await supabaseClient
           .from('order_items')
