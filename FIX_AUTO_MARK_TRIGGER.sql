@@ -47,3 +47,4 @@ FROM information_schema.triggers
 WHERE trigger_name = 'trigger_auto_mark_paid_orders_delivered';
 
 
+

@@ -100,3 +100,4 @@ WHERE LOWER(TRIM(COALESCE(financial_status, ''))) = 'voided'
 ORDER BY updated_at DESC
 LIMIT 20;
 
+

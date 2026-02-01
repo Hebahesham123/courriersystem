@@ -67,3 +67,4 @@ ORDER BY ordinal_position;
 
 COMMENT ON TABLE request_notes IS 'Notes and attachments for customer requests';
 
+

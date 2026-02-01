@@ -2272,102 +2272,156 @@ const Summary: React.FC = () => {
                         </label>
                       </div>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-1.5 mb-3">
-                      {/* Visa Machine */}
-                      <div
-                        className={`${metrics.visaMachineOrders.count > 0 ? "bg-gradient-to-br from-slate-50 to-white border-slate-200" : "bg-gray-50 border-gray-200 opacity-60"} border rounded-lg p-2 cursor-pointer hover:border-slate-400 hover:shadow-md transition-all duration-200 group`}
-                        onClick={() => openOrders(metrics.visaMachineOrders.orders, "طلبات ماكينة فيزا", 'visa_machine')}
-                      >
-                        <div className="flex items-center gap-1.5 mb-1.5">
-                          <div className={`w-6 h-6 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform ${metrics.visaMachineOrders.count > 0 ? "bg-gradient-to-br from-slate-500 to-slate-600" : "bg-gray-400"}`}>
-                            <Monitor className="w-3 h-3 text-white" />
-                          </div>
-                          <h4 className={`text-xs font-bold ${metrics.visaMachineOrders.count > 0 ? "text-slate-900 group-hover:text-slate-600" : "text-gray-500"} transition-colors`}>ماكينة فيزا</h4>
-                        </div>
-                        <div className="space-y-0.5 pt-1.5 border-t border-slate-200">
-                          <p className={`text-base font-bold ${metrics.visaMachineOrders.count > 0 ? "text-slate-900" : "text-gray-500"}`}>{metrics.visaMachineOrders.count}</p>
-                          <p className={`text-xs font-semibold ${metrics.visaMachineOrders.count > 0 ? "text-slate-700" : "text-gray-400"}`}>
-                            {metrics.visaMachineOrders.amount.toFixed(2)} ج.م
-                          </p>
-                        </div>
-                      </div>
+                    {(() => {
+                      // Create array of payment methods with their data
+                      const paymentMethods = [
+                        {
+                          key: 'visaMachine',
+                          label: 'ماكينة فيزا',
+                          orders: metrics.visaMachineOrders.orders,
+                          count: metrics.visaMachineOrders.count,
+                          amount: metrics.visaMachineOrders.amount,
+                          title: 'طلبات ماكينة فيزا',
+                          type: 'visa_machine',
+                          icon: Monitor,
+                          colorClass: 'blue', // Changed from slate to blue
+                        },
+                        {
+                          key: 'instapay',
+                          label: 'إنستاباي',
+                          orders: metrics.instapayOrders.orders,
+                          count: metrics.instapayOrders.count,
+                          amount: metrics.instapayOrders.amount,
+                          title: 'طلبات إنستاباي',
+                          type: 'instapay',
+                          icon: Smartphone,
+                          colorClass: 'cyan',
+                        },
+                        {
+                          key: 'wallet',
+                          label: 'المحفظة',
+                          orders: metrics.walletOrders.orders,
+                          count: metrics.walletOrders.count,
+                          amount: metrics.walletOrders.amount,
+                          title: 'طلبات المحفظة',
+                          type: 'wallet',
+                          icon: Wallet,
+                          colorClass: 'teal',
+                        },
+                        {
+                          key: 'cashOnHand',
+                          label: 'نقداً',
+                          orders: metrics.cashOnHandOrders.orders,
+                          count: metrics.cashOnHandOrders.count,
+                          amount: metrics.cashOnHandOrders.amount,
+                          title: 'طلبات نقداً',
+                          type: 'on_hand',
+                          icon: Banknote,
+                          colorClass: 'emerald',
+                        },
+                        {
+                          key: 'totalCOD',
+                          label: 'إجمالي COD',
+                          orders: metrics.totalCODOrders.orders,
+                          count: metrics.totalCODOrders.count,
+                          amount: metrics.totalCODOrders.amount,
+                          title: 'إجمالي الدفع عند التسليم',
+                          type: null,
+                          icon: HandCoins,
+                          colorClass: 'amber',
+                        },
+                      ]
 
-                      {/* Instapay */}
-                      <div
-                        className={`${metrics.instapayOrders.count > 0 ? "bg-gradient-to-br from-cyan-50 to-white border-cyan-200" : "bg-gray-50 border-gray-200 opacity-60"} border rounded-lg p-2 cursor-pointer hover:border-cyan-400 hover:shadow-md transition-all duration-200 group`}
-                        onClick={() => openOrders(metrics.instapayOrders.orders, "طلبات إنستاباي", 'instapay')}
-                      >
-                        <div className="flex items-center gap-1.5 mb-1.5">
-                          <div className={`w-6 h-6 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform ${metrics.instapayOrders.count > 0 ? "bg-gradient-to-br from-cyan-500 to-cyan-600" : "bg-gray-400"}`}>
-                            <Smartphone className="w-3 h-3 text-white" />
-                          </div>
-                          <h4 className={`text-xs font-bold ${metrics.instapayOrders.count > 0 ? "text-cyan-900 group-hover:text-cyan-600" : "text-gray-500"} transition-colors`}>إنستاباي</h4>
-                        </div>
-                        <div className="space-y-0.5 pt-1.5 border-t border-cyan-200">
-                          <p className={`text-base font-bold ${metrics.instapayOrders.count > 0 ? "text-cyan-900" : "text-gray-500"}`}>{metrics.instapayOrders.count}</p>
-                          <p className={`text-xs font-semibold ${metrics.instapayOrders.count > 0 ? "text-cyan-700" : "text-gray-400"}`}>
-                            {metrics.instapayOrders.amount.toFixed(2)} ج.م
-                          </p>
-                        </div>
-                      </div>
+                      // Sort: non-zero first, then zeros
+                      const sortedMethods = [...paymentMethods].sort((a, b) => {
+                        if (a.count > 0 && b.count === 0) return -1
+                        if (a.count === 0 && b.count > 0) return 1
+                        return 0
+                      })
 
-                      {/* Wallet */}
-                      <div
-                        className={`${metrics.walletOrders.count > 0 ? "bg-gradient-to-br from-teal-50 to-white border-teal-200" : "bg-gray-50 border-gray-200 opacity-60"} border rounded-lg p-2 cursor-pointer hover:border-teal-400 hover:shadow-md transition-all duration-200 group`}
-                        onClick={() => openOrders(metrics.walletOrders.orders, "طلبات المحفظة", 'wallet')}
-                      >
-                        <div className="flex items-center gap-1.5 mb-1.5">
-                          <div className={`w-6 h-6 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform ${metrics.walletOrders.count > 0 ? "bg-gradient-to-br from-teal-500 to-teal-600" : "bg-gray-400"}`}>
-                            <Wallet className="w-3 h-3 text-white" />
-                          </div>
-                          <h4 className={`text-xs font-bold ${metrics.walletOrders.count > 0 ? "text-teal-900 group-hover:text-teal-600" : "text-gray-500"} transition-colors`}>المحفظة</h4>
-                        </div>
-                        <div className="space-y-0.5 pt-1.5 border-t border-teal-200">
-                          <p className={`text-base font-bold ${metrics.walletOrders.count > 0 ? "text-teal-900" : "text-gray-500"}`}>{metrics.walletOrders.count}</p>
-                          <p className={`text-xs font-semibold ${metrics.walletOrders.count > 0 ? "text-teal-700" : "text-gray-400"}`}>
-                            {metrics.walletOrders.amount.toFixed(2)} ج.م
-                          </p>
-                        </div>
-                      </div>
+                      return (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-1.5 mb-3">
+                          {sortedMethods.map((method) => {
+                            const Icon = method.icon
+                            const hasOrders = method.count > 0
+                            const colorMap: Record<string, { bg: string; border: string; hoverBorder: string; iconBg: string; text: string; textHover: string; amount: string; borderDiv: string }> = {
+                              blue: {
+                                bg: hasOrders ? "bg-gradient-to-br from-blue-50 to-white" : "bg-gray-50",
+                                border: hasOrders ? "border-blue-200" : "border-gray-200",
+                                hoverBorder: hasOrders ? "hover:border-blue-400" : "",
+                                iconBg: hasOrders ? "bg-gradient-to-br from-blue-500 to-blue-600" : "bg-gray-400",
+                                text: hasOrders ? "text-blue-900" : "text-gray-500",
+                                textHover: hasOrders ? "group-hover:text-blue-600" : "",
+                                amount: hasOrders ? "text-blue-700" : "text-gray-400",
+                                borderDiv: hasOrders ? "border-blue-200" : "border-gray-200",
+                              },
+                              cyan: {
+                                bg: hasOrders ? "bg-gradient-to-br from-cyan-50 to-white" : "bg-gray-50",
+                                border: hasOrders ? "border-cyan-200" : "border-gray-200",
+                                hoverBorder: hasOrders ? "hover:border-cyan-400" : "",
+                                iconBg: hasOrders ? "bg-gradient-to-br from-cyan-500 to-cyan-600" : "bg-gray-400",
+                                text: hasOrders ? "text-cyan-900" : "text-gray-500",
+                                textHover: hasOrders ? "group-hover:text-cyan-600" : "",
+                                amount: hasOrders ? "text-cyan-700" : "text-gray-400",
+                                borderDiv: hasOrders ? "border-cyan-200" : "border-gray-200",
+                              },
+                              teal: {
+                                bg: hasOrders ? "bg-gradient-to-br from-teal-50 to-white" : "bg-gray-50",
+                                border: hasOrders ? "border-teal-200" : "border-gray-200",
+                                hoverBorder: hasOrders ? "hover:border-teal-400" : "",
+                                iconBg: hasOrders ? "bg-gradient-to-br from-teal-500 to-teal-600" : "bg-gray-400",
+                                text: hasOrders ? "text-teal-900" : "text-gray-500",
+                                textHover: hasOrders ? "group-hover:text-teal-600" : "",
+                                amount: hasOrders ? "text-teal-700" : "text-gray-400",
+                                borderDiv: hasOrders ? "border-teal-200" : "border-gray-200",
+                              },
+                              emerald: {
+                                bg: hasOrders ? "bg-gradient-to-br from-emerald-50 to-white" : "bg-gray-50",
+                                border: hasOrders ? "border-emerald-200" : "border-gray-200",
+                                hoverBorder: hasOrders ? "hover:border-emerald-400" : "",
+                                iconBg: hasOrders ? "bg-gradient-to-br from-emerald-500 to-emerald-600" : "bg-gray-400",
+                                text: hasOrders ? "text-emerald-900" : "text-gray-500",
+                                textHover: hasOrders ? "group-hover:text-emerald-600" : "",
+                                amount: hasOrders ? "text-emerald-700" : "text-gray-400",
+                                borderDiv: hasOrders ? "border-emerald-200" : "border-gray-200",
+                              },
+                              amber: {
+                                bg: hasOrders ? "bg-gradient-to-br from-amber-50 to-white" : "bg-gray-50",
+                                border: hasOrders ? "border-amber-200" : "border-gray-200",
+                                hoverBorder: hasOrders ? "hover:border-amber-400" : "",
+                                iconBg: hasOrders ? "bg-gradient-to-br from-amber-500 to-amber-600" : "bg-gray-400",
+                                text: hasOrders ? "text-amber-900" : "text-gray-500",
+                                textHover: hasOrders ? "group-hover:text-amber-600" : "",
+                                amount: hasOrders ? "text-amber-700" : "text-gray-400",
+                                borderDiv: hasOrders ? "border-amber-200" : "border-gray-200",
+                              },
+                            }
+                            const colors = colorMap[method.colorClass]
 
-                      {/* Cash on Hand */}
-                      <div
-                        className={`${metrics.cashOnHandOrders.count > 0 ? "bg-gradient-to-br from-emerald-50 to-white border-emerald-200" : "bg-gray-50 border-gray-200 opacity-60"} border rounded-lg p-2 cursor-pointer hover:border-emerald-400 hover:shadow-md transition-all duration-200 group`}
-                        onClick={() => openOrders(metrics.cashOnHandOrders.orders, "طلبات نقداً", 'on_hand')}
-                      >
-                        <div className="flex items-center gap-1.5 mb-1.5">
-                          <div className={`w-6 h-6 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform ${metrics.cashOnHandOrders.count > 0 ? "bg-gradient-to-br from-emerald-500 to-emerald-600" : "bg-gray-400"}`}>
-                            <Banknote className="w-3 h-3 text-white" />
-                          </div>
-                          <h4 className={`text-xs font-bold ${metrics.cashOnHandOrders.count > 0 ? "text-emerald-900 group-hover:text-emerald-600" : "text-gray-500"} transition-colors`}>نقداً</h4>
+                            return (
+                              <div
+                                key={method.key}
+                                className={`${colors.bg} ${colors.border} ${hasOrders ? "" : "opacity-60"} border rounded-lg p-2 cursor-pointer ${colors.hoverBorder} hover:shadow-md transition-all duration-200 group`}
+                                onClick={() => openOrders(method.orders, method.title, method.type || undefined)}
+                              >
+                                <div className="flex items-center gap-1.5 mb-1.5">
+                                  <div className={`w-6 h-6 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform ${colors.iconBg}`}>
+                                    <Icon className="w-3 h-3 text-white" />
+                                  </div>
+                                  <h4 className={`text-xs font-bold ${colors.text} ${colors.textHover} transition-colors`}>{method.label}</h4>
+                                </div>
+                                <div className={`space-y-0.5 pt-1.5 border-t ${colors.borderDiv}`}>
+                                  <p className={`text-base font-bold ${colors.text}`}>{method.count}</p>
+                                  <p className={`text-xs font-semibold ${colors.amount}`}>
+                                    {method.amount.toFixed(2)} ج.م
+                                  </p>
+                                </div>
+                              </div>
+                            )
+                          })}
                         </div>
-                        <div className="space-y-0.5 pt-1.5 border-t border-emerald-200">
-                          <p className={`text-base font-bold ${metrics.cashOnHandOrders.count > 0 ? "text-emerald-900" : "text-gray-500"}`}>{metrics.cashOnHandOrders.count}</p>
-                          <p className={`text-xs font-semibold ${metrics.cashOnHandOrders.count > 0 ? "text-emerald-700" : "text-gray-400"}`}>
-                            {metrics.cashOnHandOrders.amount.toFixed(2)} ج.م
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Total COD */}
-                      <div
-                        className={`${metrics.totalCODOrders.count > 0 ? "bg-gradient-to-br from-amber-50 to-white border-amber-200" : "bg-gray-50 border-gray-200 opacity-60"} border rounded-lg p-2 cursor-pointer hover:border-amber-400 hover:shadow-md transition-all duration-200 group`}
-                        onClick={() => openOrders(metrics.totalCODOrders.orders, "إجمالي الدفع عند التسليم")}
-                      >
-                        <div className="flex items-center gap-1.5 mb-1.5">
-                          <div className={`w-6 h-6 rounded-lg flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform ${metrics.totalCODOrders.count > 0 ? "bg-gradient-to-br from-amber-500 to-amber-600" : "bg-gray-400"}`}>
-                            <HandCoins className="w-3 h-3 text-white" />
-                          </div>
-                          <h4 className={`text-xs font-bold ${metrics.totalCODOrders.count > 0 ? "text-amber-900 group-hover:text-amber-600" : "text-gray-500"} transition-colors`}>إجمالي COD</h4>
-                        </div>
-                        <div className="space-y-0.5 pt-1.5 border-t border-amber-200">
-                          <p className={`text-base font-bold ${metrics.totalCODOrders.count > 0 ? "text-amber-900" : "text-gray-500"}`}>{metrics.totalCODOrders.count}</p>
-                          <p className={`text-xs font-semibold ${metrics.totalCODOrders.count > 0 ? "text-amber-700" : "text-gray-400"}`}>
-                            {metrics.totalCODOrders.amount.toFixed(2)} ج.م
-                          </p>
-                        </div>
-                      </div>
-                    </div>
+                      )
+                    })()}
                     {/* Electronic Payments Row */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                       {/* Valu */}
@@ -4141,122 +4195,160 @@ const Summary: React.FC = () => {
                   </label>
                 </div>
               </div>
-              <div
-                className={`grid ${
-                  isCourier
-                    ? "grid-cols-2 gap-1.5 mb-4"
-                    : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-2 mb-6"
-                }`}
-              >
-                {/* Visa Machine */}
-                <div
-                  className={`${metrics.visaMachineOrders.count > 0 ? "bg-slate-50 border-slate-200" : "bg-gray-50 border-gray-200 opacity-60"} border rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
-                    isCourier ? "p-2" : "p-3"
-                  }`}
-                  onClick={() => openOrders(metrics.visaMachineOrders.orders, "طلبات ماكينة فيزا", 'visa_machine')}
-                >
-                  <div className={`flex items-center gap-2 ${isCourier ? "mb-1.5" : "mb-2"}`}>
-                    <Monitor className={`${metrics.visaMachineOrders.count > 0 ? "text-slate-600" : "text-gray-400"} ${isCourier ? "w-3 h-3" : "w-5 h-5"}`} />
-                    <h4 className={`font-semibold ${metrics.visaMachineOrders.count > 0 ? "text-slate-900" : "text-gray-500"} ${isCourier ? "text-xs" : "text-sm"}`}>
-                      {isCourier ? "فيزا" : "ماكينة فيزا"}
-                    </h4>
-                  </div>
-                  <div className="space-y-0.5">
-                    <p className={`font-bold ${metrics.visaMachineOrders.count > 0 ? "text-slate-900" : "text-gray-500"} ${isCourier ? "text-base" : "text-xl"}`}>
-                      {metrics.visaMachineOrders.count}
-                    </p>
-                    <p className={`font-semibold ${metrics.visaMachineOrders.count > 0 ? "text-slate-700" : "text-gray-400"} ${isCourier ? "text-xs" : "text-sm"}`}>
-                      {metrics.visaMachineOrders.amount.toFixed(0)} ج.م
-                    </p>
-                  </div>
-                </div>
+              {(() => {
+                // Create array of payment methods with their data
+                const paymentMethods = [
+                  {
+                    key: 'visaMachine',
+                    label: isCourier ? 'فيزا' : 'ماكينة فيزا',
+                    orders: metrics.visaMachineOrders.orders,
+                    count: metrics.visaMachineOrders.count,
+                    amount: metrics.visaMachineOrders.amount,
+                    title: 'طلبات ماكينة فيزا',
+                    type: 'visa_machine',
+                    icon: Monitor,
+                    colorClass: 'blue', // Changed from slate to blue
+                    showForCourier: true,
+                  },
+                  {
+                    key: 'instapay',
+                    label: isCourier ? 'إنستا' : 'إنستاباي',
+                    orders: metrics.instapayOrders.orders,
+                    count: metrics.instapayOrders.count,
+                    amount: metrics.instapayOrders.amount,
+                    title: 'طلبات إنستاباي',
+                    type: 'instapay',
+                    icon: Smartphone,
+                    colorClass: 'cyan',
+                    showForCourier: true,
+                  },
+                  {
+                    key: 'wallet',
+                    label: 'المحفظة',
+                    orders: metrics.walletOrders.orders,
+                    count: metrics.walletOrders.count,
+                    amount: metrics.walletOrders.amount,
+                    title: 'طلبات المحفظة',
+                    type: 'wallet',
+                    icon: Wallet,
+                    colorClass: 'teal',
+                    showForCourier: true,
+                  },
+                  {
+                    key: 'cashOnHand',
+                    label: 'نقداً',
+                    orders: metrics.cashOnHandOrders.orders,
+                    count: metrics.cashOnHandOrders.count,
+                    amount: metrics.cashOnHandOrders.amount,
+                    title: 'طلبات نقداً',
+                    type: 'on_hand',
+                    icon: Banknote,
+                    colorClass: 'emerald',
+                    showForCourier: true,
+                  },
+                  {
+                    key: 'totalCOD',
+                    label: 'إجمالي COD',
+                    orders: metrics.totalCODOrders.orders,
+                    count: metrics.totalCODOrders.count,
+                    amount: metrics.totalCODOrders.amount,
+                    title: 'إجمالي الدفع عند التسليم',
+                    type: null,
+                    icon: HandCoins,
+                    colorClass: 'amber',
+                    showForCourier: false,
+                  },
+                ]
 
-                {/* Instapay */}
-                <div
-                  className={`${metrics.instapayOrders.count > 0 ? "bg-cyan-50 border-cyan-200" : "bg-gray-50 border-gray-200 opacity-60"} border rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
-                    isCourier ? "p-2" : "p-3"
-                  }`}
-                  onClick={() => openOrders(metrics.instapayOrders.orders, "طلبات إنستاباي", 'instapay')}
-                >
-                  <div className={`flex items-center gap-2 ${isCourier ? "mb-1.5" : "mb-2"}`}>
-                    <Smartphone className={`${metrics.instapayOrders.count > 0 ? "text-cyan-600" : "text-gray-400"} ${isCourier ? "w-3 h-3" : "w-5 h-5"}`} />
-                    <h4 className={`font-semibold ${metrics.instapayOrders.count > 0 ? "text-cyan-900" : "text-gray-500"} ${isCourier ? "text-xs" : "text-sm"}`}>
-                      {isCourier ? "إنستا" : "إنستاباي"}
-                    </h4>
-                  </div>
-                  <div className="space-y-0.5">
-                    <p className={`font-bold ${metrics.instapayOrders.count > 0 ? "text-cyan-900" : "text-gray-500"} ${isCourier ? "text-base" : "text-xl"}`}>
-                      {metrics.instapayOrders.count}
-                    </p>
-                    <p className={`font-semibold ${metrics.instapayOrders.count > 0 ? "text-cyan-700" : "text-gray-400"} ${isCourier ? "text-xs" : "text-sm"}`}>
-                      {metrics.instapayOrders.amount.toFixed(0)} ج.م
-                    </p>
-                  </div>
-                </div>
+                // Filter based on courier status
+                const filteredMethods = paymentMethods.filter(m => isCourier ? m.showForCourier : true)
 
-                {/* Wallet */}
-                <div
-                  className={`${metrics.walletOrders.count > 0 ? "bg-teal-50 border-teal-200" : "bg-gray-50 border-gray-200 opacity-60"} border rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
-                    isCourier ? "p-2" : "p-3"
-                  }`}
-                  onClick={() => openOrders(metrics.walletOrders.orders, "طلبات المحفظة", 'wallet')}
-                >
-                  <div className={`flex items-center gap-2 ${isCourier ? "mb-1.5" : "mb-2"}`}>
-                    <Wallet className={`${metrics.walletOrders.count > 0 ? "text-teal-600" : "text-gray-400"} ${isCourier ? "w-3 h-3" : "w-5 h-5"}`} />
-                    <h4 className={`font-semibold ${metrics.walletOrders.count > 0 ? "text-teal-900" : "text-gray-500"} ${isCourier ? "text-xs" : "text-sm"}`}>
-                      المحفظة
-                    </h4>
-                  </div>
-                  <div className="space-y-0.5">
-                    <p className={`font-bold ${metrics.walletOrders.count > 0 ? "text-teal-900" : "text-gray-500"} ${isCourier ? "text-base" : "text-xl"}`}>
-                      {metrics.walletOrders.count}
-                    </p>
-                    <p className={`font-semibold ${metrics.walletOrders.count > 0 ? "text-teal-700" : "text-gray-400"} ${isCourier ? "text-xs" : "text-sm"}`}>
-                      {metrics.walletOrders.amount.toFixed(0)} ج.م
-                    </p>
-                  </div>
-                </div>
+                // Sort: non-zero first, then zeros
+                const sortedMethods = [...filteredMethods].sort((a, b) => {
+                  if (a.count > 0 && b.count === 0) return -1
+                  if (a.count === 0 && b.count > 0) return 1
+                  return 0
+                })
 
-                {/* Cash on Hand */}
-                <div
-                  className={`${metrics.cashOnHandOrders.count > 0 ? "bg-emerald-50 border-emerald-200" : "bg-gray-50 border-gray-200 opacity-60"} border rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
-                    isCourier ? "p-2" : "p-3"
-                  }`}
-                  onClick={() => openOrders(metrics.cashOnHandOrders.orders, "طلبات نقداً", 'on_hand')}
-                >
-                  <div className={`flex items-center gap-2 ${isCourier ? "mb-1.5" : "mb-2"}`}>
-                    <Banknote className={`${metrics.cashOnHandOrders.count > 0 ? "text-emerald-600" : "text-gray-400"} ${isCourier ? "w-3 h-3" : "w-5 h-5"}`} />
-                    <h4 className={`font-semibold ${metrics.cashOnHandOrders.count > 0 ? "text-emerald-900" : "text-gray-500"} ${isCourier ? "text-xs" : "text-sm"}`}>
-                      نقداً
-                    </h4>
-                  </div>
-                  <div className="space-y-0.5">
-                    <p className={`font-bold ${metrics.cashOnHandOrders.count > 0 ? "text-emerald-900" : "text-gray-500"} ${isCourier ? "text-base" : "text-xl"}`}>
-                      {metrics.cashOnHandOrders.count}
-                    </p>
-                    <p className={`font-semibold ${metrics.cashOnHandOrders.count > 0 ? "text-emerald-700" : "text-gray-400"} ${isCourier ? "text-xs" : "text-sm"}`}>
-                      {metrics.cashOnHandOrders.amount.toFixed(0)} ج.م
-                    </p>
-                  </div>
-                </div>
+                const colorMap: Record<string, { bg: string; border: string; icon: string; text: string; amount: string }> = {
+                  blue: {
+                    bg: (hasOrders: boolean) => hasOrders ? "bg-blue-50" : "bg-gray-50",
+                    border: (hasOrders: boolean) => hasOrders ? "border-blue-200" : "border-gray-200",
+                    icon: (hasOrders: boolean) => hasOrders ? "text-blue-600" : "text-gray-400",
+                    text: (hasOrders: boolean) => hasOrders ? "text-blue-900" : "text-gray-500",
+                    amount: (hasOrders: boolean) => hasOrders ? "text-blue-700" : "text-gray-400",
+                  },
+                  cyan: {
+                    bg: (hasOrders: boolean) => hasOrders ? "bg-cyan-50" : "bg-gray-50",
+                    border: (hasOrders: boolean) => hasOrders ? "border-cyan-200" : "border-gray-200",
+                    icon: (hasOrders: boolean) => hasOrders ? "text-cyan-600" : "text-gray-400",
+                    text: (hasOrders: boolean) => hasOrders ? "text-cyan-900" : "text-gray-500",
+                    amount: (hasOrders: boolean) => hasOrders ? "text-cyan-700" : "text-gray-400",
+                  },
+                  teal: {
+                    bg: (hasOrders: boolean) => hasOrders ? "bg-teal-50" : "bg-gray-50",
+                    border: (hasOrders: boolean) => hasOrders ? "border-teal-200" : "border-gray-200",
+                    icon: (hasOrders: boolean) => hasOrders ? "text-teal-600" : "text-gray-400",
+                    text: (hasOrders: boolean) => hasOrders ? "text-teal-900" : "text-gray-500",
+                    amount: (hasOrders: boolean) => hasOrders ? "text-teal-700" : "text-gray-400",
+                  },
+                  emerald: {
+                    bg: (hasOrders: boolean) => hasOrders ? "bg-emerald-50" : "bg-gray-50",
+                    border: (hasOrders: boolean) => hasOrders ? "border-emerald-200" : "border-gray-200",
+                    icon: (hasOrders: boolean) => hasOrders ? "text-emerald-600" : "text-gray-400",
+                    text: (hasOrders: boolean) => hasOrders ? "text-emerald-900" : "text-gray-500",
+                    amount: (hasOrders: boolean) => hasOrders ? "text-emerald-700" : "text-gray-400",
+                  },
+                  amber: {
+                    bg: (hasOrders: boolean) => hasOrders ? "bg-amber-50" : "bg-gray-50",
+                    border: (hasOrders: boolean) => hasOrders ? "border-amber-200" : "border-gray-200",
+                    icon: (hasOrders: boolean) => hasOrders ? "text-amber-600" : "text-gray-400",
+                    text: (hasOrders: boolean) => hasOrders ? "text-amber-900" : "text-gray-500",
+                    amount: (hasOrders: boolean) => hasOrders ? "text-amber-700" : "text-gray-400",
+                  },
+                }
 
-                {/* Total COD - Hidden for mobile */}
-                {!isCourier && (
+                return (
                   <div
-                    className={`${metrics.totalCODOrders.count > 0 ? "bg-amber-50 border-amber-200" : "bg-gray-50 border-gray-200 opacity-60"} border rounded-xl p-3 cursor-pointer hover:shadow-lg transition-all group`}
-                    onClick={() => openOrders(metrics.totalCODOrders.orders, "إجمالي الدفع عند التسليم")}
+                    className={`grid ${
+                      isCourier
+                        ? "grid-cols-2 gap-1.5 mb-4"
+                        : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-2 mb-6"
+                    }`}
                   >
-                    <div className="flex items-center gap-2 mb-2">
-                      <HandCoins className={`w-5 h-5 ${metrics.totalCODOrders.count > 0 ? "text-amber-600" : "text-gray-400"}`} />
-                      <h4 className={`text-sm font-semibold ${metrics.totalCODOrders.count > 0 ? "text-amber-900" : "text-gray-500"}`}>إجمالي COD</h4>
-                    </div>
-                    <div className="space-y-0.5">
-                      <p className={`text-xl font-bold ${metrics.totalCODOrders.count > 0 ? "text-amber-900" : "text-gray-500"}`}>{metrics.totalCODOrders.count}</p>
-                      <p className={`text-sm font-semibold ${metrics.totalCODOrders.count > 0 ? "text-amber-700" : "text-gray-400"}`}>{metrics.totalCODOrders.amount.toFixed(2)} ج.م</p>
-                    </div>
+                    {sortedMethods.map((method) => {
+                      const Icon = method.icon
+                      const hasOrders = method.count > 0
+                      const colors = colorMap[method.colorClass]
+
+                      return (
+                        <div
+                          key={method.key}
+                          className={`${colors.bg(hasOrders)} ${colors.border(hasOrders)} ${hasOrders ? "" : "opacity-60"} border rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
+                            isCourier ? "p-2" : "p-3"
+                          }`}
+                          onClick={() => openOrders(method.orders, method.title, method.type || undefined)}
+                        >
+                          <div className={`flex items-center gap-2 ${isCourier ? "mb-1.5" : "mb-2"}`}>
+                            <Icon className={`${colors.icon(hasOrders)} ${isCourier ? "w-3 h-3" : "w-5 h-5"}`} />
+                            <h4 className={`font-semibold ${colors.text(hasOrders)} ${isCourier ? "text-xs" : "text-sm"}`}>
+                              {method.label}
+                            </h4>
+                          </div>
+                          <div className="space-y-0.5">
+                            <p className={`font-bold ${colors.text(hasOrders)} ${isCourier ? "text-base" : "text-xl"}`}>
+                              {method.count}
+                            </p>
+                            <p className={`font-semibold ${colors.amount(hasOrders)} ${isCourier ? "text-xs" : "text-sm"}`}>
+                              {method.amount.toFixed(isCourier ? 0 : 2)} ج.م
+                            </p>
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
-                )}
-              </div>
+                )
+              })()}
               {/* Electronic Payments Row */}
               <div className={`grid ${isCourier ? "grid-cols-2 gap-1.5" : "grid-cols-1 sm:grid-cols-2 gap-2"}`}>
                 {/* Valu */}
