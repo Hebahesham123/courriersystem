@@ -644,21 +644,30 @@ Deno.serve(async (req: Request) => {
             total: (parseFloat(item.price || 0) * (item.quantity || 0)) - parseFloat(item.total_discount || 0)
           }))
           
-          // Find which items are included in the subtotal
-          // Use a greedy approach: try to match the subtotal by including items
-          // Items that are NOT needed to reach the subtotal were removed
-          const sortedItems = [...itemTotals].sort((a, b) => b.total - a.total) // Sort by price descending
-          let runningTotal = 0
-          const itemsIncluded = new Set<string>()
-          
-          // Try to build subtotal by adding items
-          for (const itemTotal of sortedItems) {
-            if (runningTotal + itemTotal.total <= shopifySubtotal + 0.01) {
-              // This item fits in the subtotal
-              runningTotal += itemTotal.total
-              itemsIncluded.add(itemTotal.id)
+          // Find which items are included in the subtotal using recursive backtracking
+          // This finds ONE valid combination that sums to the subtotal
+          const findSubsetSum = (items: any[], target: number, index: number = 0, currentSum: number = 0, currentSet: Set<string> = new Set()): Set<string> | null => {
+            // If we've reached the target (within 0.01 tolerance), return the set
+            if (Math.abs(currentSum - target) < 0.01) {
+              return currentSet
             }
+            
+            // If we've checked all items or exceeded target, return null
+            if (index >= items.length || currentSum > target + 0.01) {
+              return null
+            }
+            
+            // Try including this item
+            const withItem = new Set(currentSet)
+            withItem.add(items[index].id)
+            const resultWith = findSubsetSum(items, target, index + 1, currentSum + items[index].total, withItem)
+            if (resultWith) return resultWith
+            
+            // Try excluding this item
+            return findSubsetSum(items, target, index + 1, currentSum, currentSet)
           }
+          
+          const itemsIncluded = findSubsetSum(itemTotals, shopifySubtotal) || new Set<string>()
           
           // Any item NOT in the included set was removed
           itemTotals.forEach((itemTotal: any) => {
@@ -678,12 +687,16 @@ Deno.serve(async (req: Request) => {
       const itemsFromShopify = lineItems.map((item: any) => {
         const shopifyItemKey = String(item.id);
         // Check multiple ways Shopify marks items as removed
-        const isRemovedInShopify = item.quantity === 0 || 
-                                   item.fulfillment_status === 'removed' || 
-                                   (item.properties && (item.properties._is_removed === true || item.properties._is_removed === 'true')) ||
-                                   item.cancelled === true ||
-                                   (item.fulfillable_quantity !== undefined && item.fulfillable_quantity === 0 && item.quantity > 0) ||
-                                   itemsNotInSubtotal.has(shopifyItemKey); // Item exists but price not in subtotal
+        // IMPORTANT: Only use subtotal detection if item doesn't have explicit removal indicators
+        // This prevents false positives when multiple combinations could match the subtotal
+        const hasExplicitRemovalIndicator = item.quantity === 0 || 
+                                            item.fulfillment_status === 'removed' || 
+                                            (item.properties && (item.properties._is_removed === true || item.properties._is_removed === 'true')) ||
+                                            item.cancelled === true ||
+                                            (item.fulfillable_quantity !== undefined && item.fulfillable_quantity === 0 && item.quantity > 0);
+        
+        const isRemovedInShopify = hasExplicitRemovalIndicator || 
+                                    (itemsNotInSubtotal.has(shopifyItemKey) && !hasExplicitRemovalIndicator); // Only use subtotal if no explicit indicator
         const isNewlyAdded = !existingItemsMap.has(shopifyItemKey) && !isRemovedInShopify;
         
         // Debug removed items

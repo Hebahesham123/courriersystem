@@ -229,17 +229,30 @@ Deno.serve(async (req: Request) => {
           total: (parseFloat(item.price || 0) * (item.quantity || 0)) - parseFloat(item.total_discount || 0)
         }))
         
-        // Find which items are included in the subtotal using greedy approach
-        const sortedItems = [...itemTotals].sort((a, b) => b.total - a.total)
-        let runningTotal = 0
-        const itemsIncluded = new Set<string>()
-        
-        for (const itemTotal of sortedItems) {
-          if (runningTotal + itemTotal.total <= shopifySubtotal + 0.01) {
-            runningTotal += itemTotal.total
-            itemsIncluded.add(itemTotal.id)
+        // Find which items are included in the subtotal using recursive backtracking
+        // This finds ONE valid combination that sums to the subtotal
+        const findSubsetSum = (items: any[], target: number, index: number = 0, currentSum: number = 0, currentSet: Set<string> = new Set()): Set<string> | null => {
+          // If we've reached the target (within 0.01 tolerance), return the set
+          if (Math.abs(currentSum - target) < 0.01) {
+            return currentSet
           }
+          
+          // If we've checked all items or exceeded target, return null
+          if (index >= items.length || currentSum > target + 0.01) {
+            return null
+          }
+          
+          // Try including this item
+          const withItem = new Set(currentSet)
+          withItem.add(items[index].id)
+          const resultWith = findSubsetSum(items, target, index + 1, currentSum + items[index].total, withItem)
+          if (resultWith) return resultWith
+          
+          // Try excluding this item
+          return findSubsetSum(items, target, index + 1, currentSum, currentSet)
         }
+        
+        const itemsIncluded = findSubsetSum(itemTotals, shopifySubtotal) || new Set<string>()
         
         // Any item NOT in the included set was removed
         itemTotals.forEach((itemTotal: any) => {
@@ -248,18 +261,27 @@ Deno.serve(async (req: Request) => {
             console.log(`   🗑️  Item "${itemTotal.title}" (${itemTotal.total}) is NOT in subtotal - removed from order`)
           }
         })
+        
+        console.log(`   ✅ Items included in subtotal: ${Array.from(itemsIncluded).join(', ')}`)
+        console.log(`   🗑️  Items NOT in subtotal (removed): ${Array.from(itemsNotInSubtotal).join(', ')}`)
       }
     }
     
-    const currentLineItems = (shopifyOrder.line_items || []).map((item: any) => ({
-      ...item,
-      is_removed: item.quantity === 0 || 
-                  item.fulfillment_status === 'removed' || 
-                  (item.properties && (item.properties._is_removed === true || item.properties._is_removed === 'true')) ||
-                  item.cancelled === true ||
-                  (item.fulfillable_quantity !== undefined && item.fulfillable_quantity === 0 && item.quantity > 0) ||
-                  itemsNotInSubtotal.has(String(item.id))
-    }))
+    const currentLineItems = (shopifyOrder.line_items || []).map((item: any) => {
+      // IMPORTANT: Only use subtotal detection if item doesn't have explicit removal indicators
+      // This prevents false positives when multiple combinations could match the subtotal
+      const hasExplicitRemovalIndicator = item.quantity === 0 || 
+                                          item.fulfillment_status === 'removed' || 
+                                          (item.properties && (item.properties._is_removed === true || item.properties._is_removed === 'true')) ||
+                                          item.cancelled === true ||
+                                          (item.fulfillable_quantity !== undefined && item.fulfillable_quantity === 0 && item.quantity > 0);
+      
+      return {
+        ...item,
+        is_removed: hasExplicitRemovalIndicator || 
+                    (itemsNotInSubtotal.has(String(item.id)) && !hasExplicitRemovalIndicator)
+      }
+    })
 
     let finalLineItems = [...currentLineItems]
 
