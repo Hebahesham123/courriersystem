@@ -1088,9 +1088,29 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
         
         // All items here are already filtered to be active (not removed)
         // So is_removed should always be false
+        // CRITICAL: Use found imageUrl, or fall back to orderItem.image_url, or try one more time from shopify_raw_data
+        let finalImageUrl = imageUrl || orderItem.image_url;
+        
+        // Final fallback: try to extract from shopify_raw_data directly
+        if (!finalImageUrl && orderItem.shopify_raw_data) {
+          const raw = orderItem.shopify_raw_data;
+          const rawImg = raw.image || raw.variant?.image || raw.product?.image || raw.variant?.featured_image;
+          if (rawImg) {
+            finalImageUrl = typeof rawImg === 'string' ? rawImg : (rawImg.src || rawImg.url || rawImg.original_src);
+            if (finalImageUrl && !finalImageUrl.startsWith('http') && !finalImageUrl.startsWith('data:')) {
+              finalImageUrl = `https://cdn.shopify.com${finalImageUrl.startsWith('/') ? '' : '/'}${finalImageUrl}`;
+            }
+          }
+        }
+        
+        // Clean up the URL
+        if (finalImageUrl && (finalImageUrl === 'null' || finalImageUrl === 'undefined' || finalImageUrl === '' || finalImageUrl === 'https://cdn.shopify.comnull')) {
+          finalImageUrl = null;
+        }
+        
         return {
           ...orderItem,
-          image_url: imageUrl || orderItem.image_url,
+          image_url: finalImageUrl,
           is_removed: false // All items here are active (removed items were filtered out above)
         };
       })

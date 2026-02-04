@@ -828,7 +828,18 @@ Deno.serve(async (req: Request) => {
           sku: item.sku,
           vendor: item.vendor,
           product_type: item.product_type,
-          image_url: extractImageUrl(item),
+          image_url: (() => {
+            const imgUrl = extractImageUrl(item);
+            // Ensure it's a full URL
+            if (imgUrl && typeof imgUrl === 'string' && !imgUrl.startsWith('http') && !imgUrl.startsWith('data:')) {
+              return `https://cdn.shopify.com${imgUrl.startsWith('/') ? '' : '/'}${imgUrl}`;
+            }
+            // Validate it's not a bad URL
+            if (imgUrl && (imgUrl === 'null' || imgUrl === 'undefined' || imgUrl === '' || imgUrl === 'https://cdn.shopify.comnull')) {
+              return null;
+            }
+            return imgUrl;
+          })(),
           image_alt: item.title || null,
           properties: item.properties || null,
           shopify_raw_data: item,

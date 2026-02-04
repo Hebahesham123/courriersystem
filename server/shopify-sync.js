@@ -784,8 +784,52 @@ async function convertShopifyOrderToDB(shopifyOrder, imageMap = {}, existingOrde
 }
 
 // Sync order items (products) to order_items table
-async function syncOrderItems(orderId, lineItems, refunds = [], fulfillments = [], shopifySubtotal = null) {
+async function syncOrderItems(orderId, lineItems, refunds = [], fulfillments = [], shopifySubtotal = null, productImageMap = {}) {
   if (!lineItems) return;
+  
+  // If no image map provided, try to get it from the order's product_images field
+  if (Object.keys(productImageMap).length === 0) {
+    try {
+      const { data: orderData } = await supabase
+        .from('orders')
+        .select('product_images')
+        .eq('id', orderId)
+        .single();
+      
+      if (orderData?.product_images) {
+        try {
+          const productImages = typeof orderData.product_images === 'string' 
+            ? JSON.parse(orderData.product_images) 
+            : orderData.product_images;
+          
+          if (Array.isArray(productImages)) {
+            // Build image map from product_images array
+            productImages.forEach((img) => {
+              if (img.image && img.image !== null && img.image !== 'null') {
+                const imageUrl = typeof img.image === 'string' ? img.image : (img.image.src || img.image.url);
+                if (imageUrl) {
+                  // Map by variant_id (preferred) and product_id
+                  if (img.variant_id) {
+                    productImageMap[String(img.variant_id)] = imageUrl;
+                    productImageMap[Number(img.variant_id)] = imageUrl;
+                  }
+                  if (img.product_id) {
+                    productImageMap[String(img.product_id)] = imageUrl;
+                    productImageMap[Number(img.product_id)] = imageUrl;
+                  }
+                }
+              }
+            });
+            console.log(`📸 Loaded ${Object.keys(productImageMap).length} images from order's product_images field`);
+          }
+        } catch (e) {
+          console.warn('⚠️ Error parsing product_images:', e.message);
+        }
+      }
+    } catch (e) {
+      console.warn('⚠️ Error fetching product_images from order:', e.message);
+    }
+  }
 
   // 1. Fetch current items in DB for this order
   const { data: existingItemsDB } = await supabase
@@ -969,17 +1013,89 @@ async function syncOrderItems(orderId, lineItems, refunds = [], fulfillments = [
       fulfillment_status: fulfillmentStatus || (isRemovedInShopify ? 'removed' : null),
       // CRITICAL: Get image from multiple sources and ensure it's a full URL
       image_url: (() => {
-        let imgUrl = item.image || item.variant?.image || item.product?.image?.src || null;
-        if (imgUrl) {
-          // If it's an object, extract the URL
-          if (typeof imgUrl === 'object') {
-            imgUrl = imgUrl.src || imgUrl.url || null;
-          }
-          // Ensure it's a full URL (Shopify CDN)
-          if (imgUrl && typeof imgUrl === 'string' && !imgUrl.startsWith('http')) {
-            imgUrl = `https://cdn.shopify.com${imgUrl.startsWith('/') ? '' : '/'}${imgUrl}`;
+        let imgUrl = null;
+        
+        // Priority 1: Try productImageMap (from order's product_images field or fetched from Products API)
+        if (item.variant_id && productImageMap) {
+          imgUrl = productImageMap[String(item.variant_id)] || productImageMap[Number(item.variant_id)] || null;
+        }
+        if (!imgUrl && item.product_id && productImageMap) {
+          imgUrl = productImageMap[String(item.product_id)] || productImageMap[Number(item.product_id)] || null;
+        }
+        
+        // Priority 2: Direct item.image
+        if (!imgUrl && item.image) {
+          if (typeof item.image === 'string' && item.image.trim() !== '' && item.image !== 'null') {
+            imgUrl = item.image;
+          } else if (typeof item.image === 'object' && item.image !== null) {
+            imgUrl = item.image.src || item.image.url || item.image.original_src || null;
           }
         }
+        
+        // Priority 3: item.variant.image
+        if (!imgUrl && item.variant?.image) {
+          if (typeof item.variant.image === 'string' && item.variant.image.trim() !== '' && item.variant.image !== 'null') {
+            imgUrl = item.variant.image;
+          } else if (typeof item.variant.image === 'object' && item.variant.image !== null) {
+            imgUrl = item.variant.image.src || item.variant.image.url || item.variant.image.original_src || null;
+          }
+        }
+        
+        // Priority 4: item.variant.featured_image
+        if (!imgUrl && item.variant?.featured_image) {
+          if (typeof item.variant.featured_image === 'string') {
+            imgUrl = item.variant.featured_image;
+          } else if (typeof item.variant.featured_image === 'object') {
+            imgUrl = item.variant.featured_image.src || item.variant.featured_image.url || null;
+          }
+        }
+        
+        // Priority 5: item.images array
+        if (!imgUrl && item.images && Array.isArray(item.images) && item.images.length > 0) {
+          const firstImg = item.images[0];
+          if (typeof firstImg === 'string' && firstImg.trim() !== '' && firstImg !== 'null') {
+            imgUrl = firstImg;
+          } else if (typeof firstImg === 'object' && firstImg !== null) {
+            imgUrl = firstImg.src || firstImg.url || firstImg.original_src || null;
+          }
+        }
+        
+        // Priority 6: item.product.images array
+        if (!imgUrl && item.product?.images && Array.isArray(item.product.images) && item.product.images.length > 0) {
+          const firstImg = item.product.images[0];
+          if (typeof firstImg === 'string' && firstImg.trim() !== '' && firstImg !== 'null') {
+            imgUrl = firstImg;
+          } else if (typeof firstImg === 'object' && firstImg !== null) {
+            imgUrl = firstImg.src || firstImg.url || firstImg.original_src || null;
+          }
+        }
+        
+        // Priority 7: item.product.image
+        if (!imgUrl && item.product?.image) {
+          if (typeof item.product.image === 'string' && item.product.image.trim() !== '' && item.product.image !== 'null') {
+            imgUrl = item.product.image;
+          } else if (typeof item.product.image === 'object' && item.product.image !== null) {
+            imgUrl = item.product.image.src || item.product.image.url || item.product.image.original_src || null;
+          }
+        }
+        
+        // Normalize URL - ensure it's a full URL
+        if (imgUrl && typeof imgUrl === 'string') {
+          imgUrl = imgUrl.trim();
+          if (imgUrl && imgUrl !== 'null' && imgUrl !== 'undefined' && imgUrl !== '') {
+            // If it's not already a full URL, make it one
+            if (!imgUrl.startsWith('http') && !imgUrl.startsWith('data:')) {
+              imgUrl = `https://cdn.shopify.com${imgUrl.startsWith('/') ? '' : '/'}${imgUrl}`;
+            }
+            // Validate it's not a bad URL
+            if (imgUrl === 'https://cdn.shopify.comnull' || imgUrl === 'https://cdn.shopify.comundefined') {
+              imgUrl = null;
+            }
+          } else {
+            imgUrl = null;
+          }
+        }
+        
         return imgUrl;
       })(),
       image_alt: item.name || item.title || null,
@@ -1517,7 +1633,7 @@ async function syncShopifyOrders(updatedAtMin = null) {
         if (!error && updatedOrder) {
           updated++;
           // Sync order items including refunds and fulfillments to track removed items and item status
-          await syncOrderItems(updatedOrder.id, shopifyOrder.line_items, shopifyOrder.refunds, shopifyOrder.fulfillments, parseFloat(shopifyOrder.current_subtotal_price || shopifyOrder.subtotal_price || 0));
+          await syncOrderItems(updatedOrder.id, shopifyOrder.line_items, shopifyOrder.refunds, shopifyOrder.fulfillments, parseFloat(shopifyOrder.current_subtotal_price || shopifyOrder.subtotal_price || 0), globalImageMap);
         } else {
           console.error(`❌ Error updating order ${dbOrder.order_id}:`, error);
         }
@@ -1551,7 +1667,7 @@ async function syncShopifyOrders(updatedAtMin = null) {
         );
         
         if (originalShopifyOrder && originalShopifyOrder.line_items) {
-          await syncOrderItems(insertedOrder.id, originalShopifyOrder.line_items, originalShopifyOrder.refunds, originalShopifyOrder.fulfillments, parseFloat(originalShopifyOrder.current_subtotal_price || originalShopifyOrder.subtotal_price || 0));
+          await syncOrderItems(insertedOrder.id, originalShopifyOrder.line_items, originalShopifyOrder.refunds, originalShopifyOrder.fulfillments, parseFloat(originalShopifyOrder.current_subtotal_price || originalShopifyOrder.subtotal_price || 0), globalImageMap);
         }
       }
     }
