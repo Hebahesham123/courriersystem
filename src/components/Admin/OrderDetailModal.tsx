@@ -363,18 +363,24 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
           console.warn('Error fetching order items:', fetchError)
         }
       } else if (data && data.length > 0) {
-        // Debug: Log items with is_removed flag
-        const removedItems = data.filter((item: any) => item.is_removed === true);
-        if (removedItems.length > 0) {
-          console.log(`🔴 Found ${removedItems.length} removed items in database:`, removedItems.map((i: any) => ({
-            id: i.id,
-            title: i.title,
-            is_removed: i.is_removed,
-            quantity: i.quantity
-          })));
+        // CRITICAL: Filter out removed items - they should NOT appear in the system at all
+        const activeItems = data.filter((item: any) => {
+          const isRemoved = 
+            item.is_removed === true || 
+            item.quantity === 0 ||
+            item.fulfillment_status === 'removed' ||
+            (item.properties && (item.properties._is_removed === true || item.properties._is_removed === 'true')) ||
+            item.cancelled === true;
+          
+          return !isRemoved; // Only include active items
+        });
+        
+        const removedCount = data.length - activeItems.length;
+        if (removedCount > 0) {
+          console.log(`🗑️ Filtered out ${removedCount} removed items from display`);
         }
-        console.log(`📦 Fetched ${data.length} items from order_items table`);
-        setOrderItems(data)
+        console.log(`📦 Fetched ${data.length} items, displaying ${activeItems.length} active items`);
+        setOrderItems(activeItems)
       }
     } catch (err: any) {
       // Table might not exist, that's fine - we'll use line_items from order
@@ -933,11 +939,22 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
     console.warn('⚠️ No product_images field in order')
   }
 
-  // IMPORTANT: Always use orderItems from database (includes removed items marked with is_removed=true)
-  // This ensures removed items from Shopify appear in admin view with dashes/strikethrough
+  // CRITICAL: Filter out removed items - they should NOT appear in the system at all
+  // Only include active items (not removed, quantity > 0)
+  const activeOrderItems = orderItems.filter((item: OrderItem) => {
+    const isRemoved = 
+      item.is_removed === true || 
+      item.quantity === 0 ||
+      (item as any).fulfillment_status === 'removed' ||
+      ((item as any).properties && ((item as any).properties._is_removed === true || (item as any).properties._is_removed === 'true')) ||
+      (item as any).cancelled === true;
+    return !isRemoved && item.quantity > 0;
+  });
+  
+  // IMPORTANT: Use filtered active items from database
   // Only fall back to parsedLineItems if orderItems is completely empty (sync hasn't run yet)
-  const items = orderItems.length > 0 
-    ? orderItems.map((orderItem: OrderItem) => {
+  const items = activeOrderItems.length > 0 
+    ? activeOrderItems.map((orderItem: OrderItem) => {
         // If orderItem already has image_url, use it
         if (orderItem.image_url && orderItem.image_url !== 'null' && orderItem.image_url !== null) {
           return orderItem;
@@ -996,38 +1013,13 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
           }
         }
         
-        // CRITICAL: Check all possible ways an item can be marked as removed
-        const isRemoved = orderItem.is_removed === true || 
-                         (orderItem as any).properties?._is_removed === true || 
-                         (orderItem as any).properties?._is_removed === 'true' ||
-                         Number(orderItem.quantity) === 0 ||
-                         (orderItem as any).fulfillment_status === 'removed';
-        
-        // Debug removed items
-        if (isRemoved) {
-          console.log('🔴 Removed item from DB:', {
-            id: orderItem.id,
-            title: orderItem.title,
-            is_removed: orderItem.is_removed,
-            properties: (orderItem as any).properties,
-            quantity: orderItem.quantity,
-            fulfillment_status: (orderItem as any).fulfillment_status
-          });
-        }
-        
-        const result = {
+        // All items here are already filtered to be active (not removed)
+        // So is_removed should always be false
+        return {
           ...orderItem,
           image_url: imageUrl || orderItem.image_url,
-          is_removed: isRemoved // Explicitly set the flag
+          is_removed: false // All items here are active (removed items were filtered out above)
         };
-        
-        // Double-check: if is_removed is true in DB, ensure it's set
-        if (orderItem.is_removed === true && !isRemoved) {
-          console.warn(`⚠️ Item "${orderItem.title}" has is_removed=true in DB but detection logic says false!`);
-          result.is_removed = true; // Force it to true
-        }
-        
-        return result;
       })
     : parsedLineItems.map((item: any, index: number) => {
         // Try to get image from various possible locations
@@ -1252,18 +1244,16 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
 
   const fulfillmentTotals = getFulfillmentTotals(items as any[])
 
-  // Use Shopify's exact totals (these are the source of truth, especially for edited orders)
+  // CRITICAL: Always use Shopify's current_total_price (stored in total_order_fees)
+  // Shopify's current_total_price already excludes removed items from the total
+  // This is the source of truth and matches what Shopify shows
+  const total = parseFloat(order.total_order_fees?.toString() || "0")
+  
+  // Use Shopify's exact totals for display (these are the source of truth)
   const subtotal = parseFloat(raw.current_subtotal_price || order.subtotal_price || 0)
   const tax = parseFloat(raw.current_total_tax || order.total_tax || 0)
   const discounts = parseFloat(raw.current_total_discounts || order.total_discounts || 0)
   const shipping = parseFloat(raw.total_shipping_price_set?.shop_money?.amount || order.total_shipping_price || 0)
-  
-  // Calculate total as: Subtotal + Tax + Shipping - Discounts
-  const calculatedTotal = subtotal + tax + shipping - discounts
-  
-  // Prioritize manually edited total_order_fees over calculated total
-  // This ensures admin edits are always reflected
-  const total = parseFloat(order.total_order_fees?.toString() || calculatedTotal.toString() || "0")
   
   // Calculate paid and balance from Shopify's data
   const totalPaid = parseFloat(raw.total_paid || (raw.current_total_price ? (parseFloat(raw.current_total_price) - parseFloat(raw.total_outstanding || 0)) : 0))

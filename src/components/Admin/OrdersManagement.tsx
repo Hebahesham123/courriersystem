@@ -500,8 +500,8 @@ const OrdersManagement: React.FC = () => {
         
       }
 
-      // Optimized query - exclude large JSON fields that slow down loading
-      // Only fetch essential fields for list view, load details on demand
+      // Optimized query - include line_items for item count calculation
+      // Fetch essential fields for list view, load details on demand
       let query = supabase
         .from("orders")
         .select(
@@ -511,7 +511,7 @@ const OrdersManagement: React.FC = () => {
           total_order_fees, subtotal_price, total_tax, total_discounts, total_shipping_price, currency,
           payment_method, payment_status, financial_status, payment_gateway_names,
           status, fulfillment_status, shipping_method, tracking_number, tracking_url,
-          order_note, customer_note, notes, order_tags,
+          line_items, order_note, customer_note, notes, order_tags,
           shopify_created_at, shopify_cancelled_at, assigned_courier_id, original_courier_id, assigned_at, created_at, updated_at,
           archived, archived_at, collected_by, payment_sub_type, delivery_fee, partial_paid_amount, internal_comment, receive_piece_or_exchange,
           users!orders_assigned_courier_id_fkey(name)
@@ -4125,9 +4125,9 @@ const OrdersManagement: React.FC = () => {
                           ) : (
                             <div className="flex flex-col">
                               <span className={`text-sm font-semibold ${isCanceled ? "text-red-700 line-through" : "text-gray-900"}`}>
-                                {order.currency || 'EGP'} {collectibleAmount.toFixed(2)}
+                                {order.currency || 'EGP'} {(order.total_order_fees || 0).toFixed(2)}
                               </span>
-                              {unfulfilledTotal > 0 && (
+                              {unfulfilledTotal > 0 && collectibleAmount < (order.total_order_fees || 0) && (
                                 <span className="text-[11px] text-amber-700 font-semibold">
                                   طرح {unfulfilledTotal.toFixed(2)} ج.م لمنتجات غير منفذة
                                 </span>

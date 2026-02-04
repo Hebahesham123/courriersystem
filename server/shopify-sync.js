@@ -700,6 +700,17 @@ async function convertShopifyOrderToDB(shopifyOrder, imageMap = {}, existingOrde
     balance: parseFloat(shopifyOrder.total_outstanding || 0),
     total_price: parseFloat(shopifyOrder.current_total_price || shopifyOrder.total_price || 0),
     total_paid: parseFloat(shopifyOrder.current_total_price || shopifyOrder.total_price || 0) - parseFloat(shopifyOrder.total_outstanding || 0),
+    // Set partial_paid_amount from Shopify payment data if there's a partial payment
+    partial_paid_amount: (() => {
+      const totalPrice = parseFloat(shopifyOrder.current_total_price || shopifyOrder.total_price || 0);
+      const outstanding = parseFloat(shopifyOrder.total_outstanding || 0);
+      const paid = totalPrice - outstanding;
+      // If there's a partial payment (paid > 0 but outstanding > 0), set partial_paid_amount
+      if (paid > 0 && outstanding > 0) {
+        return paid;
+      }
+      return null;
+    })(),
     
     // Payment information
     payment_method: paymentInfo.method,
@@ -795,52 +806,84 @@ async function syncOrderItems(orderId, lineItems, refunds = [], fulfillments = [
   }, 0);
   
   const itemsNotInSubtotal = new Set();
+  // CRITICAL: Only use subtotal detection if there's a significant mismatch AND no explicit removal indicators
+  // This prevents false positives - we should trust Shopify's explicit indicators first
   if (shopifySubtotal && shopifySubtotal > 0 && Math.abs(allItemsTotal - shopifySubtotal) > 0.01) {
-    console.log(`💰 Subtotal mismatch detected! All items total: ${allItemsTotal}, Shopify subtotal: ${shopifySubtotal}`);
-    console.log(`   Difference: ${allItemsTotal - shopifySubtotal} (some items were removed)`);
-    
-    // Calculate each item's total
-    const itemTotals = lineItems.map(item => ({
-      id: String(item.id),
-      title: item.title,
-      total: (parseFloat(item.price || 0) * (item.quantity || 0)) - parseFloat(item.total_discount || 0)
-    }));
-    
-    // Find which items are included in the subtotal using recursive backtracking
-    // This finds ONE valid combination that sums to the subtotal
-    const findSubsetSum = (items, target, index = 0, currentSum = 0, currentSet = new Set()) => {
-      // If we've reached the target (within 0.01 tolerance), return the set
-      if (Math.abs(currentSum - target) < 0.01) {
-        return currentSet;
-      }
-      
-      // If we've checked all items or exceeded target, return null
-      if (index >= items.length || currentSum > target + 0.01) {
-        return null;
-      }
-      
-      // Try including this item
-      const withItem = new Set(currentSet);
-      withItem.add(items[index].id);
-      const resultWith = findSubsetSum(items, target, index + 1, currentSum + items[index].total, withItem);
-      if (resultWith) return resultWith;
-      
-      // Try excluding this item
-      return findSubsetSum(items, target, index + 1, currentSum, currentSet);
-    };
-    
-    const itemsIncluded = findSubsetSum(itemTotals, shopifySubtotal) || new Set();
-    
-    // Any item NOT in the included set was removed
-    itemTotals.forEach(itemTotal => {
-      if (!itemsIncluded.has(itemTotal.id)) {
-        itemsNotInSubtotal.add(itemTotal.id);
-        console.log(`   🗑️  Item "${itemTotal.title}" (${itemTotal.total}) is NOT in subtotal - removed from order`);
-      }
+    // First, check if there are any items with explicit removal indicators
+    const itemsWithExplicitRemoval = lineItems.filter(item => {
+      return item.quantity === 0 || 
+             item.fulfillment_status === 'removed' ||
+             (item.properties && (item.properties._is_removed === true || item.properties._is_removed === 'true')) ||
+             item.cancelled === true ||
+             (item.fulfillable_quantity !== undefined && item.fulfillable_quantity === 0 && item.quantity > 0);
     });
     
-    console.log(`   ✅ Items included in subtotal: ${Array.from(itemsIncluded).join(', ')}`);
-    console.log(`   🗑️  Items NOT in subtotal (removed): ${Array.from(itemsNotInSubtotal).join(', ')}`);
+    // Calculate total of explicitly removed items
+    const explicitlyRemovedTotal = itemsWithExplicitRemoval.reduce((sum, item) => {
+      return sum + ((parseFloat(item.price || 0) * (item.quantity || 0)) - parseFloat(item.total_discount || 0));
+    }, 0);
+    
+    // If the difference matches the explicitly removed items, don't use subtotal detection
+    const remainingDifference = Math.abs(allItemsTotal - shopifySubtotal - explicitlyRemovedTotal);
+    
+    if (remainingDifference < 0.01) {
+      console.log(`💰 Subtotal difference matches explicitly removed items - using explicit indicators only`);
+      console.log(`   Explicitly removed items: ${itemsWithExplicitRemoval.length}, Total: ${explicitlyRemovedTotal}`);
+    } else {
+      // Only use subtotal detection if there's still a mismatch after accounting for explicit removals
+      console.log(`💰 Subtotal mismatch detected! All items total: ${allItemsTotal}, Shopify subtotal: ${shopifySubtotal}`);
+      console.log(`   Difference: ${allItemsTotal - shopifySubtotal} (some items were removed)`);
+      console.log(`   Explicitly removed items total: ${explicitlyRemovedTotal}, Remaining difference: ${remainingDifference}`);
+      
+      // Calculate each item's total (excluding already explicitly removed items)
+      const itemTotals = lineItems
+        .filter(item => {
+          // Exclude items that are already explicitly marked as removed
+          return !(item.quantity === 0 || 
+                  item.fulfillment_status === 'removed' ||
+                  (item.properties && (item.properties._is_removed === true || item.properties._is_removed === 'true')) ||
+                  item.cancelled === true);
+        })
+        .map(item => ({
+          id: String(item.id),
+          title: item.title,
+          total: (parseFloat(item.price || 0) * (item.quantity || 0)) - parseFloat(item.total_discount || 0)
+        }));
+      
+      // Only proceed if we have items to check
+      if (itemTotals.length > 0) {
+        // SIMPLIFIED: Use a deterministic greedy approach sorted by price (descending)
+        // This ensures the same result every time for the same input
+        const sortedItems = [...itemTotals].sort((a, b) => {
+          // Sort by price descending, then by ID for consistency
+          if (Math.abs(b.total - a.total) > 0.01) return b.total - a.total;
+          return a.id.localeCompare(b.id);
+        });
+        
+        let runningTotal = 0;
+        const itemsIncluded = new Set();
+        
+        // Greedily add items until we reach the remaining subtotal (after explicit removals)
+        const targetSubtotal = shopifySubtotal;
+        for (const itemTotal of sortedItems) {
+          if (runningTotal + itemTotal.total <= targetSubtotal + 0.01) {
+            runningTotal += itemTotal.total;
+            itemsIncluded.add(itemTotal.id);
+          }
+        }
+        
+        // Any item NOT in the included set AND not explicitly removed was removed via subtotal
+        itemTotals.forEach(itemTotal => {
+          if (!itemsIncluded.has(itemTotal.id)) {
+            itemsNotInSubtotal.add(itemTotal.id);
+            console.log(`   🗑️  Item "${itemTotal.title}" (${itemTotal.total}) is NOT in subtotal - removed from order`);
+          }
+        });
+        
+        console.log(`   ✅ Items included in subtotal: ${Array.from(itemsIncluded).join(', ')}`);
+        console.log(`   🗑️  Items NOT in subtotal (removed): ${Array.from(itemsNotInSubtotal).join(', ')}`);
+      }
+    }
   }
 
   // 3. Collect ALL items from Shopify (active + refunded + fulfilled)
@@ -851,22 +894,23 @@ async function syncOrderItems(orderId, lineItems, refunds = [], fulfillments = [
   lineItems.forEach(item => {
     const shopifyItemId = String(item.id);
     
-    // An item is considered removed if:
-    // 1. Quantity is 0, OR
-    // 2. Fulfillment status is 'removed', OR
-    // 3. Properties has _is_removed flag, OR
-    // 4. Item has been cancelled/removed (check various Shopify indicators), OR
-    // 5. Item price is NOT included in Shopify's subtotal (removed but still in line_items)
-    // IMPORTANT: Only use subtotal detection if item doesn't have explicit removal indicators
-    // This prevents false positives when multiple combinations could match the subtotal
-    const hasExplicitRemovalIndicator = item.quantity === 0 || 
-                                        item.fulfillment_status === 'removed' ||
-                                        (item.properties && (item.properties._is_removed === true || item.properties._is_removed === 'true')) ||
-                                        item.cancelled === true ||
-                                        (item.fulfillable_quantity !== undefined && item.fulfillable_quantity === 0 && item.quantity > 0);
+    // CRITICAL: Use Shopify's explicit indicators FIRST (these are always accurate)
+    // Only use subtotal detection as a last resort for items that have no explicit indicators
+    // This ensures consistency - same Shopify data always produces same result
     
-    const isRemovedInShopify = hasExplicitRemovalIndicator || 
-                                (itemsNotInSubtotal.has(shopifyItemId) && !hasExplicitRemovalIndicator); // Only use subtotal if no explicit indicator
+    // Priority 1: Explicit Shopify removal indicators (most reliable)
+    const hasExplicitRemovalIndicator = 
+      item.quantity === 0 || 
+      item.fulfillment_status === 'removed' ||
+      (item.properties && (item.properties._is_removed === true || item.properties._is_removed === 'true')) ||
+      item.cancelled === true ||
+      (item.fulfillable_quantity !== undefined && item.fulfillable_quantity === 0 && item.quantity > 0);
+    
+    // Priority 2: Subtotal detection (only if no explicit indicator)
+    // This catches items that are still in line_items but excluded from the total
+    const isRemovedBySubtotal = !hasExplicitRemovalIndicator && itemsNotInSubtotal.has(shopifyItemId);
+    
+    const isRemovedInShopify = hasExplicitRemovalIndicator || isRemovedBySubtotal;
     
     // Debug: Log ALL items to see what Shopify sends (especially for removed items)
     if (isRemovedInShopify || item.quantity === 0) {
@@ -899,14 +943,14 @@ async function syncOrderItems(orderId, lineItems, refunds = [], fulfillments = [
       });
     }
 
-    // IMPORTANT: Include ALL items from Shopify, even if removed
-    // This ensures the system matches Shopify exactly
-    // CRITICAL: Track items that were added and then removed (quantity 0)
-    const wasAddedThenRemoved = isRemovedInShopify && existingItemsMap.has(shopifyItemKey);
-    if (wasAddedThenRemoved) {
-      console.log(`🗑️ Item was added then removed in Shopify: ${item.title} (Shopify ID: ${shopifyItemKey}, quantity: ${item.quantity})`);
+    // CRITICAL: If item is completely removed in Shopify, DO NOT include it in the system
+    // Items that are removed should not appear in the order at all
+    if (isRemovedInShopify) {
+      console.log(`🗑️ Item removed in Shopify - NOT including in system: ${item.title} (Shopify ID: ${shopifyItemKey}, quantity: ${item.quantity})`);
+      return; // Skip this item - don't add it to finalItemsMap
     }
     
+    // Only include active items (not removed)
     finalItemsMap.set(shopifyItemKey, {
       order_id: orderId,
       shopify_line_item_id: String(item.id),
@@ -963,32 +1007,9 @@ async function syncOrderItems(orderId, lineItems, refunds = [], fulfillments = [
     });
   }
 
-  // Add items from refunds
-  (refunds || []).forEach(refund => {
-    (refund.refund_line_items || []).forEach(rli => {
-      const li = rli.line_item;
-      if (li && !finalItemsMap.has(String(li.id))) {
-        finalItemsMap.set(String(li.id), {
-          order_id: orderId,
-          shopify_line_item_id: String(li.id),
-          product_id: li.product_id,
-          variant_id: li.variant_id,
-          title: li.title || '',
-          variant_title: li.variant_title || null,
-          quantity: 0,
-          price: parseFloat(li.price || 0),
-          total_discount: parseFloat(li.total_discount || 0),
-          sku: li.sku || null,
-          vendor: li.vendor || null,
-          is_removed: true,
-          fulfillment_status: 'removed',
-          properties: { ...(li.properties || {}), _is_removed: true },
-          shopify_raw_data: li,
-          updated_at: new Date().toISOString(),
-        });
-      }
-    });
-  });
+  // CRITICAL: Do NOT add items from refunds - if they're refunded, they're removed
+  // Refunded items should not appear in the system
+  // (refunds are handled separately and don't need to be in order_items)
 
   // Merge with existing DB items to ensure history is kept
   // CRITICAL: If an item exists in DB but NOT in Shopify line_items, it was removed from Shopify
@@ -1004,18 +1025,10 @@ async function syncOrderItems(orderId, lineItems, refunds = [], fulfillments = [
     console.log(`  📦 DB Item: "${dbItem.title}" (Shopify ID: ${shopifyId || 'N/A'}, Key: ${key}, Exists in Shopify: ${existsInShopify})`);
     
     if (!existsInShopify && shopifyId) {
-      // Item was in DB but is NOT in Shopify line_items anymore - it was removed from Shopify
-      // IMPORTANT: Include it with is_removed=true so it appears in the system
-      console.log(`🗑️ ✅ Item REMOVED from Shopify: ${dbItem.title} (Shopify ID: ${shopifyId}, DB Key: ${key})`);
-      finalItemsMap.set(shopifyId, {
-        ...dbItem,
-        is_removed: true,
-        is_new: false, // Not new if it was removed
-        quantity: 0,
-        fulfillment_status: 'removed',
-        properties: { ...(dbItem.properties || {}), _is_removed: true },
-        updated_at: new Date().toISOString()
-      });
+      // Item was in DB but is NOT in Shopify line_items anymore - it was completely removed from Shopify
+      // CRITICAL: Do NOT include it in the system - it should not appear in the order
+      console.log(`🗑️ ✅ Item COMPLETELY REMOVED from Shopify - NOT including in system: ${dbItem.title} (Shopify ID: ${shopifyId}, DB Key: ${key})`);
+      // Don't add it to finalItemsMap - it will be deleted when we delete all items and re-insert
     } else if (shopifyId && existsInShopify) {
       // Item exists in both Shopify and DB - use shopifyId to get from finalItemsMap
       const shopifyItem = finalItemsMap.get(shopifyId);
@@ -1026,38 +1039,20 @@ async function syncOrderItems(orderId, lineItems, refunds = [], fulfillments = [
         return;
       }
       
-      // Check if it was manually removed in DB (admin removed it, but it still exists in Shopify)
-      const wasManuallyRemoved = dbItem.is_removed === true && 
-                                  shopifyItem.quantity > 0 && 
-                                  !shopifyItem.is_removed;
-      
-      if (wasManuallyRemoved) {
-        // Preserve manual removal - item exists in Shopify but admin removed it
-        console.log(`🔒 Preserving manually removed item: ${dbItem.title} (Shopify ID: ${shopifyId})`);
-        finalItemsMap.set(shopifyId, {
-          ...shopifyItem,
-          is_removed: true,
-          is_new: false, // Not new if it was manually removed
-          quantity: 0,
-          fulfillment_status: 'removed',
-          properties: { ...(shopifyItem.properties || {}), _is_removed: true },
-          updated_at: new Date().toISOString()
-        });
-      } else {
-        // Item exists in both - it's not new, use Shopify's data as source of truth
-        // CRITICAL: Always update price from Shopify, even for existing items
-        const priceChanged = Math.abs(parseFloat(dbItem.price || 0) - parseFloat(shopifyItem.price || 0)) > 0.01;
-        if (priceChanged) {
-          console.log(`💰 Price updated for item "${dbItem.title}": ${dbItem.price} → ${shopifyItem.price}`);
-        }
-        finalItemsMap.set(shopifyId, {
-          ...shopifyItem,
-          is_new: false, // Existing item, not newly added
-          // Ensure price is always from Shopify (source of truth)
-          price: parseFloat(shopifyItem.price || 0),
-          updated_at: new Date().toISOString()
-        });
+      // Item exists in both - it's not new, use Shopify's data as source of truth
+      // CRITICAL: Always update price from Shopify, even for existing items
+      // CRITICAL: If item is removed in Shopify, it should not appear (already filtered out above)
+      const priceChanged = Math.abs(parseFloat(dbItem.price || 0) - parseFloat(shopifyItem.price || 0)) > 0.01;
+      if (priceChanged) {
+        console.log(`💰 Price updated for item "${dbItem.title}": ${dbItem.price} → ${shopifyItem.price}`);
       }
+      finalItemsMap.set(shopifyId, {
+        ...shopifyItem,
+        is_new: false, // Existing item, not newly added
+        // Ensure price is always from Shopify (source of truth)
+        price: parseFloat(shopifyItem.price || 0),
+        updated_at: new Date().toISOString()
+      });
     } else if (!shopifyId) {
       // Item in DB doesn't have shopify_line_item_id - might be a manually added item
       // Keep it but don't mark as removed (it was never in Shopify)
@@ -1087,30 +1082,41 @@ async function syncOrderItems(orderId, lineItems, refunds = [], fulfillments = [
       });
     }
     
-    // Prepare items for insertion - ensure is_removed is always a boolean
-    const itemsToInsert = allItems.map(i => {
+    // CRITICAL: Filter out any removed items before insertion
+    // Items that are removed should NOT appear in the system at all
+    const activeItems = allItems.filter(i => {
+      const isRemoved = 
+        i.is_removed === true || 
+        i.quantity === 0 ||
+        i.fulfillment_status === 'removed' ||
+        (i.properties && (i.properties._is_removed === true || i.properties._is_removed === 'true')) ||
+        i.cancelled === true ||
+        (i.fulfillable_quantity !== undefined && i.fulfillable_quantity === 0 && i.quantity > 0);
+      
+      if (isRemoved) {
+        console.log(`🗑️ Filtering out removed item: "${i.title}" (Shopify ID: ${i.shopify_line_item_id})`);
+      }
+      
+      return !isRemoved; // Only include active items
+    });
+    
+    console.log(`📝 Filtered ${allItems.length} items down to ${activeItems.length} active items (removed ${allItems.length - activeItems.length} removed items)`);
+    
+    // Prepare items for insertion - only active items
+    const itemsToInsert = activeItems.map(i => {
       const { id, created_at, ...rest } = i;
-      // CRITICAL: Ensure is_removed is explicitly set as boolean (not undefined/null)
-      const isRemoved = rest.is_removed === true || 
-                       rest.quantity === 0 ||
-                       rest.fulfillment_status === 'removed' ||
-                       (rest.properties && (rest.properties._is_removed === true || rest.properties._is_removed === 'true'));
       
       return {
         ...rest,
-        is_removed: isRemoved ? true : false, // Always boolean
-        quantity: rest.quantity || 0
+        is_removed: false, // All items here are active (removed items were filtered out)
+        quantity: rest.quantity || 0,
+        // CRITICAL: Always use price from Shopify (ensure it's a number)
+        price: parseFloat(rest.price || 0)
       };
     });
     
     // Log what we're about to insert
-    const removedCount = itemsToInsert.filter(i => i.is_removed).length;
-    console.log(`📝 About to insert ${itemsToInsert.length} items (${removedCount} with is_removed=true):`);
-    itemsToInsert.forEach(item => {
-      if (item.is_removed) {
-        console.log(`   🗑️  "${item.title}" - is_removed: ${item.is_removed}, quantity: ${item.quantity}`);
-      }
-    });
+    console.log(`📝 About to insert ${itemsToInsert.length} active items (all removed items have been filtered out):`);
     
     const { error: insertError } = await supabase
       .from('order_items')
@@ -1119,7 +1125,8 @@ async function syncOrderItems(orderId, lineItems, refunds = [], fulfillments = [
     if (insertError) {
       console.error(`❌ Error inserting items for order ${orderId}:`, insertError);
     } else {
-      console.log(`✅ Successfully inserted ${allItems.length} items (${removedCount} removed, ${newCount} new)`);
+      const filteredOutCount = allItems.length - activeItems.length;
+      console.log(`✅ Successfully inserted ${itemsToInsert.length} active items (${filteredOutCount} removed items were excluded, ${newCount} new)`);
     }
   }
 }
@@ -1252,48 +1259,17 @@ async function syncShopifyOrders(updatedAtMin = null) {
             // Financial
             // CRITICAL: Always use Shopify's current_total_price when items are removed
             // Shopify's current_total_price already excludes removed items from the total
+            // CRITICAL: Always use Shopify's current_total_price as the source of truth
+            // Shopify's current_total_price already excludes removed items from the total
+            // This ensures the price in the system matches Shopify exactly
             total_order_fees: (() => {
-              const existingTotal = existing.total_order_fees || 0
               const shopifyTotal = dbOrder.total_order_fees || 0
+              const existingTotal = existing.total_order_fees || 0
               
-              // Check line_items for removed items
-              const lineItems = Array.isArray(dbOrder.line_items) ? dbOrder.line_items : []
-              const hasRemovedItems = lineItems.some((i) => {
-                const qtyZero = Number(i?.quantity) === 0
-                const propRemoved = i?.properties?._is_removed === true || i?.properties?._is_removed === 'true'
-                return i?.is_removed === true || qtyZero || propRemoved
-              })
-
-              // If Shopify cancelled the order, force Shopify total (usually 0)
-              if (dbOrder.status === 'canceled' || dbOrder.shopify_cancelled_at) {
-                console.log(`💰 Using Shopify total (cancelled): ${shopifyTotal}`)
-                return shopifyTotal
+              // Always use Shopify's total - it's the source of truth and excludes removed items
+              if (Math.abs(shopifyTotal - existingTotal) > 0.01) {
+                console.log(`💰 Updating total_order_fees from Shopify: ${existingTotal} → ${shopifyTotal} (Shopify excludes removed items)`)
               }
-
-              // CRITICAL: If there are removed items, ALWAYS use Shopify's total
-              // Shopify's current_total_price already excludes removed items from the total
-              if (hasRemovedItems) {
-                console.log(`💰 Using Shopify total (has removed items): ${shopifyTotal} (existing: ${existingTotal})`)
-                return shopifyTotal
-              }
-
-              // If Shopify total is LOWER than existing, it likely means items were removed
-              // Always trust Shopify in this case (Shopify is source of truth)
-              if (shopifyTotal < existingTotal && Math.abs(shopifyTotal - existingTotal) > 0.01) {
-                console.log(`💰 Using Shopify total (lower than existing, likely removed items): ${shopifyTotal} (existing: ${existingTotal})`)
-                return shopifyTotal
-              }
-
-              const difference = Math.abs(existingTotal - shopifyTotal)
-              // If difference is significant (> 0.01) and Shopify total is higher or equal, 
-              // assume it was manually edited and preserve it
-              // BUT: If Shopify total is lower, trust Shopify (items might have been removed)
-              if (difference > 0.01 && existingTotal > 0 && shopifyTotal >= existingTotal) {
-                console.log(`🔒 Preserving manually edited total for order ${dbOrder.order_id}: ${existingTotal} (Shopify: ${shopifyTotal})`)
-                return existingTotal
-              }
-              
-              // Default: Use Shopify total (it's the source of truth, especially after edits)
               return shopifyTotal
             })(),
             subtotal_price: dbOrder.subtotal_price,
@@ -1301,9 +1277,35 @@ async function syncShopifyOrders(updatedAtMin = null) {
             total_discounts: dbOrder.total_discounts,
             total_shipping_price: dbOrder.total_shipping_price,
             currency: dbOrder.currency,
-            balance: dbOrder.balance,
+            // CRITICAL: Always update payment amounts from Shopify - they reflect actual payments
+            balance: dbOrder.balance, // This is total_outstanding from Shopify
             total_price: dbOrder.total_price,
-            total_paid: dbOrder.total_paid,
+            total_paid: dbOrder.total_paid, // This is calculated from Shopify's current_total_price - total_outstanding
+            // CRITICAL: Always update partial_paid_amount from Shopify if there's a partial payment
+            // Shopify is the source of truth for payment amounts
+            partial_paid_amount: (() => {
+              const shopifyPaid = dbOrder.total_paid || 0;
+              const shopifyOutstanding = dbOrder.balance || 0;
+              const hasPartialPayment = shopifyPaid > 0 && shopifyOutstanding > 0;
+              
+              // If Shopify shows a partial payment, ALWAYS use Shopify's paid amount
+              // This ensures the system reflects what was actually paid in Shopify
+              if (hasPartialPayment) {
+                console.log(`💰 Setting partial_paid_amount from Shopify: ${shopifyPaid} (outstanding: ${shopifyOutstanding})`);
+                return shopifyPaid;
+              }
+              
+              // If no partial payment in Shopify, preserve courier's value if set, otherwise null
+              const hasCourierEdits = existing.delivery_fee || 
+                                     existing.collected_by || 
+                                     existing.payment_sub_type ||
+                                     existing.internal_comment ||
+                                     (existing.status && existing.status !== 'pending' && existing.status !== 'assigned');
+              if (hasCourierEdits && existing.partial_paid_amount) {
+                return existing.partial_paid_amount;
+              }
+              return null; // No partial payment in Shopify, clear it
+            })(),
             
             // Payment
             // CRITICAL: Protect ALL courier edits - never overwrite what courier has set
@@ -1320,19 +1322,41 @@ async function syncShopifyOrders(updatedAtMin = null) {
               return (existing.status === 'pending' || !existing.status) ? dbOrder.payment_method : (existing.payment_method || dbOrder.payment_method)
             })(),
             payment_status: (() => {
-              const hasCourierEdits = existing.delivery_fee || 
+              if (dbOrder.status === 'canceled') return (dbOrder.payment_status || 'cancelled')
+              
+              // CRITICAL: Always update payment_status from Shopify if there's a partial payment
+              // Shopify's payment_status reflects actual payment state
+              const shopifyPaid = dbOrder.total_paid || 0;
+              const shopifyOutstanding = dbOrder.balance || 0;
+              const hasPartialPayment = shopifyPaid > 0 && shopifyOutstanding > 0;
+              if (hasPartialPayment) {
+                console.log(`💰 Updating payment_status from Shopify for partial payment: ${dbOrder.payment_status}`);
+                return dbOrder.payment_status; // Always use Shopify's status for partial payments
+              }
+              
+              const hasCourierEditsForPayment = existing.delivery_fee || 
                                      existing.partial_paid_amount || 
                                      existing.collected_by || 
                                      existing.payment_sub_type ||
                                      existing.internal_comment ||
                                      (existing.status && existing.status !== 'pending' && existing.status !== 'assigned')
-              if (dbOrder.status === 'canceled') return (dbOrder.payment_status || 'cancelled')
-              if (hasCourierEdits && existing.payment_status) return existing.payment_status
+              if (hasCourierEditsForPayment && existing.payment_status) return existing.payment_status
               return (existing.status === 'pending' || !existing.status) ? dbOrder.payment_status : (existing.payment_status || dbOrder.payment_status)
             })(),
-            financial_status: (dbOrder.status === 'canceled')
-              ? (dbOrder.financial_status || 'voided')
-              : ((existing.status === 'pending' || !existing.status) ? dbOrder.financial_status : (existing.financial_status || dbOrder.financial_status)),
+            financial_status: (() => {
+              if (dbOrder.status === 'canceled') return (dbOrder.financial_status || 'voided')
+              
+              // CRITICAL: Always update financial_status from Shopify if there's a partial payment
+              const shopifyPaid = dbOrder.total_paid || 0;
+              const shopifyOutstanding = dbOrder.balance || 0;
+              const hasPartialPayment = shopifyPaid > 0 && shopifyOutstanding > 0;
+              if (hasPartialPayment) {
+                console.log(`💰 Updating financial_status from Shopify for partial payment: ${dbOrder.financial_status}`);
+                return dbOrder.financial_status; // Always use Shopify's status for partial payments
+              }
+              
+              return (existing.status === 'pending' || !existing.status) ? dbOrder.financial_status : (existing.financial_status || dbOrder.financial_status)
+            })(),
             // Preserve ALL courier-edited fields
             collected_by: (() => {
               const hasCourierEdits = existing.delivery_fee || 
@@ -1364,16 +1388,7 @@ async function syncShopifyOrders(updatedAtMin = null) {
               if (hasCourierEdits && existing.delivery_fee) return existing.delivery_fee
               return (existing.delivery_fee || dbOrder.delivery_fee)
             })(),
-            partial_paid_amount: (() => {
-              const hasCourierEdits = existing.delivery_fee || 
-                                     existing.partial_paid_amount || 
-                                     existing.collected_by || 
-                                     existing.payment_sub_type ||
-                                     existing.internal_comment ||
-                                     (existing.status && existing.status !== 'pending' && existing.status !== 'assigned')
-              if (hasCourierEdits && existing.partial_paid_amount) return existing.partial_paid_amount
-              return (existing.partial_paid_amount || dbOrder.partial_paid_amount)
-            })(),
+            // partial_paid_amount is set above in the payment section
             internal_comment: (() => {
               const hasCourierEdits = existing.delivery_fee || 
                                      existing.partial_paid_amount || 
@@ -1634,6 +1649,20 @@ app.post('/api/shopify/sync-order/:shopifyId', async (req, res) => {
             : (existing.status === 'pending' || !existing.status ? 'pending' : existing.status),
           payment_method: (existing.status === 'pending' || !existing.status) ? dbOrder.payment_method : existing.payment_method,
           payment_status: (existing.status === 'pending' || !existing.status) ? dbOrder.payment_status : existing.payment_status,
+          // CRITICAL: Always update payment amounts from Shopify
+          balance: dbOrder.balance,
+          total_price: dbOrder.total_price,
+          total_paid: dbOrder.total_paid,
+          partial_paid_amount: (() => {
+            const shopifyPaid = dbOrder.total_paid || 0;
+            const shopifyOutstanding = dbOrder.balance || 0;
+            const hasPartialPayment = shopifyPaid > 0 && shopifyOutstanding > 0;
+            if (hasPartialPayment) {
+              console.log(`💰 Setting partial_paid_amount from Shopify: ${shopifyPaid} (outstanding: ${shopifyOutstanding})`);
+              return shopifyPaid;
+            }
+            return null;
+          })(),
           // CRITICAL: Always use Shopify's current_total_price when items are removed
           // Shopify's current_total_price already excludes removed items from the total
           total_order_fees: (() => {
@@ -1665,14 +1694,9 @@ app.post('/api/shopify/sync-order/:shopifyId', async (req, res) => {
               return shopifyTotal
             }
 
-            const difference = Math.abs(existingTotal - shopifyTotal)
-            // If difference is significant (> 0.01) and Shopify total is higher or equal, preserve manual edit
-            if (difference > 0.01 && existingTotal > 0 && shopifyTotal >= existingTotal) {
-              console.log(`🔒 Preserving manually edited total for order ${dbOrder.order_id}: ${existingTotal} (Shopify: ${shopifyTotal})`)
-              return existingTotal
-            }
-            
-            // Default: Use Shopify total (source of truth)
+            // CRITICAL: Always use Shopify's total as the source of truth
+            // Shopify's current_total_price is always accurate and reflects all edits/removals
+            console.log(`💰 Using Shopify total (source of truth): ${shopifyTotal} (existing: ${existingTotal})`)
             return shopifyTotal
           })(),
           // IMPORTANT: Always update order_tags from Shopify to reflect tag changes (additions/removals)

@@ -47,22 +47,25 @@ const YourSheet: React.FC = () => {
       endWindow.setDate(endWindow.getDate() + 1);
 
       // Primary: assigned_at window
+      // CRITICAL: Exclude orders with receive_piece_or_exchange status - they should not appear in the regular delivery list
       const { data: assignedData, error: assignedErr } = await supabase
         .from("orders")
-        .select("id, order_id, customer_name, address, mobile_number, created_at, assigned_at")
+        .select("id, order_id, customer_name, address, mobile_number, created_at, assigned_at, receive_piece_or_exchange")
         .eq("assigned_courier_id", user.id)
         .not("assigned_at", "is", null)
         .gte("assigned_at", startWindow.toISOString())
-        .lte("assigned_at", endWindow.toISOString());
+        .lte("assigned_at", endWindow.toISOString())
+        .or("receive_piece_or_exchange.is.null,receive_piece_or_exchange.neq.receive_piece,receive_piece_or_exchange.neq.exchange");
 
       // Fallback: legacy rows without assigned_at, use created_at window
       const { data: createdData, error: createdErr } = await supabase
         .from("orders")
-        .select("id, order_id, customer_name, address, mobile_number, created_at, assigned_at")
+        .select("id, order_id, customer_name, address, mobile_number, created_at, assigned_at, receive_piece_or_exchange")
         .eq("assigned_courier_id", user.id)
         .is("assigned_at", null)
         .gte("created_at", startWindow.toISOString())
-        .lte("created_at", endWindow.toISOString());
+        .lte("created_at", endWindow.toISOString())
+        .or("receive_piece_or_exchange.is.null,receive_piece_or_exchange.neq.receive_piece,receive_piece_or_exchange.neq.exchange");
 
       if (assignedErr) console.warn("Orders fetch error (assigned_at):", assignedErr.message);
       if (createdErr) console.warn("Orders fetch error (created_at fallback):", createdErr.message);

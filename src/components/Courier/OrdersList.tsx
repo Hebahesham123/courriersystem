@@ -1055,6 +1055,8 @@ const OrdersList: React.FC = () => {
 
       // Step 2: Fetch the latest version of those orders (to show any updates from other days)
       // This ensures courier edits (delivered, payment info, etc.) are visible even if made on a different day
+      // CRITICAL: Exclude orders with receive_piece_or_exchange status from the main delivery list
+      // These orders should only appear in the separate "استلام قطعة" section, not in the regular delivery list
       let allOrders: any[] = []
       if (assignedOrderIds.size > 0) {
         const orderIdsArray = Array.from(assignedOrderIds)
@@ -1063,7 +1065,8 @@ const OrdersList: React.FC = () => {
           .select("*")
           .eq("assigned_courier_id", user.id)
           .in("id", orderIdsArray)
-          // Include orders with receive_piece_or_exchange status - don't filter them out
+          // Exclude orders with receive_piece_or_exchange status - they appear in a separate section
+          .or("receive_piece_or_exchange.is.null,receive_piece_or_exchange.neq.receive_piece,receive_piece_or_exchange.neq.exchange")
           .order("assigned_at", { ascending: false })
 
         if (latestError) {
@@ -2916,20 +2919,36 @@ const deleteDuplicatedOrder = async (order: Order) => {
                 noteText.includes("تبديل") || noteText.includes("استبدال") || noteText.includes("exchange")
               
               // Check receive_piece_or_exchange field first (primary indicator from admin)
+              // CRITICAL: This field takes precedence - if it's set, ignore all other indicators
               const isReceivePieceFromField = order.receive_piece_or_exchange === "receive_piece"
               const isExchangeFromField = order.receive_piece_or_exchange === "exchange"
               
-              const isReceivingPartStatus =
-                isReceivePieceFromField ||
-                order.status === "receiving_part" ||
-                order.payment_sub_type === "receiving_part" ||
-                isReceivingPartNote
-              const isExchangeStatus =
-                isExchangeFromField ||
-                order.status === "hand_to_hand" ||
-                order.payment_sub_type === "hand_to_hand" ||
-                order.payment_sub_type === "exchange" ||
-                isExchangeNote
+              // If receive_piece_or_exchange field is set, use it exclusively (don't check other indicators)
+              // This ensures only one status appears: either "استلام قطعة" OR "تبديل", not both
+              let isReceivingPartStatus = false
+              let isExchangeStatus = false
+              
+              if (isReceivePieceFromField) {
+                // Order is set to "استلام قطعة" - show only this status
+                isReceivingPartStatus = true
+                isExchangeStatus = false
+              } else if (isExchangeFromField) {
+                // Order is set to "تبديل" - show only this status
+                isExchangeStatus = true
+                isReceivingPartStatus = false
+              } else {
+                // Fallback to other indicators only if receive_piece_or_exchange is not set
+                isReceivingPartStatus =
+                  order.status === "receiving_part" ||
+                  order.payment_sub_type === "receiving_part" ||
+                  isReceivingPartNote
+                isExchangeStatus =
+                  order.status === "hand_to_hand" ||
+                  order.payment_sub_type === "hand_to_hand" ||
+                  order.payment_sub_type === "exchange" ||
+                  isExchangeNote
+              }
+              
               const showSpecialBadge = isReceivingPartStatus || isExchangeStatus
 
               // Helper function to convert timestamp to YYYY-MM-DD format (Cairo timezone)
