@@ -967,7 +967,21 @@ async function syncOrderItems(orderId, lineItems, refunds = [], fulfillments = [
       requires_shipping: item.requires_shipping !== false,
       taxable: item.taxable !== false,
       fulfillment_status: fulfillmentStatus || (isRemovedInShopify ? 'removed' : null),
-      image_url: item.image || item.variant?.image || null,
+      // CRITICAL: Get image from multiple sources and ensure it's a full URL
+      image_url: (() => {
+        let imgUrl = item.image || item.variant?.image || item.product?.image?.src || null;
+        if (imgUrl) {
+          // If it's an object, extract the URL
+          if (typeof imgUrl === 'object') {
+            imgUrl = imgUrl.src || imgUrl.url || null;
+          }
+          // Ensure it's a full URL (Shopify CDN)
+          if (imgUrl && typeof imgUrl === 'string' && !imgUrl.startsWith('http')) {
+            imgUrl = `https://cdn.shopify.com${imgUrl.startsWith('/') ? '' : '/'}${imgUrl}`;
+          }
+        }
+        return imgUrl;
+      })(),
       image_alt: item.name || item.title || null,
       properties: item.properties || null,
       shopify_raw_data: { ...item, fulfillment_status: fulfillmentStatus },
@@ -978,9 +992,23 @@ async function syncOrderItems(orderId, lineItems, refunds = [], fulfillments = [
   });
 
   // Add items from fulfillments that might be missing from line_items
+  // CRITICAL: Only add active items (not removed)
   if (fulfillments && Array.isArray(fulfillments)) {
     fulfillments.forEach(f => {
       (f.line_items || []).forEach(li => {
+        // Check if this fulfillment item is removed
+        const isRemovedInFulfillment = 
+          li.quantity === 0 || 
+          li.fulfillment_status === 'removed' ||
+          (li.properties && (li.properties._is_removed === true || li.properties._is_removed === 'true')) ||
+          li.cancelled === true;
+        
+        // CRITICAL: Skip removed items - they should not appear in the system
+        if (isRemovedInFulfillment) {
+          console.log(`🗑️ Skipping removed fulfillment item: "${li.title || li.name}" (Shopify ID: ${li.id})`);
+          return; // Skip this item
+        }
+        
         if (!finalItemsMap.has(String(li.id))) {
           const fulfillmentItemKey = String(li.id);
           const isNewlyAdded = !existingItemsMap.has(fulfillmentItemKey);
@@ -1010,6 +1038,30 @@ async function syncOrderItems(orderId, lineItems, refunds = [], fulfillments = [
   // CRITICAL: Do NOT add items from refunds - if they're refunded, they're removed
   // Refunded items should not appear in the system
   // (refunds are handled separately and don't need to be in order_items)
+
+  // CRITICAL: Final safety check - remove any items that somehow got marked as removed
+  // This ensures removed items NEVER make it to the database
+  const itemsToRemove = [];
+  finalItemsMap.forEach((item, key) => {
+    const isRemoved = 
+      item.is_removed === true || 
+      item.quantity === 0 ||
+      item.fulfillment_status === 'removed' ||
+      (item.properties && (item.properties._is_removed === true || item.properties._is_removed === 'true')) ||
+      item.cancelled === true;
+    
+    if (isRemoved) {
+      console.log(`🗑️ Removing item that was incorrectly added to finalItemsMap: "${item.title}" (Shopify ID: ${item.shopify_line_item_id})`);
+      itemsToRemove.push(key);
+    }
+  });
+  
+  // Remove any items that are marked as removed
+  itemsToRemove.forEach(key => finalItemsMap.delete(key));
+  
+  if (itemsToRemove.length > 0) {
+    console.log(`✅ Removed ${itemsToRemove.length} items from finalItemsMap that were marked as removed`);
+  }
 
   // Merge with existing DB items to ensure history is kept
   // CRITICAL: If an item exists in DB but NOT in Shopify line_items, it was removed from Shopify
@@ -1663,40 +1715,17 @@ app.post('/api/shopify/sync-order/:shopifyId', async (req, res) => {
             }
             return null;
           })(),
-          // CRITICAL: Always use Shopify's current_total_price when items are removed
+          // CRITICAL: Always use Shopify's current_total_price as the source of truth
           // Shopify's current_total_price already excludes removed items from the total
+          // This ensures the price in the system matches Shopify exactly
           total_order_fees: (() => {
-            const existingTotal = existing.total_order_fees || 0
             const shopifyTotal = dbOrder.total_order_fees || 0
-            const lineItems = Array.isArray(dbOrder.line_items) ? dbOrder.line_items : []
-            const hasRemovedItems = lineItems.some((i) => {
-              const qtyZero = Number(i?.quantity) === 0
-              const propRemoved = i?.properties?._is_removed === true || i?.properties?._is_removed === 'true'
-              return i?.is_removed === true || qtyZero || propRemoved
-            })
-
-            // If Shopify cancelled the order, force Shopify total
-            if (dbOrder.status === 'canceled' || dbOrder.shopify_cancelled_at) {
-              return shopifyTotal
+            const existingTotal = existing.total_order_fees || 0
+            
+            // Always use Shopify's total - it's the source of truth and excludes removed items
+            if (Math.abs(shopifyTotal - existingTotal) > 0.01) {
+              console.log(`💰 Updating total_order_fees from Shopify: ${existingTotal} → ${shopifyTotal} (Shopify excludes removed items)`)
             }
-
-            // CRITICAL: If there are removed items, ALWAYS use Shopify's total
-            // Shopify's current_total_price already excludes removed items
-            if (hasRemovedItems) {
-              console.log(`💰 Using Shopify total (has removed items): ${shopifyTotal} (existing: ${existingTotal})`)
-              return shopifyTotal
-            }
-
-            // If Shopify total is LOWER than existing, it likely means items were removed
-            // Always trust Shopify in this case
-            if (shopifyTotal < existingTotal && Math.abs(shopifyTotal - existingTotal) > 0.01) {
-              console.log(`💰 Using Shopify total (lower than existing, likely removed items): ${shopifyTotal} (existing: ${existingTotal})`)
-              return shopifyTotal
-            }
-
-            // CRITICAL: Always use Shopify's total as the source of truth
-            // Shopify's current_total_price is always accurate and reflects all edits/removals
-            console.log(`💰 Using Shopify total (source of truth): ${shopifyTotal} (existing: ${existingTotal})`)
             return shopifyTotal
           })(),
           // IMPORTANT: Always update order_tags from Shopify to reflect tag changes (additions/removals)

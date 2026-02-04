@@ -2442,6 +2442,11 @@ const duplicateOrder = async (order: Order) => {
     const nowIso = new Date().toISOString();
     const todayString = nowIso.split("T")[0];
     
+    // CRITICAL: Preserve the original order's date so duplicate appears on the same day
+    // Use original order's created_at or assigned_at to maintain the date
+    const originalDate = order.assigned_at || order.created_at || nowIso;
+    const originalDateString = originalDate.split('T')[0]; // Extract date part (YYYY-MM-DD)
+    
     // Create a copy of the order with modified fields
     const duplicatedOrder = {
       order_id: `${order.order_id} (نسخة)`,
@@ -2457,9 +2462,10 @@ const duplicateOrder = async (order: Order) => {
       internal_comment: null,
       collected_by: null,
       assigned_courier_id: user.id, // Assign to current courier
+      assigned_at: originalDate, // CRITICAL: Use original date so it appears on the same day
       notes: order.notes,
-      // Use today's date so the duplicate appears in today's list
-      created_at: nowIso,
+      // Use original order's date so duplicate appears on the same day as original
+      created_at: originalDate,
       updated_at: nowIso,
     };
 
@@ -2483,7 +2489,7 @@ const duplicateOrder = async (order: Order) => {
     console.log("Successfully created duplicated order:", newOrder);
     
     // Show success message with order details
-    const duplicateOrderDate = new Date(nowIso).toLocaleDateString('ar-EG');
+    const duplicateOrderDate = new Date(originalDate).toLocaleDateString('ar-EG');
     const successMessage = `تم نسخ الطلب بنجاح!
 
 الطلب الجديد:
@@ -2494,11 +2500,12 @@ const duplicateOrder = async (order: Order) => {
 • التاريخ: ${duplicateOrderDate}
 • يمكنك تعديله كما تريد
 
-سيظهر الطلب المكرر في تاريخ اليوم (${duplicateOrderDate})...`;
+سيظهر الطلب المكرر في نفس تاريخ الطلب الأصلي (${duplicateOrderDate})...`;
     
-    // Show success message with option to confirm (no navigation needed; we jump to today)
+    // Show success message - duplicate appears on original order's date
     window.alert(successMessage);
-    setSelectedDate(todayString);
+    // Set date to original order's date so user sees the duplicate
+    setSelectedDate(originalDateString);
     
     // Refresh orders to show the new duplicated order
     console.log("Refreshing orders...");

@@ -850,12 +850,25 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
   if (order.line_items) {
     try {
       // Handle both string and array formats
-      parsedLineItems = typeof order.line_items === 'string' 
+      const rawLineItems = typeof order.line_items === 'string' 
         ? JSON.parse(order.line_items) 
         : order.line_items
       
+      // CRITICAL: Filter out removed items from line_items fallback
+      // Only include active items (not removed, quantity > 0)
+      parsedLineItems = (Array.isArray(rawLineItems) ? rawLineItems : []).filter((item: any) => {
+        const isRemoved = 
+          item.is_removed === true ||
+          item.quantity === 0 ||
+          item.fulfillment_status === 'removed' ||
+          (item.properties && (item.properties._is_removed === true || item.properties._is_removed === 'true')) ||
+          item.cancelled === true;
+        return !isRemoved && item.quantity > 0;
+      });
+      
       console.log('📦 Parsed line_items:', {
-        count: parsedLineItems.length,
+        raw_count: Array.isArray(rawLineItems) ? rawLineItems.length : 0,
+        filtered_count: parsedLineItems.length,
         first_item: parsedLineItems[0] ? {
           title: parsedLineItems[0].title,
           variant_id: parsedLineItems[0].variant_id,
@@ -983,6 +996,10 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                 );
                 if (match && match.image && match.image !== null && match.image !== 'null') {
                   imageUrl = typeof match.image === 'string' ? match.image : (match.image.src || match.image.url);
+                  // Ensure it's a full URL
+                  if (imageUrl && !imageUrl.startsWith('http')) {
+                    imageUrl = `https://cdn.shopify.com${imageUrl.startsWith('/') ? '' : '/'}${imageUrl}`;
+                  }
                 }
               }
               
@@ -994,6 +1011,23 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                 );
                 if (match && match.image && match.image !== null && match.image !== 'null') {
                   imageUrl = typeof match.image === 'string' ? match.image : (match.image.src || match.image.url);
+                  // Ensure it's a full URL
+                  if (imageUrl && !imageUrl.startsWith('http')) {
+                    imageUrl = `https://cdn.shopify.com${imageUrl.startsWith('/') ? '' : '/'}${imageUrl}`;
+                  }
+                }
+              }
+              
+              // Also try to get image from orderItem's shopify_raw_data directly
+              if (!imageUrl && orderItem.shopify_raw_data) {
+                const rawData = orderItem.shopify_raw_data;
+                const rawImage = rawData.image || rawData.variant?.image || rawData.product?.image;
+                if (rawImage) {
+                  imageUrl = typeof rawImage === 'string' ? rawImage : (rawImage.src || rawImage.url);
+                  // Ensure it's a full URL
+                  if (imageUrl && !imageUrl.startsWith('http')) {
+                    imageUrl = `https://cdn.shopify.com${imageUrl.startsWith('/') ? '' : '/'}${imageUrl}`;
+                  }
                 }
               }
             }
@@ -1008,8 +1042,47 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
           if (!imageUrl.startsWith('http')) {
             imageUrl = `https://cdn.shopify.com${imageUrl.startsWith('/') ? '' : '/'}${imageUrl}`;
           }
-          if (imageUrl === 'null' || imageUrl === 'undefined' || imageUrl === '') {
+          if (imageUrl === 'null' || imageUrl === 'undefined' || imageUrl === '' || imageUrl === 'https://cdn.shopify.comnull') {
             imageUrl = null;
+          }
+        }
+        
+        // Final fallback: try to get image from orderItem's direct variant_id/product_id
+        if (!imageUrl && order.product_images) {
+          try {
+            const productImages = typeof order.product_images === 'string' 
+              ? JSON.parse(order.product_images) 
+              : order.product_images;
+            if (Array.isArray(productImages)) {
+              // Try variant_id first
+              if ((orderItem as any).variant_id) {
+                const match = productImages.find((img: any) => 
+                  String(img.variant_id) === String((orderItem as any).variant_id) ||
+                  Number(img.variant_id) === Number((orderItem as any).variant_id)
+                );
+                if (match?.image) {
+                  imageUrl = typeof match.image === 'string' ? match.image : (match.image.src || match.image.url);
+                  if (imageUrl && !imageUrl.startsWith('http')) {
+                    imageUrl = `https://cdn.shopify.com${imageUrl.startsWith('/') ? '' : '/'}${imageUrl}`;
+                  }
+                }
+              }
+              // Try product_id if variant_id didn't work
+              if (!imageUrl && (orderItem as any).product_id) {
+                const match = productImages.find((img: any) => 
+                  String(img.product_id) === String((orderItem as any).product_id) ||
+                  Number(img.product_id) === Number((orderItem as any).product_id)
+                );
+                if (match?.image) {
+                  imageUrl = typeof match.image === 'string' ? match.image : (match.image.src || match.image.url);
+                  if (imageUrl && !imageUrl.startsWith('http')) {
+                    imageUrl = `https://cdn.shopify.com${imageUrl.startsWith('/') ? '' : '/'}${imageUrl}`;
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            // Silently handle
           }
         }
         
@@ -1181,7 +1254,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
           image_url: imageUrl,
           image_alt: item.title || item.name || null,
           shopify_raw_data: item,
-          is_removed: item.is_removed || (item.properties && (item.properties._is_removed === true || item.properties._is_removed === 'true')) || parseFloat(String(item.quantity)) === 0
+          is_removed: false // All items here are active (removed items were filtered out above)
         }
       })
 
@@ -1242,11 +1315,24 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
     return !isRemoved && item.quantity > 0
   })
 
-  const fulfillmentTotals = getFulfillmentTotals(items as any[])
+  // CRITICAL: Filter items again before calculating totals (double-check)
+  // Items should already be filtered, but this ensures removed items are never included in calculations
+  const activeItemsForTotals = items.filter((item: any) => {
+    const isRemoved = 
+      item.is_removed === true ||
+      item.quantity === 0 ||
+      item.fulfillment_status === 'removed' ||
+      (item.properties && (item.properties._is_removed === true || item.properties._is_removed === 'true')) ||
+      item.cancelled === true;
+    return !isRemoved && item.quantity > 0;
+  });
+  
+  const fulfillmentTotals = getFulfillmentTotals(activeItemsForTotals as any[])
 
   // CRITICAL: Always use Shopify's current_total_price (stored in total_order_fees)
   // Shopify's current_total_price already excludes removed items from the total
   // This is the source of truth and matches what Shopify shows
+  // DO NOT calculate from items - always use Shopify's total
   const total = parseFloat(order.total_order_fees?.toString() || "0")
   
   // Use Shopify's exact totals for display (these are the source of truth)
@@ -1925,7 +2011,8 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                         </div>
                       ) : (
                         <div className="text-right">
-                          <span>{order.currency || 'EGP'} {Math.max(0, fulfillmentTotals.fulfilledTotal).toFixed(2)}</span>
+                          {/* CRITICAL: Always use Shopify's total (excludes removed items) */}
+                          <span>{order.currency || 'EGP'} {total.toFixed(2)}</span>
                           {(fulfillmentTotals.removedTotal > 0 || fulfillmentTotals.unfulfilledTotal > 0) && (
                             <p className="text-xs text-amber-700 font-semibold">
                               بعد طرح غير منفذ/محذوف
