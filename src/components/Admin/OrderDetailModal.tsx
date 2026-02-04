@@ -363,6 +363,17 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
           console.warn('Error fetching order items:', fetchError)
         }
       } else if (data && data.length > 0) {
+        // Debug: Log items with is_removed flag
+        const removedItems = data.filter((item: any) => item.is_removed === true);
+        if (removedItems.length > 0) {
+          console.log(`🔴 Found ${removedItems.length} removed items in database:`, removedItems.map((i: any) => ({
+            id: i.id,
+            title: i.title,
+            is_removed: i.is_removed,
+            quantity: i.quantity
+          })));
+        }
+        console.log(`📦 Fetched ${data.length} items from order_items table`);
         setOrderItems(data)
       }
     } catch (err: any) {
@@ -985,11 +996,38 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
           }
         }
         
-        return {
+        // CRITICAL: Check all possible ways an item can be marked as removed
+        const isRemoved = orderItem.is_removed === true || 
+                         (orderItem as any).properties?._is_removed === true || 
+                         (orderItem as any).properties?._is_removed === 'true' ||
+                         Number(orderItem.quantity) === 0 ||
+                         (orderItem as any).fulfillment_status === 'removed';
+        
+        // Debug removed items
+        if (isRemoved) {
+          console.log('🔴 Removed item from DB:', {
+            id: orderItem.id,
+            title: orderItem.title,
+            is_removed: orderItem.is_removed,
+            properties: (orderItem as any).properties,
+            quantity: orderItem.quantity,
+            fulfillment_status: (orderItem as any).fulfillment_status
+          });
+        }
+        
+        const result = {
           ...orderItem,
           image_url: imageUrl || orderItem.image_url,
-          is_removed: orderItem.is_removed || (orderItem as any).properties?._is_removed || orderItem.quantity === 0
+          is_removed: isRemoved // Explicitly set the flag
         };
+        
+        // Double-check: if is_removed is true in DB, ensure it's set
+        if (orderItem.is_removed === true && !isRemoved) {
+          console.warn(`⚠️ Item "${orderItem.title}" has is_removed=true in DB but detection logic says false!`);
+          result.is_removed = true; // Force it to true
+        }
+        
+        return result;
       })
     : parsedLineItems.map((item: any, index: number) => {
         // Try to get image from various possible locations
@@ -1590,19 +1628,38 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                 ) : sortedItems.length > 0 ? (
                   <div className="space-y-4">
                     {sortedItems.map((item, index) => {
-                      // Check if item is removed - prioritize database flag, then properties, then quantity
-                      const isRemoved = item.is_removed === true || (item as any).properties?._is_removed === true || (item as any).properties?._is_removed === 'true' || parseFloat(String(item.quantity)) === 0;
+                      // Check if item is removed - check all possible indicators
+                      const isRemoved = item.is_removed === true || 
+                                       (item as any).properties?._is_removed === true || 
+                                       (item as any).properties?._is_removed === 'true' || 
+                                       parseFloat(String(item.quantity)) === 0 ||
+                                       (item as any).fulfillment_status === 'removed';
                       
                       // Check if item is newly added
                       const isNew = item.is_new === true || (item as any).properties?._is_new === true || (item as any).properties?._is_new === 'true';
                       
-                      // Debug log for removed items
+                      // Debug log for removed items - always log to help debug
                       if (isRemoved) {
-                        console.log('🔴 Removed item detected:', {
+                        console.log('🔴 REMOVED ITEM DETECTED IN UI:', {
                           id: item.id,
                           title: item.title,
                           is_removed: item.is_removed,
                           properties: (item as any).properties,
+                          quantity: item.quantity,
+                          fulfillment_status: (item as any).fulfillment_status,
+                          allChecks: {
+                            is_removed_field: item.is_removed === true,
+                            properties_flag: (item as any).properties?._is_removed === true || (item as any).properties?._is_removed === 'true',
+                            quantity_zero: parseFloat(String(item.quantity)) === 0,
+                            fulfillment_removed: (item as any).fulfillment_status === 'removed'
+                          }
+                        })
+                      } else {
+                        // Also log non-removed items to compare
+                        console.log('✅ Active item:', {
+                          id: item.id,
+                          title: item.title,
+                          is_removed: item.is_removed,
                           quantity: item.quantity
                         })
                       }

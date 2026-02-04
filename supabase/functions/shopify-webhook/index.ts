@@ -208,9 +208,57 @@ Deno.serve(async (req: Request) => {
       .maybeSingle()
 
     // PRESERVE REMOVED ITEMS in line_items JSON
+    // First, detect items removed from subtotal (but still in line_items)
+    const shopifySubtotal = parseFloat(shopifyOrder.subtotal_price || shopifyOrder.current_subtotal_price || 0)
+    const itemsNotInSubtotal = new Set<string>()
+    
+    if (shopifySubtotal > 0 && shopifyOrder.line_items && shopifyOrder.line_items.length > 0) {
+      // Calculate total of all line items
+      const allItemsTotal = shopifyOrder.line_items.reduce((sum: number, item: any) => {
+        return sum + ((parseFloat(item.price || 0) * (item.quantity || 0)) - parseFloat(item.total_discount || 0))
+      }, 0)
+      
+      // If there's a mismatch, some items were removed from the subtotal
+      if (Math.abs(allItemsTotal - shopifySubtotal) > 0.01) {
+        console.log(`   💰 Subtotal mismatch detected! All items total: ${allItemsTotal}, Shopify subtotal: ${shopifySubtotal}`)
+        
+        // Calculate each item's total
+        const itemTotals = shopifyOrder.line_items.map((item: any) => ({
+          id: String(item.id),
+          title: item.title,
+          total: (parseFloat(item.price || 0) * (item.quantity || 0)) - parseFloat(item.total_discount || 0)
+        }))
+        
+        // Find which items are included in the subtotal using greedy approach
+        const sortedItems = [...itemTotals].sort((a, b) => b.total - a.total)
+        let runningTotal = 0
+        const itemsIncluded = new Set<string>()
+        
+        for (const itemTotal of sortedItems) {
+          if (runningTotal + itemTotal.total <= shopifySubtotal + 0.01) {
+            runningTotal += itemTotal.total
+            itemsIncluded.add(itemTotal.id)
+          }
+        }
+        
+        // Any item NOT in the included set was removed
+        itemTotals.forEach((itemTotal: any) => {
+          if (!itemsIncluded.has(itemTotal.id)) {
+            itemsNotInSubtotal.add(itemTotal.id)
+            console.log(`   🗑️  Item "${itemTotal.title}" (${itemTotal.total}) is NOT in subtotal - removed from order`)
+          }
+        })
+      }
+    }
+    
     const currentLineItems = (shopifyOrder.line_items || []).map((item: any) => ({
       ...item,
-      is_removed: item.quantity === 0 || item.fulfillment_status === 'removed' || (item.properties && item.properties._is_removed)
+      is_removed: item.quantity === 0 || 
+                  item.fulfillment_status === 'removed' || 
+                  (item.properties && (item.properties._is_removed === true || item.properties._is_removed === 'true')) ||
+                  item.cancelled === true ||
+                  (item.fulfillable_quantity !== undefined && item.fulfillable_quantity === 0 && item.quantity > 0) ||
+                  itemsNotInSubtotal.has(String(item.id))
     }))
 
     let finalLineItems = [...currentLineItems]
@@ -334,17 +382,48 @@ Deno.serve(async (req: Request) => {
         shopify_cancelled_at: orderData.shopify_cancelled_at,
         financial_status: orderData.financial_status,
         fulfillment_status: orderData.fulfillment_status,
-        // IMPORTANT: Preserve manually edited total_order_fees if it differs from Shopify
+        // CRITICAL: Always use Shopify's current_total_price when items are removed
+        // Shopify's current_total_price already excludes removed items from the total
         total_order_fees: (() => {
           const existingTotal = existingMain.total_order_fees || 0
           const shopifyTotal = orderData.total_price || 0
+          
+          // Check line_items for removed items
+          const lineItems = Array.isArray(orderData.line_items) ? orderData.line_items : []
+          const hasRemovedItems = lineItems.some((i: any) => {
+            const qtyZero = Number(i?.quantity) === 0
+            const propRemoved = i?.properties?._is_removed === true || i?.properties?._is_removed === 'true'
+            return i?.is_removed === true || qtyZero || propRemoved
+          })
+
+          // If Shopify cancelled the order, force Shopify total
+          if (orderData.shopify_cancelled_at) {
+            return shopifyTotal
+          }
+
+          // CRITICAL: If there are removed items, ALWAYS use Shopify's total
+          // Shopify's current_total_price already excludes removed items
+          if (hasRemovedItems) {
+            console.log(`💰 Using Shopify total (has removed items): ${shopifyTotal} (existing: ${existingTotal})`)
+            return shopifyTotal
+          }
+
+          // If Shopify total is LOWER than existing, it likely means items were removed
+          // Always trust Shopify in this case
+          if (shopifyTotal < existingTotal && Math.abs(shopifyTotal - existingTotal) > 0.01) {
+            console.log(`💰 Using Shopify total (lower than existing, likely removed items): ${shopifyTotal} (existing: ${existingTotal})`)
+            return shopifyTotal
+          }
+
           const difference = Math.abs(existingTotal - shopifyTotal)
-          // If difference is significant (> 0.01), assume it was manually edited and preserve it
-          if (difference > 0.01 && existingTotal > 0) {
+          // If difference is significant (> 0.01) and Shopify total is higher or equal, preserve manual edit
+          if (difference > 0.01 && existingTotal > 0 && shopifyTotal >= existingTotal) {
             console.log(`🔒 Preserving manually edited total for order ${shopifyOrder.id}: ${existingTotal} (Shopify: ${shopifyTotal})`)
             return existingTotal
           }
-          return orderData.total_price
+          
+          // Default: Use Shopify total (source of truth)
+          return shopifyTotal
         })(),
         subtotal_price: orderData.subtotal_price,
         total_tax: orderData.total_tax,
@@ -353,9 +432,10 @@ Deno.serve(async (req: Request) => {
         product_images: orderData.product_images,
         // IMPORTANT: Always update order_tags from Shopify to reflect tag changes (additions/removals)
         order_tags: orderData.order_tags,
-        order_note: orderData.order_note,
-        customer_note: orderData.customer_note,
-        notes: orderData.notes,
+        // CRITICAL: Always sync comments/notes from Shopify - they are Shopify metadata
+        order_note: orderData.order_note, // Always update from Shopify
+        customer_note: orderData.customer_note, // Always update from Shopify
+        notes: orderData.notes, // Always update from Shopify (combines order_note and customer_note)
         updated_at: new Date().toISOString()
       }
       
@@ -457,9 +537,10 @@ Deno.serve(async (req: Request) => {
             product_images: orderData.product_images,
             // IMPORTANT: Always update order_tags from Shopify to reflect tag changes (additions/removals)
             order_tags: orderData.order_tags,
-            order_note: orderData.order_note,
-            customer_note: orderData.customer_note,
-            notes: orderData.notes,
+            // CRITICAL: Always sync comments/notes from Shopify - they are Shopify metadata
+            order_note: orderData.order_note, // Always update from Shopify
+            customer_note: orderData.customer_note, // Always update from Shopify
+            notes: orderData.notes, // Always update from Shopify (combines order_note and customer_note)
             updated_at: new Date().toISOString()
           }
           
@@ -547,11 +628,62 @@ Deno.serve(async (req: Request) => {
           })
         }
 
+        // 1.5. CRITICAL: Calculate which items are NOT included in Shopify's subtotal
+        // When Shopify removes an item, it stays in line_items but price is excluded from subtotal
+        const shopifySubtotal = parseFloat(shopifyOrder.current_subtotal_price || shopifyOrder.subtotal_price || 0)
+        const allItemsTotal = (shopifyOrder.line_items || []).reduce((sum: number, li: any) => {
+          return sum + ((parseFloat(li.price || 0) * (li.quantity || 0)) - parseFloat(li.total_discount || 0))
+        }, 0)
+        
+        const itemsNotInSubtotal = new Set<string>()
+        if (shopifySubtotal > 0 && Math.abs(allItemsTotal - shopifySubtotal) > 0.01) {
+          console.log(`💰 Subtotal mismatch! All items: ${allItemsTotal}, Shopify subtotal: ${shopifySubtotal}`)
+          const itemTotals = (shopifyOrder.line_items || []).map((item: any) => ({
+            id: String(item.id),
+            title: item.title,
+            total: (parseFloat(item.price || 0) * (item.quantity || 0)) - parseFloat(item.total_discount || 0)
+          }))
+          
+          for (const itemTotal of itemTotals) {
+            const totalWithoutThis = allItemsTotal - itemTotal.total
+            const diffWith = Math.abs(allItemsTotal - shopifySubtotal)
+            const diffWithout = Math.abs(totalWithoutThis - shopifySubtotal)
+            
+            if (diffWithout < diffWith && totalWithoutThis >= shopifySubtotal - 0.01) {
+              itemsNotInSubtotal.add(itemTotal.id)
+              console.log(`   🗑️  Item "${itemTotal.title}" (${itemTotal.total}) is NOT in subtotal - removed`)
+            }
+          }
+        }
+
         // 2. Prepare items from Shopify payload
         const itemsFromShopify = shopifyOrder.line_items.map((item: any) => {
           const shopifyItemKey = String(item.id);
-          const isRemovedInShopify = item.quantity === 0 || item.fulfillment_status === 'removed' || (item.properties && item.properties._is_removed);
+          // Check multiple ways Shopify marks items as removed
+          const isRemovedInShopify = item.quantity === 0 || 
+                                     item.fulfillment_status === 'removed' || 
+                                     (item.properties && (item.properties._is_removed === true || item.properties._is_removed === 'true')) ||
+                                     item.cancelled === true ||
+                                     (item.fulfillable_quantity !== undefined && item.fulfillable_quantity === 0 && item.quantity > 0) ||
+                                     itemsNotInSubtotal.has(shopifyItemKey); // Item price not in subtotal
           const isNewlyAdded = !existingItemsMap.has(shopifyItemKey) && !isRemovedInShopify;
+          
+          // Debug removed items
+          if (isRemovedInShopify) {
+            console.log(`🔍 Item detected as removed in webhook: "${item.title}" (ID: ${item.id})`, {
+              quantity: item.quantity,
+              fulfillment_status: item.fulfillment_status,
+              properties: item.properties,
+              cancelled: item.cancelled,
+              fulfillable_quantity: item.fulfillable_quantity
+            });
+          }
+          
+          // CRITICAL: Track items that were added and then removed (quantity 0)
+          const wasAddedThenRemoved = isRemovedInShopify && existingItemsMap.has(shopifyItemKey);
+          if (wasAddedThenRemoved) {
+            console.log(`🗑️ Item was added then removed in Shopify: ${item.title} (Shopify ID: ${shopifyItemKey}, quantity: ${item.quantity})`)
+          }
           
           return {
             shopify_line_item_id: item.id,
@@ -561,7 +693,7 @@ Deno.serve(async (req: Request) => {
             title: item.title || '',
             variant_title: item.variant_title,
             quantity: item.quantity || 0,
-            price: parseFloat(item.price || 0),
+            price: parseFloat(item.price || 0), // Always use current price from Shopify
             total_discount: parseFloat(item.total_discount || 0),
             sku: item.sku,
             vendor: item.vendor,
@@ -569,30 +701,44 @@ Deno.serve(async (req: Request) => {
             image_url: extractImageUrl(item),
             image_alt: item.title || null,
             shopify_raw_data: item,
-            is_removed: isRemovedInShopify,
-            is_new: isNewlyAdded, // Mark as newly added if it doesn't exist in DB
+            is_removed: isRemovedInShopify, // Mark as removed if quantity is 0 or fulfillment_status is 'removed'
+            is_new: isNewlyAdded && !isRemovedInShopify, // Only mark as new if it's not removed
+            updated_at: new Date().toISOString()
           }
         })
 
         // 3. Find items that were in DB but are now GONE from Shopify line_items
+        // CRITICAL: Check if items exist in Shopify's current line_items array
         const removedItems: any[] = []
         existingItemsMap.forEach((dbItem, key) => {
-          const stillExistsInShopify = shopifyOrder.line_items.some((li: any) => String(li.id) === String(dbItem.shopify_line_item_id))
+          const shopifyId = dbItem.shopify_line_item_id ? String(dbItem.shopify_line_item_id) : null
+          
+          if (!shopifyId) {
+            // Item doesn't have Shopify ID - might be manually added, skip it
+            return
+          }
+          
+          // Check if this item still exists in Shopify's line_items
+          const stillExistsInShopify = shopifyOrder.line_items.some((li: any) => String(li.id) === shopifyId)
           
           if (dbItem.is_removed) {
+            // Already marked as removed, keep it
             removedItems.push({
               ...dbItem,
               quantity: 0,
               is_new: false // Not new if it was removed
             })
-          } else if (dbItem.shopify_line_item_id && !stillExistsInShopify) {
+          } else if (!stillExistsInShopify) {
+            // Item was in DB but is NOT in Shopify anymore - it was removed from Shopify
+            console.log(`🗑️ Item removed from Shopify: ${dbItem.title} (Shopify ID: ${shopifyId})`)
             removedItems.push({
               ...dbItem,
               is_removed: true,
               is_new: false, // Not new if it was removed
               quantity: 0,
               fulfillment_status: 'removed',
-              properties: { ...(dbItem.properties || {}), _is_removed: true }
+              properties: { ...(dbItem.properties || {}), _is_removed: true },
+              updated_at: new Date().toISOString()
             })
           }
         })
@@ -619,9 +765,17 @@ Deno.serve(async (req: Request) => {
           } else {
             // If item exists in DB, it's not new
             if (dbItem) {
+              // CRITICAL: Always update price from Shopify, even for existing items
+              const priceChanged = Math.abs(parseFloat(dbItem.price || 0) - parseFloat(item.price || 0)) > 0.01
+              if (priceChanged) {
+                console.log(`💰 Price updated for item "${dbItem.title}": ${dbItem.price} → ${item.price}`)
+              }
               finalItemsMap.set(key, {
                 ...item,
-                is_new: false // Existing item, not newly added
+                is_new: false, // Existing item, not newly added
+                // Ensure price is always from Shopify (source of truth)
+                price: parseFloat(item.price || 0),
+                updated_at: new Date().toISOString()
               })
             } else {
               finalItemsMap.set(key, item)
@@ -643,12 +797,34 @@ Deno.serve(async (req: Request) => {
           .eq('order_id', mainOrder.id)
 
         if (allItems.length > 0) {
+          // Prepare items for insertion - ensure is_removed is always a boolean
+          const itemsToInsert = allItems.map((i: any) => {
+            const { id, created_at, ...rest } = i
+            // CRITICAL: Ensure is_removed is explicitly set as boolean
+            const isRemoved = rest.is_removed === true || 
+                             rest.quantity === 0 ||
+                             rest.fulfillment_status === 'removed' ||
+                             (rest.properties && (rest.properties._is_removed === true || rest.properties._is_removed === 'true'))
+            
+            return {
+              ...rest,
+              is_removed: isRemoved ? true : false, // Always boolean
+              quantity: rest.quantity || 0
+            }
+          })
+          
+          // Log removed items
+          const removedCount = itemsToInsert.filter((i: any) => i.is_removed).length
+          if (removedCount > 0) {
+            console.log(`📝 Inserting ${removedCount} removed items with is_removed=true:`)
+            itemsToInsert.filter((i: any) => i.is_removed).forEach((item: any) => {
+              console.log(`   🗑️  "${item.title}" - is_removed: ${item.is_removed}, quantity: ${item.quantity}`)
+            })
+          }
+          
           await supabaseClient
             .from('order_items')
-            .insert(allItems.map((i: any) => {
-              const { id, created_at, ...rest } = i
-              return rest
-            }))
+            .insert(itemsToInsert)
         }
       }
     }
