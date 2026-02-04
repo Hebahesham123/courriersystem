@@ -1106,7 +1106,7 @@ const OrdersList: React.FC = () => {
         // Fetch order items (products)
         const { data: orderItems, error: itemsError } = await supabase
           .from("order_items")
-          .select("id, order_id, title, variant_title, quantity, price, sku, image_url, vendor, product_type, is_removed, properties")
+          .select("id, order_id, title, variant_title, quantity, price, sku, image_url, vendor, product_type, is_removed, is_new, properties")
           .in("order_id", orderIds)
 
         if (itemsError) {
@@ -3040,20 +3040,13 @@ const deleteDuplicatedOrder = async (order: Order) => {
               ) && !courierUpdatedToday
 
               // Circle logic:
-              // Priority: YELLOW (courier updated today) > RED (processed on previous day) > GREEN (new order)
-              // - RED: orders that have process on previous days (processed status from previous days)
-              //        OR orders assigned today with existing processed status (canceled/return from before)
               // - GREEN: new orders that don't have any process on them (not processed)
-              // - YELLOW: when user makes an update on this day (courier updated today)
+              // - RED: orders where courier has changed the status (processed status)
               let shouldShowGreenCircle = false
               let shouldShowRedCircle = false
-              let shouldShowYellowCircle = false
 
-              if (courierUpdatedToday) {
-                // Courier made an update on this day -> YELLOW
-                shouldShowYellowCircle = true
-              } else if (wasProcessedOnPreviousDay || assignedTodayWithExistingProcessedStatus) {
-                // Order was processed on a previous day OR assigned today with existing processed status -> RED
+              if (isProcessed) {
+                // Order has been processed (courier changed status) -> RED
                 shouldShowRedCircle = true
               } else {
                 // New order without any process -> GREEN
@@ -3146,16 +3139,9 @@ const deleteDuplicatedOrder = async (order: Order) => {
                   }`}
                 >
                   {/* Circle Indicator - Shows order status */}
-                  {/* RED: orders that have process on previous days */}
                   {/* GREEN: new orders that don't have any process on them */}
-                  {/* YELLOW: when user makes an update on this day */}
-                  {shouldShowYellowCircle ? (
-                    <div className="absolute -top-4 -right-4 z-40 pointer-events-none">
-                      <div className="w-10 h-10 bg-yellow-600 rounded-full border-4 border-white shadow-2xl animate-pulse flex items-center justify-center">
-                        <div className="w-4 h-4 bg-yellow-400 rounded-full"></div>
-                      </div>
-                    </div>
-                  ) : shouldShowRedCircle ? (
+                  {/* RED: orders where courier has changed the status */}
+                  {shouldShowRedCircle ? (
                     <div className="absolute -top-4 -right-4 z-40 pointer-events-none">
                       <div className="w-10 h-10 bg-red-600 rounded-full border-4 border-white shadow-2xl animate-pulse flex items-center justify-center">
                         <div className="w-4 h-4 bg-red-400 rounded-full"></div>
@@ -3704,6 +3690,8 @@ const deleteDuplicatedOrder = async (order: Order) => {
                       Number(i?.quantity) === 0 ||
                       i?.properties?._is_removed === true ||
                       i?.properties?._is_removed === 'true'
+                    // IMPORTANT: For courier view, filter out removed items - they should NOT appear
+                    // Removed items will still appear in admin view with dashes/strikethrough
                     const allItems = (allItemsRaw || []).filter((i: any) => !isRemoved(i))
                     
                     if (allItems && allItems.length > 0) {
@@ -3886,6 +3874,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                                 Number(item.quantity) === 0 ||
                                 item?.properties?._is_removed === true ||
                                 item?.properties?._is_removed === 'true'
+                              const isNew = item.is_new === true || item?.properties?._is_new === true || item?.properties?._is_new === 'true'
                               const isUnfulfilled = !isRemoved && isOrderItemUnfulfilled(item)
                               
                               return (
@@ -3894,9 +3883,11 @@ const deleteDuplicatedOrder = async (order: Order) => {
                                   className={`rounded-lg sm:rounded-xl border-2 p-2 sm:p-4 transition-all duration-300 hover:shadow-md relative ${
                                     isRemoved
                                       ? 'bg-red-50 border-red-200 text-red-700 opacity-90'
-                                      : isUnfulfilled
-                                        ? 'bg-amber-50 border-amber-200 text-amber-800'
-                                        : 'bg-white border-gray-100 hover:border-blue-300'
+                                      : isNew
+                                        ? 'bg-green-50 border-green-300 text-green-800'
+                                        : isUnfulfilled
+                                          ? 'bg-amber-50 border-amber-200 text-amber-800'
+                                          : 'bg-white border-gray-100 hover:border-blue-300'
                                   }`}
                                 >
                                   {/* Image Modal - Rendered inside product item container, "stuck" to card */}
@@ -4006,9 +3997,14 @@ const deleteDuplicatedOrder = async (order: Order) => {
                                     {/* Product Details */}
                                     <div className="flex-1 min-w-0">
                                       <div className="flex items-center gap-2 flex-wrap">
-                                        <h5 className={`font-bold text-xs sm:text-base mb-0.5 sm:mb-1 line-clamp-2 ${isRemoved ? 'text-red-800' : 'text-gray-900'}`}>
+                                        <h5 className={`font-bold text-xs sm:text-base mb-0.5 sm:mb-1 line-clamp-2 ${isRemoved ? 'text-red-800' : isNew ? 'text-green-800' : 'text-gray-900'}`}>
                                           {itemTitle}
                                         </h5>
+                                        {isNew && !isRemoved && (
+                                          <span className="px-2 py-0.5 text-[10px] sm:text-xs font-bold rounded-full bg-green-600 text-white uppercase shadow">
+                                            New
+                                          </span>
+                                        )}
                                         {isRemoved && (
                                           <span className="px-2 py-0.5 text-[10px] sm:text-xs font-bold rounded-full bg-red-600 text-white uppercase shadow">
                                             removed
@@ -4048,6 +4044,11 @@ const deleteDuplicatedOrder = async (order: Order) => {
                                           </span>
                                         </div>
                                       </div>
+                                      {isNew && !isRemoved && (
+                                        <div className="mt-2 sm:mt-3 bg-green-100 text-green-800 text-[10px] sm:text-xs px-2 py-1.5 rounded border border-green-200 flex items-center gap-1">
+                                          <span>✨ تم إضافة هذا المنتج إلى الطلب في Shopify</span>
+                                        </div>
+                                      )}
                                       {isRemoved && (
                                         <div className="mt-2 sm:mt-3 bg-red-100 text-red-800 text-[10px] sm:text-xs px-2 py-1.5 rounded border border-red-200 flex items-center gap-1">
                                           <AlertCircle className="w-3 h-3 sm:w-4 sm:h-4" />
@@ -4131,7 +4132,8 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         }
                         return null
                       })()}
-                      {(() => {
+                      {/* Removed items info hidden for courier - removed items should not appear */}
+                      {/* {(() => {
                         const removedInfo = getRemovedItemsInfo(selectedOrder)
                         if (removedInfo.amount > 0) {
                           return (
@@ -4150,7 +4152,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                           )
                         }
                         return null
-                      })()}
+                      })()} */}
                       {selectedOrder.total_tax !== undefined && selectedOrder.total_tax > 0 && (
                         <div className="flex justify-between items-center py-1 sm:py-1.5 border-b border-gray-100">
                           <span className="text-xs sm:text-sm text-gray-600">الضريبة:</span>

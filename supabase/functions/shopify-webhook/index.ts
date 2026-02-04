@@ -548,24 +548,31 @@ Deno.serve(async (req: Request) => {
         }
 
         // 2. Prepare items from Shopify payload
-        const itemsFromShopify = shopifyOrder.line_items.map((item: any) => ({
-          shopify_line_item_id: item.id,
-          order_id: mainOrder.id, // Reference to main orders table
-          product_id: item.product_id,
-          variant_id: item.variant_id,
-          title: item.title || '',
-          variant_title: item.variant_title,
-          quantity: item.quantity || 0,
-          price: parseFloat(item.price || 0),
-          total_discount: parseFloat(item.total_discount || 0),
-          sku: item.sku,
-          vendor: item.vendor,
-          product_type: item.product_type,
-          image_url: extractImageUrl(item),
-          image_alt: item.title || null,
-          shopify_raw_data: item,
-          is_removed: item.quantity === 0 || item.fulfillment_status === 'removed' || (item.properties && item.properties._is_removed),
-        }))
+        const itemsFromShopify = shopifyOrder.line_items.map((item: any) => {
+          const shopifyItemKey = String(item.id);
+          const isRemovedInShopify = item.quantity === 0 || item.fulfillment_status === 'removed' || (item.properties && item.properties._is_removed);
+          const isNewlyAdded = !existingItemsMap.has(shopifyItemKey) && !isRemovedInShopify;
+          
+          return {
+            shopify_line_item_id: item.id,
+            order_id: mainOrder.id, // Reference to main orders table
+            product_id: item.product_id,
+            variant_id: item.variant_id,
+            title: item.title || '',
+            variant_title: item.variant_title,
+            quantity: item.quantity || 0,
+            price: parseFloat(item.price || 0),
+            total_discount: parseFloat(item.total_discount || 0),
+            sku: item.sku,
+            vendor: item.vendor,
+            product_type: item.product_type,
+            image_url: extractImageUrl(item),
+            image_alt: item.title || null,
+            shopify_raw_data: item,
+            is_removed: isRemovedInShopify,
+            is_new: isNewlyAdded, // Mark as newly added if it doesn't exist in DB
+          }
+        })
 
         // 3. Find items that were in DB but are now GONE from Shopify line_items
         const removedItems: any[] = []
@@ -575,12 +582,14 @@ Deno.serve(async (req: Request) => {
           if (dbItem.is_removed) {
             removedItems.push({
               ...dbItem,
-              quantity: 0
+              quantity: 0,
+              is_new: false // Not new if it was removed
             })
           } else if (dbItem.shopify_line_item_id && !stillExistsInShopify) {
             removedItems.push({
               ...dbItem,
               is_removed: true,
+              is_new: false, // Not new if it was removed
               quantity: 0,
               fulfillment_status: 'removed',
               properties: { ...(dbItem.properties || {}), _is_removed: true }
@@ -601,13 +610,22 @@ Deno.serve(async (req: Request) => {
             finalItemsMap.set(key, {
               ...item,
               is_removed: true,
+              is_new: false, // Not new if it was manually removed
               quantity: 0,
               fulfillment_status: 'removed',
               properties: { ...(item.properties || {}), _is_removed: true },
               updated_at: new Date().toISOString()
             })
           } else {
-            finalItemsMap.set(key, item)
+            // If item exists in DB, it's not new
+            if (dbItem) {
+              finalItemsMap.set(key, {
+                ...item,
+                is_new: false // Existing item, not newly added
+              })
+            } else {
+              finalItemsMap.set(key, item)
+            }
           }
         })
         removedItems.forEach((item: any) => {

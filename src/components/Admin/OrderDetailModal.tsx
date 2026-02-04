@@ -39,6 +39,7 @@ interface OrderItem {
   image_alt: string | null
   shopify_raw_data: any
   is_removed?: boolean
+  is_new?: boolean
   fulfillment_status?: string
   properties?: any
 }
@@ -921,7 +922,9 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
     console.warn('⚠️ No product_images field in order')
   }
 
-  // If we have orderItems from database, enhance them with images from product_images
+  // IMPORTANT: Always use orderItems from database (includes removed items marked with is_removed=true)
+  // This ensures removed items from Shopify appear in admin view with dashes/strikethrough
+  // Only fall back to parsedLineItems if orderItems is completely empty (sync hasn't run yet)
   const items = orderItems.length > 0 
     ? orderItems.map((orderItem: OrderItem) => {
         // If orderItem already has image_url, use it
@@ -1543,6 +1546,44 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
 
               {/* Products */}
               <div className="bg-white border border-gray-200 rounded-lg p-4">
+                {/* Summary of Added/Removed Items - Very Direct */}
+                {(() => {
+                  const newItems = sortedItems.filter((item: any) => {
+                    const isNew = item.is_new === true || (item as any).properties?._is_new === true || (item as any).properties?._is_new === 'true'
+                    const isRemoved = item.is_removed === true || (item as any).properties?._is_removed === true || (item as any).properties?._is_removed === 'true' || parseFloat(String(item.quantity)) === 0
+                    return isNew && !isRemoved
+                  })
+                  const removedItems = sortedItems.filter((item: any) => {
+                    const isRemoved = item.is_removed === true || (item as any).properties?._is_removed === true || (item as any).properties?._is_removed === 'true' || parseFloat(String(item.quantity)) === 0
+                    return isRemoved
+                  })
+                  
+                  if (newItems.length > 0 || removedItems.length > 0) {
+                    return (
+                      <div className="mb-4 space-y-2 p-3 bg-gray-50 border-2 border-gray-300 rounded-lg">
+                        <div className="text-sm font-bold text-gray-900 mb-2">Shopify Changes:</div>
+                        {newItems.length > 0 && (
+                          <div className="flex items-center gap-2 p-2 bg-green-100 border-2 border-green-500 rounded-lg">
+                            <span className="text-lg font-bold text-green-700">+</span>
+                            <span className="font-bold text-green-800">
+                              {newItems.length} Item{newItems.length > 1 ? 's' : ''} ADDED in Shopify
+                            </span>
+                          </div>
+                        )}
+                        {removedItems.length > 0 && (
+                          <div className="flex items-center gap-2 p-2 bg-red-100 border-2 border-red-500 rounded-lg">
+                            <span className="text-lg font-bold text-red-700">-</span>
+                            <span className="font-bold text-red-800">
+                              {removedItems.length} Item{removedItems.length > 1 ? 's' : ''} REMOVED from Shopify
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  }
+                  return null
+                })()}
+                
                 <h3 className="font-semibold text-gray-900 mb-4">Products</h3>
                 {loadingItems ? (
                   <div className="text-center py-8 text-gray-500">Loading products...</div>
@@ -1551,6 +1592,9 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                     {sortedItems.map((item, index) => {
                       // Check if item is removed - prioritize database flag, then properties, then quantity
                       const isRemoved = item.is_removed === true || (item as any).properties?._is_removed === true || (item as any).properties?._is_removed === 'true' || parseFloat(String(item.quantity)) === 0;
+                      
+                      // Check if item is newly added
+                      const isNew = item.is_new === true || (item as any).properties?._is_new === true || (item as any).properties?._is_new === 'true';
                       
                       // Debug log for removed items
                       if (isRemoved) {
@@ -1606,7 +1650,12 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                             <div className="flex items-center justify-between gap-2 mb-1">
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 flex-wrap">
-                                  <h4 className={`font-medium truncate ${isRemoved ? 'text-red-800' : 'text-gray-900'}`}>{item.title}</h4>
+                                  <h4 className={`font-medium truncate ${isRemoved ? 'text-red-800 line-through' : isNew ? 'text-green-800' : 'text-gray-900'}`}>{item.title}</h4>
+                                  {isNew && !isRemoved && (
+                                    <span className="px-2 py-0.5 bg-green-600 text-white text-[10px] font-bold rounded-full uppercase shadow-sm whitespace-nowrap">
+                                      New
+                                    </span>
+                                  )}
                                   {isRemoved && (
                                     <span className="px-2 py-0.5 bg-red-600 text-white text-[10px] font-bold rounded-full uppercase shadow-sm whitespace-nowrap">
                                       Removed
@@ -1733,13 +1782,18 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                             })()}
                             
                             <div className="flex items-center justify-between mt-2">
-                              <span className={`text-sm ${isRemoved ? 'text-red-500 line-through font-medium' : 'text-gray-600'}`}>
-                                Quantity: <span className={isRemoved ? 'text-red-600' : ''}>{item.quantity}</span>
+                              <span className={`text-sm ${isRemoved ? 'text-red-500 line-through font-medium' : isNew ? 'text-green-600 font-medium' : 'text-gray-600'}`}>
+                                Quantity: <span className={isRemoved ? 'text-red-600' : isNew ? 'text-green-700' : ''}>{item.quantity}</span>
                               </span>
-                              <span className={`font-semibold text-lg ${isRemoved ? 'text-red-600 line-through' : 'text-gray-900'}`}>
+                              <span className={`font-semibold text-lg ${isRemoved ? 'text-red-600 line-through' : isNew ? 'text-green-700' : 'text-gray-900'}`}>
                                 {order.currency || 'EGP'} {(item.price * item.quantity).toFixed(2)}
                               </span>
                             </div>
+                            {isNew && !isRemoved && (
+                              <div className="mt-2 p-2 bg-green-100 border border-green-300 rounded-lg">
+                                <p className="text-xs font-bold text-green-700">✨ This item was newly added to the order in Shopify</p>
+                              </div>
+                            )}
                             {isRemoved && (
                               <div className="mt-2 p-2 bg-red-100 border border-red-300 rounded-lg">
                                 <p className="text-xs font-bold text-red-700">⚠️ This item was removed from the order in Shopify</p>

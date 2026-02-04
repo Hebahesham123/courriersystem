@@ -159,11 +159,18 @@ const parseLineItemsSafe = (raw: any) => {
 }
 
 const getAllOrderItems = (order: Order) => {
+  // IMPORTANT: Prefer order_items from database (has is_new and is_removed flags)
+  // Fall back to line_items if order_items not available
   const orderItems = (order as any).order_items || []
   const lineItems = parseLineItemsSafe(order.line_items)
-  // Prefer Shopify line items (carry fulfillment status); fall back to order_items
+  
+  // If we have order_items from database, use them (they have is_new/is_removed flags)
+  if (orderItems.length > 0) return orderItems
+  
+  // Otherwise use line_items
   if (lineItems.length > 0) return lineItems
-  return orderItems
+  
+  return []
 }
 
 const isOrderItemRemoved = (i: any) =>
@@ -171,6 +178,19 @@ const isOrderItemRemoved = (i: any) =>
   Number(i?.quantity) === 0 ||
   i?.properties?._is_removed === true ||
   i?.properties?._is_removed === "true"
+
+const isOrderItemNew = (i: any) =>
+  i?.is_new === true ||
+  i?.properties?._is_new === true ||
+  i?.properties?._is_new === "true"
+
+// Get counts of new and removed items for an order
+const getItemChangeCounts = (order: Order) => {
+  const items = getAllOrderItems(order)
+  const newCount = items.filter(isOrderItemNew).length
+  const removedCount = items.filter(isOrderItemRemoved).length
+  return { newCount, removedCount, hasChanges: newCount > 0 || removedCount > 0 }
+}
 
 const isOrderItemFulfilled = (i: any) => {
   const statusCandidates = [
@@ -792,7 +812,43 @@ const OrdersManagement: React.FC = () => {
           courier_name: order.users?.name || null,
         })) || []
 
-      setOrders(ordersWithCourierNames)
+      // Fetch order_items for all orders to check for new/removed items
+      if (ordersWithCourierNames.length > 0) {
+        const orderIds = ordersWithCourierNames.map((o: any) => o.id)
+        try {
+          const { data: allOrderItems, error: itemsError } = await supabase
+            .from('order_items')
+            .select('id, order_id, title, is_new, is_removed, quantity')
+            .in('order_id', orderIds)
+
+          if (!itemsError && allOrderItems) {
+            // Group items by order_id
+            const itemsByOrderId = new Map<string, any[]>()
+            allOrderItems.forEach((item: any) => {
+              const orderId = item.order_id
+              if (!itemsByOrderId.has(orderId)) {
+                itemsByOrderId.set(orderId, [])
+              }
+              itemsByOrderId.get(orderId)!.push(item)
+            })
+
+            // Attach order_items to each order
+            const ordersWithItems = ordersWithCourierNames.map((order: any) => ({
+              ...order,
+              order_items: itemsByOrderId.get(order.id) || [],
+            }))
+
+            setOrders(ordersWithItems)
+          } else {
+            setOrders(ordersWithCourierNames)
+          }
+        } catch (itemsErr) {
+          console.warn('Error fetching order items:', itemsErr)
+          setOrders(ordersWithCourierNames)
+        }
+      } else {
+        setOrders(ordersWithCourierNames)
+      }
       
       // Extract unique tags from all orders (use original data, not filtered)
       const allTags = new Set<string>()
@@ -2206,6 +2262,26 @@ const OrdersManagement: React.FC = () => {
               <span>تم طرح {unfulfilledTotal.toFixed(2)} ج.م لمنتجات غير منفذة</span>
             </div>
           )}
+          {(() => {
+            const { newCount, removedCount, hasChanges } = getItemChangeCounts(order)
+            if (!hasChanges) return null
+            return (
+              <div className="col-span-2 space-y-1.5">
+                {newCount > 0 && (
+                  <div className="text-xs font-bold bg-green-100 text-green-700 border-2 border-green-400 rounded-lg px-2 py-1.5 flex items-center gap-2">
+                    <span className="text-base font-bold">+</span>
+                    <span>{newCount} Item{newCount > 1 ? 's' : ''} Added in Shopify</span>
+                  </div>
+                )}
+                {removedCount > 0 && (
+                  <div className="text-xs font-bold bg-red-100 text-red-700 border-2 border-red-400 rounded-lg px-2 py-1.5 flex items-center gap-2">
+                    <span className="text-base font-bold">-</span>
+                    <span>{removedCount} Item{removedCount > 1 ? 's' : ''} Removed from Shopify</span>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
           <div className="flex items-center gap-2">
             <UserCheck className="w-4 h-4 text-gray-400" />
             <span className={`${assigned ? "text-green-700 font-medium" : "text-gray-900"}`}>
@@ -4126,10 +4202,32 @@ const OrdersManagement: React.FC = () => {
                             } catch (e) {
                               // Silently handle errors
                             }
+                            
+                            // Get new/removed item counts
+                            const { newCount, removedCount, hasChanges } = getItemChangeCounts(order)
+                            
                             return (
-                              <span className="text-sm text-gray-900">
-                                {itemCount > 0 ? `${itemCount} item${itemCount > 1 ? 's' : ''}` : '0 items'}
-                              </span>
+                              <div className="space-y-1">
+                                <span className="text-sm text-gray-900">
+                                  {itemCount > 0 ? `${itemCount} item${itemCount > 1 ? 's' : ''}` : '0 items'}
+                                </span>
+                                {hasChanges && (
+                                  <div className="flex flex-col gap-1">
+                                    {newCount > 0 && (
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-green-100 text-green-700 border border-green-300">
+                                        <span>+{newCount}</span>
+                                        <span>Added</span>
+                                      </span>
+                                    )}
+                                    {removedCount > 0 && (
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700 border border-red-300">
+                                        <span>-{removedCount}</span>
+                                        <span>Removed</span>
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
                             )
                           })()}
                         </td>

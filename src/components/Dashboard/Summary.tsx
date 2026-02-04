@@ -1214,7 +1214,6 @@ const Summary: React.FC = () => {
   }
 
   // Enhanced: Only show the relevant sub-payment and amount for each payment method in the modal
-  const scrollLockRef = useRef(0)
   const isModalOpenRef = useRef(false)
   const lastModalTitleRef = useRef("")
 
@@ -4263,14 +4262,10 @@ const Summary: React.FC = () => {
                 // Filter based on courier status
                 const filteredMethods = paymentMethods.filter(m => isCourier ? m.showForCourier : true)
 
-                // Sort: non-zero first, then zeros
-                const sortedMethods = [...filteredMethods].sort((a, b) => {
-                  if (a.count > 0 && b.count === 0) return -1
-                  if (a.count === 0 && b.count > 0) return 1
-                  return 0
-                })
+                // Filter out methods with no payments (count = 0)
+                const sortedMethods = filteredMethods.filter(m => m.count > 0)
 
-                const colorMap: Record<string, { bg: string; border: string; icon: string; text: string; amount: string }> = {
+                const colorMap: Record<string, { bg: (hasOrders: boolean) => string; border: (hasOrders: boolean) => string; icon: (hasOrders: boolean) => string; text: (hasOrders: boolean) => string; amount: (hasOrders: boolean) => string }> = {
                   blue: {
                     bg: (hasOrders: boolean) => hasOrders ? "bg-blue-50" : "bg-gray-50",
                     border: (hasOrders: boolean) => hasOrders ? "border-blue-200" : "border-gray-200",
@@ -4349,51 +4344,58 @@ const Summary: React.FC = () => {
                   </div>
                 )
               })()}
-              {/* Electronic Payments Row */}
-              <div className={`grid ${isCourier ? "grid-cols-2 gap-1.5" : "grid-cols-1 sm:grid-cols-2 gap-2"}`}>
-                {/* Valu */}
-                <div
-                  className={`${metrics.valuOrders.count > 0 ? "bg-indigo-50 border-indigo-200" : "bg-gray-50 border-gray-200 opacity-60"} border rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
-                    isCourier ? "p-2" : "p-3"
-                  }`}
-                  onClick={() => openOrders(metrics.valuOrders.orders, "طلبات فاليو", 'valu')}
-                >
-                  <div className={`flex items-center gap-2 ${isCourier ? "mb-1.5" : "mb-2"}`}>
-                    <Wallet className={`${metrics.valuOrders.count > 0 ? "text-indigo-600" : "text-gray-400"} ${isCourier ? "w-3 h-3" : "w-5 h-5"}`} />
-                    <h4 className={`font-semibold ${metrics.valuOrders.count > 0 ? "text-indigo-900" : "text-gray-500"} ${isCourier ? "text-xs" : "text-sm"}`}>
-                      فاليو
-                    </h4>
-                  </div>
-                  <div className="space-y-0.5">
-                    <p className={`font-bold ${metrics.valuOrders.count > 0 ? "text-indigo-900" : "text-gray-500"} ${isCourier ? "text-base" : "text-xl"}`}>
-                      {metrics.valuOrders.count}
-                    </p>
-                    <p className={`font-semibold ${metrics.valuOrders.count > 0 ? "text-indigo-700" : "text-gray-400"} ${isCourier ? "text-xs" : "text-sm"}`}>
-                      {metrics.valuOrders.amount.toFixed(0)} ج.م
-                    </p>
-                  </div>
-                </div>
+              {/* Electronic Payments Row - Only show if there are payments */}
+              {(metrics.valuOrders.count > 0 || metrics.paymobOrders.count > 0) && (
+                <div className={`grid ${isCourier ? "grid-cols-2 gap-1.5" : "grid-cols-1 sm:grid-cols-2 gap-2"}`}>
+                  {/* Valu */}
+                  {metrics.valuOrders.count > 0 && (
+                    <div
+                      className={`bg-indigo-50 border-indigo-200 border rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
+                        isCourier ? "p-2" : "p-3"
+                      }`}
+                      onClick={() => openOrders(metrics.valuOrders.orders, "طلبات فاليو", 'valu')}
+                    >
+                      <div className={`flex items-center gap-2 ${isCourier ? "mb-1.5" : "mb-2"}`}>
+                        <Wallet className={`text-indigo-600 ${isCourier ? "w-3 h-3" : "w-5 h-5"}`} />
+                        <h4 className={`font-semibold text-indigo-900 ${isCourier ? "text-xs" : "text-sm"}`}>
+                          فاليو
+                        </h4>
+                      </div>
+                      <div className="space-y-0.5">
+                        <p className={`font-bold text-indigo-900 ${isCourier ? "text-base" : "text-xl"}`}>
+                          {metrics.valuOrders.count}
+                        </p>
+                        <p className={`font-semibold text-indigo-700 ${isCourier ? "text-xs" : "text-sm"}`}>
+                          {metrics.valuOrders.amount.toFixed(0)} ج.م
+                        </p>
+                      </div>
+                    </div>
+                  )}
 
-                {/* Paymob */}
-                <div
-                  className={`${metrics.paymobOrders.count > 0 ? "bg-blue-50 border-blue-200" : "bg-gray-50 border-gray-200 opacity-60"} border rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
-                    isCourier ? "p-2" : "p-3"
-                  }`}
-                  onClick={() => openOrders(metrics.paymobOrders.orders, "طلبات paymob", 'paymob')}
-                >
-                  <div className={`flex items-center gap-2 ${isCourier ? "mb-1.5" : "mb-2"}`}>
-                    <CreditCard className={`${metrics.paymobOrders.count > 0 ? "text-blue-600" : "text-gray-400"} ${isCourier ? "w-3 h-3" : "w-5 h-5"}`} />
-                    <h4 className={`font-semibold ${metrics.paymobOrders.count > 0 ? "text-blue-900" : "text-gray-500"} ${isCourier ? "text-xs" : "text-sm"}`}>Paymob</h4>
-                  </div>
-                  <div className="space-y-0.5">
-                    <p className={`font-bold ${metrics.paymobOrders.count > 0 ? "text-blue-900" : "text-gray-500"} ${isCourier ? "text-base" : "text-xl"}`}>
-                      {metrics.paymobOrders.count}
-                    </p>
-                    <p className={`font-semibold ${metrics.paymobOrders.count > 0 ? "text-blue-700" : "text-gray-400"} ${isCourier ? "text-xs" : "text-sm"}`}>
-                      {metrics.paymobOrders.amount.toFixed(0)} ج.م
-                    </p>
-                  </div>
+                  {/* Paymob */}
+                  {metrics.paymobOrders.count > 0 && (
+                    <div
+                      className={`bg-blue-50 border-blue-200 border rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
+                        isCourier ? "p-2" : "p-3"
+                      }`}
+                      onClick={() => openOrders(metrics.paymobOrders.orders, "طلبات paymob", 'paymob')}
+                    >
+                      <div className={`flex items-center gap-2 ${isCourier ? "mb-1.5" : "mb-2"}`}>
+                        <CreditCard className={`text-blue-600 ${isCourier ? "w-3 h-3" : "w-5 h-5"}`} />
+                        <h4 className={`font-semibold text-blue-900 ${isCourier ? "text-xs" : "text-sm"}`}>Paymob</h4>
+                      </div>
+                      <div className="space-y-0.5">
+                        <p className={`font-bold text-blue-900 ${isCourier ? "text-base" : "text-xl"}`}>
+                          {metrics.paymobOrders.count}
+                        </p>
+                        <p className={`font-semibold text-blue-700 ${isCourier ? "text-xs" : "text-sm"}`}>
+                          {metrics.paymobOrders.amount.toFixed(0)} ج.م
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
+              )}
 
                 {/* Other / Uncategorized - Only show if orders exist */}
                 {metrics.otherOrders.count > 0 && (
@@ -4560,7 +4562,6 @@ const Summary: React.FC = () => {
               </div>
             </div>
           </div>
-        </div>
 
         {/* Orders Modal - Mobile Optimized */}
         {selectedOrders.length > 0 && typeof document !== 'undefined' && createPortal(

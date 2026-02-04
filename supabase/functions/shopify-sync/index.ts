@@ -591,42 +591,56 @@ Deno.serve(async (req: Request) => {
         })
       }
 
-      // 2. Prepare items from Shopify
-      const itemsFromShopify = lineItems.map((item: any) => ({
-        shopify_line_item_id: item.id,
-        order_id: orderId,
-        product_id: item.product_id,
-        variant_id: item.variant_id,
-        title: item.title || '',
-        variant_title: item.variant_title,
-        quantity: item.quantity || 0,
-        price: parseFloat(item.price || 0),
-        total_discount: parseFloat(item.total_discount || 0),
-        sku: item.sku,
-        vendor: item.vendor,
-        product_type: item.product_type,
-        image_url: extractImageUrl(item),
-        image_alt: item.title || null,
-        properties: item.properties || null,
-        shopify_raw_data: item,
-        is_removed: item.quantity === 0 || item.fulfillment_status === 'removed' || (item.properties && item.properties._is_removed)
-      }))
+      // 2. Prepare ALL items from Shopify (including those with quantity 0 or removed)
+      // IMPORTANT: Include ALL items from Shopify to match exactly
+      const itemsFromShopify = lineItems.map((item: any) => {
+        const shopifyItemKey = String(item.id);
+        // An item is considered removed if quantity is 0 or fulfillment status is 'removed'
+        const isRemovedInShopify = item.quantity === 0 || item.fulfillment_status === 'removed' || (item.properties && item.properties._is_removed);
+        const isNewlyAdded = !existingItemsMap.has(shopifyItemKey) && !isRemovedInShopify;
+        
+        return {
+          shopify_line_item_id: item.id,
+          order_id: orderId,
+          product_id: item.product_id,
+          variant_id: item.variant_id,
+          title: item.title || '',
+          variant_title: item.variant_title,
+          quantity: item.quantity || 0, // Keep original quantity even if 0
+          price: parseFloat(item.price || 0),
+          total_discount: parseFloat(item.total_discount || 0),
+          sku: item.sku,
+          vendor: item.vendor,
+          product_type: item.product_type,
+          image_url: extractImageUrl(item),
+          image_alt: item.title || null,
+          properties: item.properties || null,
+          shopify_raw_data: item,
+          is_removed: isRemovedInShopify,
+          is_new: isNewlyAdded // Mark as newly added if it doesn't exist in DB
+        }
+      })
 
-      // 3. Find removed items
+      // 3. Find items that were in DB but are NOT in Shopify line_items anymore
+      // CRITICAL: These items were removed from Shopify and must be marked as removed
       const removedItems: any[] = []
       existingItemsMap.forEach((dbItem, key) => {
         const stillExistsInShopify = lineItems.some((li: any) => String(li.id) === String(dbItem.shopify_line_item_id))
         
-        if (dbItem.is_removed) {
-          removedItems.push({ ...dbItem, quantity: 0 })
-        } else if (dbItem.shopify_line_item_id && !stillExistsInShopify) {
+        if (dbItem.shopify_line_item_id && !stillExistsInShopify) {
+          // Item was in DB but is NOT in Shopify anymore - it was removed from Shopify
+          console.log(`🗑️ Item removed from Shopify: ${dbItem.title} (Shopify ID: ${key || 'N/A'})`)
           removedItems.push({
             ...dbItem,
             is_removed: true,
+            is_new: false, // Not new if it was removed
             quantity: 0,
             fulfillment_status: 'removed',
             properties: { ...(dbItem.properties || {}), _is_removed: true }
           })
+        } else if (dbItem.is_removed) {
+          // Already marked as removed, keep it
+          removedItems.push({ ...dbItem, quantity: 0, is_new: false })
         }
       })
 
@@ -643,13 +657,22 @@ Deno.serve(async (req: Request) => {
           finalItemsMap.set(key, {
             ...item,
             is_removed: true,
+            is_new: false, // Not new if it was manually removed
             quantity: 0,
             fulfillment_status: 'removed',
             properties: { ...(item.properties || {}), _is_removed: true },
             updated_at: new Date().toISOString()
           })
         } else {
-          finalItemsMap.set(key, item)
+          // If item exists in DB, it's not new
+          if (dbItem) {
+            finalItemsMap.set(key, {
+              ...item,
+              is_new: false // Existing item, not newly added
+            })
+          } else {
+            finalItemsMap.set(key, item)
+          }
         }
       })
       removedItems.forEach((item: any) => {
