@@ -744,12 +744,14 @@ Deno.serve(async (req: Request) => {
             });
           }
           
-          // CRITICAL: Track items that were added and then removed (quantity 0)
-          const wasAddedThenRemoved = isRemovedInShopify && existingItemsMap.has(shopifyItemKey);
-          if (wasAddedThenRemoved) {
-            console.log(`🗑️ Item was added then removed in Shopify: ${item.title} (Shopify ID: ${shopifyItemKey}, quantity: ${item.quantity})`)
+          // CRITICAL: If item is completely removed in Shopify, DO NOT include it in the system
+          // Items that are removed should not appear in the order at all
+          if (isRemovedInShopify) {
+            console.log(`🗑️ Item removed in Shopify - NOT including in system: ${item.title} (Shopify ID: ${shopifyItemKey}, quantity: ${item.quantity})`)
+            return null // Skip this item - don't add it to finalItemsMap
           }
           
+          // Only include active items (not removed)
           return {
             shopify_line_item_id: item.id,
             order_id: mainOrder.id, // Reference to main orders table
@@ -766,12 +768,12 @@ Deno.serve(async (req: Request) => {
             image_url: extractImageUrl(item),
             image_alt: item.title || null,
             shopify_raw_data: item,
-            is_removed: isRemovedInShopify, // Mark as removed if quantity is 0 or fulfillment_status is 'removed'
-            is_new: isNewlyAdded && !isRemovedInShopify, // Only mark as new if it's not removed
-          updated_at: new Date().toISOString()
-        }
-      })
-      .filter((item: any) => item !== null) // Filter out null items (removed items)
+            is_removed: false, // All items here are active (removed items were filtered out)
+            is_new: isNewlyAdded, // Only mark as new if it's not removed
+            updated_at: new Date().toISOString()
+          }
+        })
+        .filter((item: any) => item !== null) // CRITICAL: Remove null items (removed items)
 
         // 3. Find items that were in DB but are now GONE from Shopify line_items
         // CRITICAL: Check if items exist in Shopify's current line_items array
@@ -810,49 +812,36 @@ Deno.serve(async (req: Request) => {
         })
 
         // 4. Combine items
+        // CRITICAL: Only include active items - removed items have already been filtered out above
         const finalItemsMap = new Map()
         itemsFromShopify.forEach((item: any) => {
           const key = String(item.shopify_line_item_id)
           const dbItem = existingItemsMap.get(key)
           
-          // IMPORTANT: Preserve manually removed items (items that exist in Shopify but were manually marked as removed)
-          if (dbItem && dbItem.is_removed === true && item.quantity > 0 && !item.is_removed) {
-            // Item exists in Shopify but was manually removed in DB - preserve the removal
-            console.log(`🔒 Preserving manually removed item: ${dbItem.title} (Shopify ID: ${key})`)
+          // CRITICAL: All items in itemsFromShopify are active (removed items were filtered out)
+          // If item exists in DB, it's not new
+          if (dbItem) {
+            // CRITICAL: Always update price from Shopify, even for existing items
+            const priceChanged = Math.abs(parseFloat(dbItem.price || 0) - parseFloat(item.price || 0)) > 0.01
+            if (priceChanged) {
+              console.log(`💰 Price updated for item "${dbItem.title}": ${dbItem.price} → ${item.price}`)
+            }
             finalItemsMap.set(key, {
               ...item,
-              is_removed: true,
-              is_new: false, // Not new if it was manually removed
-              quantity: 0,
-              fulfillment_status: 'removed',
-              properties: { ...(item.properties || {}), _is_removed: true },
+              is_new: false, // Existing item, not newly added
+              // Ensure price is always from Shopify (source of truth)
+              price: parseFloat(item.price || 0),
+              is_removed: false, // All items here are active
               updated_at: new Date().toISOString()
             })
           } else {
-            // If item exists in DB, it's not new
-            if (dbItem) {
-              // CRITICAL: Always update price from Shopify, even for existing items
-              const priceChanged = Math.abs(parseFloat(dbItem.price || 0) - parseFloat(item.price || 0)) > 0.01
-              if (priceChanged) {
-                console.log(`💰 Price updated for item "${dbItem.title}": ${dbItem.price} → ${item.price}`)
-              }
-              finalItemsMap.set(key, {
-                ...item,
-                is_new: false, // Existing item, not newly added
-                // Ensure price is always from Shopify (source of truth)
-                price: parseFloat(item.price || 0),
-                updated_at: new Date().toISOString()
-              })
-            } else {
-              finalItemsMap.set(key, item)
-            }
+            finalItemsMap.set(key, {
+              ...item,
+              is_removed: false // All items here are active
+            })
           }
         })
-        removedItems.forEach((item: any) => {
-          if (!finalItemsMap.has(String(item.shopify_line_item_id))) {
-            finalItemsMap.set(String(item.shopify_line_item_id), item)
-          }
-        })
+        // CRITICAL: Do NOT add removedItems - items that are removed should not appear in the system
 
         const allItems = Array.from(finalItemsMap.values())
 
@@ -863,34 +852,46 @@ Deno.serve(async (req: Request) => {
           .eq('order_id', mainOrder.id)
 
         if (allItems.length > 0) {
-          // Prepare items for insertion - ensure is_removed is always a boolean
-          const itemsToInsert = allItems.map((i: any) => {
-            const { id, created_at, ...rest } = i
-            // CRITICAL: Ensure is_removed is explicitly set as boolean
-            const isRemoved = rest.is_removed === true || 
-                             rest.quantity === 0 ||
-                             rest.fulfillment_status === 'removed' ||
-                             (rest.properties && (rest.properties._is_removed === true || rest.properties._is_removed === 'true'))
+          // CRITICAL: Filter out any removed items before insertion
+          // Items that are removed should NOT appear in the system at all
+          const activeItems = allItems.filter((i: any) => {
+            const isRemoved = 
+              i.is_removed === true || 
+              i.quantity === 0 ||
+              i.fulfillment_status === 'removed' ||
+              (i.properties && (i.properties._is_removed === true || i.properties._is_removed === 'true')) ||
+              i.cancelled === true ||
+              (i.fulfillable_quantity !== undefined && i.fulfillable_quantity === 0 && i.quantity > 0);
+            
+            if (isRemoved) {
+              console.log(`🗑️ Filtering out removed item: "${i.title}" (Shopify ID: ${i.shopify_line_item_id})`);
+            }
+            
+            return !isRemoved; // Only include active items
+          });
+          
+          console.log(`📝 Filtered ${allItems.length} items down to ${activeItems.length} active items (removed ${allItems.length - activeItems.length} removed items)`);
+          
+          // Prepare items for insertion - only active items
+          const itemsToInsert = activeItems.map((i: any) => {
+            const { id, created_at, ...rest } = i;
             
             return {
               ...rest,
-              is_removed: isRemoved ? true : false, // Always boolean
-              quantity: rest.quantity || 0
-            }
-          })
+              is_removed: false, // All items here are active (removed items were filtered out)
+              quantity: rest.quantity || 0,
+              // CRITICAL: Always use price from Shopify (ensure it's a number)
+              price: parseFloat(rest.price || 0)
+            };
+          });
           
-          // Log removed items
-          const removedCount = itemsToInsert.filter((i: any) => i.is_removed).length
-          if (removedCount > 0) {
-            console.log(`📝 Inserting ${removedCount} removed items with is_removed=true:`)
-            itemsToInsert.filter((i: any) => i.is_removed).forEach((item: any) => {
-              console.log(`   🗑️  "${item.title}" - is_removed: ${item.is_removed}, quantity: ${item.quantity}`)
-            })
+          if (itemsToInsert.length > 0) {
+            await supabaseClient
+              .from('order_items')
+              .insert(itemsToInsert);
+            
+            console.log(`✅ Successfully inserted ${itemsToInsert.length} active items (${allItems.length - activeItems.length} removed items were excluded)`);
           }
-          
-          await supabaseClient
-            .from('order_items')
-            .insert(itemsToInsert)
         }
       }
     }

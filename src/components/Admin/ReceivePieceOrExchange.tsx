@@ -98,29 +98,38 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
         .from("orders")
         .select(`
           id, order_id, customer_name, address, mobile_number, total_order_fees,
-          receive_piece_or_exchange, assigned_courier_id, created_at, shopify_created_at,
+          receive_piece_or_exchange, assigned_courier_id, created_at, shopify_created_at, updated_at,
           users!orders_assigned_courier_id_fkey(name)
         `)
         .in("receive_piece_or_exchange", ["receive_piece", "exchange"])
 
-      // Apply date filter only if date range is specified
-      // Filter by shopify_created_at (original order creation date)
-      if (dateRange.from && dateRange.to) {
-        const fromDate = new Date(dateRange.from)
-        fromDate.setHours(0, 0, 0, 0)
-        query = query.gte("shopify_created_at", fromDate.toISOString())
+      // Apply date filter if at least one date is specified
+      // CRITICAL: Filter by updated_at (when the order was last modified, including when it was set to "تبديل" or "استلام قطعه")
+      // NOT by created_at, because we want to see orders that were marked on a specific day, not when they were originally created
+      if (dateRange.from || dateRange.to) {
+        // If "from" is set, filter from that date onwards
+        if (dateRange.from) {
+          const fromDate = new Date(dateRange.from)
+          fromDate.setHours(0, 0, 0, 0)
+          // Filter by updated_at - this reflects when the order was last modified (including when receive_piece_or_exchange was set)
+          query = query.gte("updated_at", fromDate.toISOString())
+        }
         
-        const toDate = new Date(dateRange.to)
-        toDate.setHours(23, 59, 59, 999)
-        query = query.lte("shopify_created_at", toDate.toISOString())
+        // If "to" is set, filter up to that date
+        if (dateRange.to) {
+          const toDate = new Date(dateRange.to)
+          toDate.setHours(23, 59, 59, 999)
+          // Filter by updated_at
+          query = query.lte("updated_at", toDate.toISOString())
+        }
       }
 
       const { data, error: fetchError } = await query
-        .order("created_at", { ascending: false })
+        .order("updated_at", { ascending: false })
 
       if (fetchError) throw fetchError
 
-      const mapped = (data || []).map((o: any) => ({
+      let mapped = (data || []).map((o: any) => ({
         ...o,
         courier_name: o.users?.name || null,
       }))

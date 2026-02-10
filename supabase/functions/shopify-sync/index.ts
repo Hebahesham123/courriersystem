@@ -848,6 +848,7 @@ Deno.serve(async (req: Request) => {
           updated_at: new Date().toISOString()
         }
       })
+      .filter((item: any) => item !== null) // CRITICAL: Remove null items (removed items)
 
       // 3. Find items that were in DB but are NOT in Shopify line_items anymore
       // CRITICAL: These items were completely removed from Shopify - do NOT include them
