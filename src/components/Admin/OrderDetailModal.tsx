@@ -2031,13 +2031,38 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                         </div>
                       ) : (
                         <div className="text-right">
-                          {/* CRITICAL: Always use Shopify's total (excludes removed items) */}
-                          <span>{order.currency || 'EGP'} {total.toFixed(2)}</span>
-                          {(fulfillmentTotals.removedTotal > 0 || fulfillmentTotals.unfulfilledTotal > 0) && (
-                            <p className="text-xs text-amber-700 font-semibold">
-                              بعد طرح غير منفذ/محذوف
-                            </p>
-                          )}
+                          {/* CRITICAL: If there's a partial payment, show unpaid amount (balance), otherwise show total */}
+                          {(() => {
+                            // CRITICAL: Check for partial payment - if balance > 0 AND paid > 0, it's a partial payment
+                            // This means: total = 8750, paid = 1000, balance = 7750 → show 7750 (unpaid amount)
+                            // We check balance and paid directly from order data, not just status flags
+                            const orderBalance = (order as any).balance || balance || 0
+                            const orderPaid = (order as any).total_paid || paid || 0
+                            const orderTotal = total || 0
+                            
+                            // Partial payment exists if: there's an unpaid amount (balance > 0) AND some payment was made (paid > 0)
+                            // AND the total is greater than the paid amount (meaning not fully paid)
+                            const hasPartialPayment = orderBalance > 0 && orderPaid > 0 && orderTotal > orderPaid
+                            const displayAmount = hasPartialPayment ? orderBalance : total
+                            const displayLabel = hasPartialPayment ? 'المبلغ المتبقي (غير مدفوع)' : 'المجموع'
+                            
+                            return (
+                              <>
+                                <span className="text-xs text-gray-600 block mb-1">{displayLabel}:</span>
+                                <span className="block font-bold text-lg">{order.currency || 'EGP'} {displayAmount.toFixed(2)}</span>
+                                {hasPartialPayment && (
+                                  <p className="text-xs text-blue-600 font-semibold mt-1">
+                                    مدفوع: {order.currency || 'EGP'} {orderPaid.toFixed(2)} | الإجمالي: {order.currency || 'EGP'} {orderTotal.toFixed(2)}
+                                  </p>
+                                )}
+                                {(fulfillmentTotals.removedTotal > 0 || fulfillmentTotals.unfulfilledTotal > 0) && !hasPartialPayment && (
+                                  <p className="text-xs text-amber-700 font-semibold">
+                                    بعد طرح غير منفذ/محذوف
+                                  </p>
+                                )}
+                              </>
+                            )
+                          })()}
                         </div>
                       )}
                     </div>

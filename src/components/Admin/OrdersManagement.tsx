@@ -514,6 +514,7 @@ const OrdersManagement: React.FC = () => {
           line_items, order_note, customer_note, notes, order_tags,
           shopify_created_at, shopify_cancelled_at, assigned_courier_id, original_courier_id, assigned_at, created_at, updated_at,
           archived, archived_at, collected_by, payment_sub_type, delivery_fee, partial_paid_amount, internal_comment, receive_piece_or_exchange,
+          balance, total_paid, shopify_raw_data,
           users!orders_assigned_courier_id_fkey(name)
         `,
         )
@@ -4124,14 +4125,37 @@ const OrdersManagement: React.FC = () => {
                             />
                           ) : (
                             <div className="flex flex-col">
-                              <span className={`text-sm font-semibold ${isCanceled ? "text-red-700 line-through" : "text-gray-900"}`}>
-                                {order.currency || 'EGP'} {(order.total_order_fees || 0).toFixed(2)}
-                              </span>
-                              {unfulfilledTotal > 0 && collectibleAmount < (order.total_order_fees || 0) && (
-                                <span className="text-[11px] text-amber-700 font-semibold">
-                                  طرح {unfulfilledTotal.toFixed(2)} ج.م لمنتجات غير منفذة
-                                </span>
-                              )}
+                              {(() => {
+                                // CRITICAL: If there's a partial payment, show unpaid amount (balance) instead of total
+                                const orderBalance = (order as any).balance || 0
+                                const orderPaid = (order as any).total_paid || 0
+                                const orderTotal = order.total_order_fees || 0
+                                
+                                // Partial payment exists if: there's an unpaid amount (balance > 0) AND some payment was made (paid > 0)
+                                // AND the total is greater than the paid amount (meaning not fully paid)
+                                const hasPartialPayment = orderBalance > 0 && orderPaid > 0 && orderTotal > orderPaid
+                                
+                                const displayAmount = hasPartialPayment ? orderBalance : orderTotal
+                                const displayLabel = hasPartialPayment ? 'غير مدفوع' : ''
+                                
+                                return (
+                                  <>
+                                    <span className={`text-sm font-semibold ${isCanceled ? "text-red-700 line-through" : "text-gray-900"}`}>
+                                      {order.currency || 'EGP'} {displayAmount.toFixed(2)}
+                                    </span>
+                                    {hasPartialPayment && (
+                                      <span className="text-[10px] text-blue-600 font-semibold">
+                                        {displayLabel} | مدفوع: {orderPaid.toFixed(2)} | الإجمالي: {orderTotal.toFixed(2)}
+                                      </span>
+                                    )}
+                                    {!hasPartialPayment && unfulfilledTotal > 0 && collectibleAmount < orderTotal && (
+                                      <span className="text-[11px] text-amber-700 font-semibold">
+                                        طرح {unfulfilledTotal.toFixed(2)} ج.م لمنتجات غير منفذة
+                                      </span>
+                                    )}
+                                  </>
+                                )
+                              })()}
                             </div>
                           )}
                         </td>

@@ -563,6 +563,40 @@ const OrdersList: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, selectedDate])
 
+  // Auto-refresh orders every 30 seconds to catch admin updates (like price changes)
+  useEffect(() => {
+    if (!user?.id) return
+
+    const refreshInterval = setInterval(() => {
+      // Silently refresh orders to catch admin updates (price changes, etc.)
+      fetchOrders(true, false)
+    }, 30000) // Refresh every 30 seconds
+
+    return () => clearInterval(refreshInterval)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, selectedDate])
+  
+  // Update selectedOrder when orders list changes (if modal is open)
+  // This ensures the modal shows the latest price when admin updates it
+  useEffect(() => {
+    if (modalOpen && selectedOrder) {
+      const updatedOrder = orders.find(o => o.id === selectedOrder.id)
+      if (updatedOrder) {
+        // Check if order was actually updated (different updated_at or total_order_fees)
+        const wasUpdated = 
+          updatedOrder.updated_at !== selectedOrder.updated_at ||
+          updatedOrder.total_order_fees !== selectedOrder.total_order_fees
+        
+        if (wasUpdated) {
+          // Order was updated, sync selectedOrder to show latest data (including admin price changes)
+          setSelectedOrder(updatedOrder)
+          selectedOrderRef.current = updatedOrder
+        }
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orders, modalOpen])
+
   // If we land on /courier/orders/:orderId, auto-open that order (fallback position near top)
   useEffect(() => {
     if (!routeOrderId || orders.length === 0) return
@@ -1735,7 +1769,19 @@ const OrdersList: React.FC = () => {
       return partialAmount > 0 ? partialAmount : 0
     }
 
-    return order.total_order_fees
+    // CRITICAL: If there's a partial payment from Shopify, return unpaid amount (balance) instead of total
+    const orderBalance = (order as any).balance || 0
+    const orderPaid = (order as any).total_paid || 0
+    // Check for partial payment: balance > 0 (unpaid) AND paid > 0 (some payment made)
+    // Also check payment_status in case financial_status is not set correctly
+    const hasPartialPayment = orderBalance > 0 && orderPaid > 0 && (
+      order.financial_status === 'partial' || 
+      order.payment_status === 'partial' ||
+      (order.financial_status !== 'paid' && orderPaid > 0 && orderBalance > 0)
+    )
+    
+    // If there's a partial payment, show the unpaid amount (balance), otherwise show total
+    return hasPartialPayment ? orderBalance : order.total_order_fees
   }
 
   const getOrderDiscountInfo = (order: Order) => {
@@ -2904,9 +2950,30 @@ const deleteDuplicatedOrder = async (order: Order) => {
                 const lineTotal = Math.max(0, price * qty - discount)
                 return sum + lineTotal
               }, 0)
-              const adminTotal = Number.parseFloat(String(order.total_order_fees ?? 0)) || 0
-              const hasAdminTotal = adminTotal > 0
-              const collectibleAmount = hasAdminTotal ? adminTotal : Math.max(0, fulfilledTotal)
+              // CRITICAL: Always use total_order_fees if it exists (admin may have edited it)
+              // This ensures courier sees the price that admin set, even if it's 0
+              const adminTotal = order.total_order_fees !== null && order.total_order_fees !== undefined 
+                ? Number.parseFloat(String(order.total_order_fees)) 
+                : 0
+              const hasAdminTotal = adminTotal !== null && adminTotal !== undefined
+              
+              // CRITICAL: If there's a partial payment from Shopify, show unpaid amount (balance) instead of total
+              // balance = total_outstanding from Shopify (the unpaid amount)
+              const orderBalance = (order as any).balance || 0
+              const orderPaid = (order as any).total_paid || 0
+              // Check for partial payment: balance > 0 (unpaid) AND paid > 0 (some payment made)
+              // Also check payment_status in case financial_status is not set correctly
+              const hasPartialPayment = orderBalance > 0 && orderPaid > 0 && (
+                order.financial_status === 'partial' || 
+                order.payment_status === 'partial' ||
+                (order.financial_status !== 'paid' && orderPaid > 0 && orderBalance > 0)
+              )
+              
+              // If admin has set a total (even if 0), use it. Otherwise calculate from items
+              let baseAmount = hasAdminTotal ? adminTotal : Math.max(0, fulfilledTotal)
+              
+              // If there's a partial payment, show the unpaid amount (balance) instead of total
+              const collectibleAmount = hasPartialPayment ? orderBalance : baseAmount
               
               // Calculate amount before discount (subtotal)
               const subtotalBeforeDiscount = fulfilledItems.reduce((sum: number, i: any) => {
@@ -3314,6 +3381,11 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         {!hasAdminTotal && unfulfilledTotal > 0 && (
                           <p className="text-[11px] text-amber-700 font-semibold mt-1">
                             طرح {unfulfilledTotal.toFixed(0)} ج.م لمنتجات غير منفذة
+                          </p>
+                        )}
+                        {hasAdminTotal && (
+                          <p className="text-[10px] text-gray-500 mt-1">
+                            المبلغ المحدد من الإدارة
                           </p>
                         )}
                       </div>
@@ -4219,8 +4291,12 @@ const deleteDuplicatedOrder = async (order: Order) => {
                       )}
                       {(() => {
                         const { fulfilledTotal } = getFulfillmentTotals(selectedOrder)
-                        const adminTotal = Number.parseFloat(String(selectedOrder.total_order_fees ?? 0)) || 0
-                        const hasAdminTotal = adminTotal > 0
+                        // CRITICAL: Always use total_order_fees if it exists (admin may have edited it, even if 0)
+                        const adminTotal = selectedOrder.total_order_fees !== null && selectedOrder.total_order_fees !== undefined 
+                          ? Number.parseFloat(String(selectedOrder.total_order_fees)) 
+                          : 0
+                        const hasAdminTotal = selectedOrder.total_order_fees !== null && selectedOrder.total_order_fees !== undefined
+                        // If admin has set a total (even if 0), use it. Otherwise calculate from items
                         const collectibleAmount = hasAdminTotal ? adminTotal : Math.max(0, fulfilledTotal)
                         return (
                           <div className="flex justify-between items-center pt-1.5 sm:pt-2 mt-1.5 sm:mt-2 border-t-2 border-gray-300 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg px-3 py-2.5">
@@ -4407,16 +4483,43 @@ const deleteDuplicatedOrder = async (order: Order) => {
                       )}
                       {(() => {
                         const { fulfilledTotal } = getFulfillmentTotals(selectedOrder)
-                        const adminTotal = Number.parseFloat(String(selectedOrder.total_order_fees ?? 0)) || 0
-                        const hasAdminTotal = adminTotal > 0
-                        const collectibleAmount = hasAdminTotal ? adminTotal : Math.max(0, fulfilledTotal)
+                        // CRITICAL: Always use total_order_fees if it exists (admin may have edited it, even if 0)
+                        const adminTotal = selectedOrder.total_order_fees !== null && selectedOrder.total_order_fees !== undefined 
+                          ? Number.parseFloat(String(selectedOrder.total_order_fees)) 
+                          : 0
+                        const hasAdminTotal = selectedOrder.total_order_fees !== null && selectedOrder.total_order_fees !== undefined
+                        
+                        // CRITICAL: If there's a partial payment from Shopify, show unpaid amount (balance) instead of total
+                        const orderBalance = (selectedOrder as any).balance || 0
+                        const orderPaid = (selectedOrder as any).total_paid || 0
+                        // Check for partial payment: balance > 0 (unpaid) AND paid > 0 (some payment made)
+                        // Also check payment_status in case financial_status is not set correctly
+                        const hasPartialPayment = orderBalance > 0 && orderPaid > 0 && (
+                          selectedOrder.financial_status === 'partial' || 
+                          selectedOrder.payment_status === 'partial' ||
+                          (selectedOrder.financial_status !== 'paid' && orderPaid > 0 && orderBalance > 0)
+                        )
+                        
+                        // If admin has set a total (even if 0), use it. Otherwise calculate from items
+                        let baseAmount = hasAdminTotal ? adminTotal : Math.max(0, fulfilledTotal)
+                        
+                        // If there's a partial payment, show the unpaid amount (balance) instead of total
+                        const collectibleAmount = hasPartialPayment ? orderBalance : baseAmount
+                        
                         return (
                           <div className="border-t-2 border-gray-300 pt-3 mt-3 flex justify-between items-center bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg px-3 py-2.5">
-                            <span className="text-xs sm:text-sm font-bold text-green-700">المبلغ للتحصيل:</span>
+                            <span className="text-xs sm:text-sm font-bold text-green-700">
+                              {hasPartialPayment ? 'المبلغ المتبقي (غير مدفوع):' : 'المبلغ للتحصيل:'}
+                            </span>
                             <div className="text-right">
                               <span className="block text-base sm:text-xl font-bold text-green-800">
                                 {collectibleAmount.toFixed(2)} ج.م
                               </span>
+                              {hasPartialPayment && (
+                                <p className="text-[10px] sm:text-xs text-blue-600 font-semibold mt-1">
+                                  مدفوع: {orderPaid.toFixed(2)} ج.م | الإجمالي: {baseAmount.toFixed(2)} ج.م
+                                </p>
+                              )}
                             </div>
                           </div>
                         )
