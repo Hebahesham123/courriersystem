@@ -117,3 +117,4 @@ See `ENV_SETUP_GUIDE.md` for detailed instructions with screenshots and troubles
 - Store URL: Your Shopify store name (e.g., `your-store.myshopify.com`)
 - Access Token: Shopify Admin → Settings → Apps → Develop apps → API credentials
 
+

@@ -236,6 +236,7 @@ const OrdersList: React.FC = () => {
   const [phoneOptionsOpen, setPhoneOptionsOpen] = useState(false)
   const [phonePosition, setPhonePosition] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
   const [selectedPhoneNumber, setSelectedPhoneNumber] = useState<string>("")
+  const selectedPhoneNumberRef = useRef<string>("")
   const [selectedImage, setSelectedImage] = useState<string | null>(null)
   const [imageModalOpen, setImageModalOpen] = useState(false)
   const [imageClickPosition, setImageClickPosition] = useState<{ x: number; y: number } | null>(null)
@@ -1244,6 +1245,7 @@ const OrdersList: React.FC = () => {
 
   const handlePhoneClick = (phoneNumber: string, sourceEvent?: React.MouseEvent) => {
     setSelectedPhoneNumber(phoneNumber)
+    selectedPhoneNumberRef.current = phoneNumber // Store in ref for immediate access
     if (typeof window !== 'undefined' && sourceEvent?.currentTarget) {
       const el = sourceEvent.currentTarget as HTMLElement
       const rect = el.getBoundingClientRect()
@@ -1259,13 +1261,27 @@ const OrdersList: React.FC = () => {
     setPhoneOptionsOpen(true)
   }
 
-  const handlePhoneCall = () => {
-    window.location.href = `tel:${selectedPhoneNumber}`
+  const handlePhoneCall = (phoneNumber?: string) => {
+    // Use ref first (most reliable), then parameter, then state as fallback
+    const numberToCall = phoneNumber || selectedPhoneNumberRef.current || selectedPhoneNumber
+    if (!numberToCall) {
+      console.error('No phone number available to call')
+      setPhoneOptionsOpen(false)
+      return
+    }
+    window.location.href = `tel:${numberToCall}`
     setPhoneOptionsOpen(false)
   }
 
-  const handleWhatsApp = () => {
-    const cleanNumber = selectedPhoneNumber.replace(/\D/g, "")
+  const handleWhatsApp = (phoneNumber?: string) => {
+    // Use ref first (most reliable), then parameter, then state as fallback
+    const numberToUse = phoneNumber || selectedPhoneNumberRef.current || selectedPhoneNumber
+    if (!numberToUse) {
+      console.error('No phone number available for WhatsApp')
+      setPhoneOptionsOpen(false)
+      return
+    }
+    const cleanNumber = numberToUse.replace(/\D/g, "")
     const whatsappNumber = cleanNumber.startsWith("20") ? cleanNumber : `20${cleanNumber}`
     window.open(`https://wa.me/${whatsappNumber}`, "_blank")
     setPhoneOptionsOpen(false)
@@ -3583,7 +3599,8 @@ const deleteDuplicatedOrder = async (order: Order) => {
                     onClick={(e) => {
                       e.preventDefault()
                       e.stopPropagation()
-                      handlePhoneCall()
+                      // Pass the phone number directly from ref to ensure correctness
+                      handlePhoneCall(selectedPhoneNumberRef.current || selectedPhoneNumber)
                     }}
                     className="w-full flex items-center justify-center gap-3 bg-green-600 hover:bg-green-700 text-white font-medium py-3 px-4 rounded-lg transition-colors active:scale-95"
                   >
@@ -3595,7 +3612,8 @@ const deleteDuplicatedOrder = async (order: Order) => {
                     onClick={(e) => {
                       e.preventDefault()
                       e.stopPropagation()
-                      handleWhatsApp()
+                      // Pass the phone number directly from ref to ensure correctness
+                      handleWhatsApp(selectedPhoneNumberRef.current || selectedPhoneNumber)
                     }}
                     className="w-full flex items-center justify-center gap-3 bg-green-500 hover:bg-green-600 text-white font-medium py-3 px-4 rounded-lg transition-colors active:scale-95"
                   >

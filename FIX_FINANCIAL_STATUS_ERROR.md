@@ -88,3 +88,4 @@ GROUP BY financial_status;
 
 If the second query returns no rows, the fix worked! ✅
 
+

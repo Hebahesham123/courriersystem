@@ -18,3 +18,4 @@ CREATE INDEX IF NOT EXISTS idx_orders_base_order_id ON orders(base_order_id);
 COMMENT ON COLUMN orders.base_order_id IS 'References the original base order for date-suffixed assignment orders. NULL means this is a base order that syncs with Shopify.';
 
 
+

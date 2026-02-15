@@ -52,3 +52,4 @@ WHERE payment_method IS NOT NULL
 GROUP BY payment_method 
 ORDER BY count DESC;
 
+

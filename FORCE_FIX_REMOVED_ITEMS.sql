@@ -49,3 +49,4 @@ WHERE shopify_raw_data IS NOT NULL
   ) > 0.01
 LIMIT 20;
 
+

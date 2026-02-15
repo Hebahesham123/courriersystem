@@ -238,3 +238,4 @@ LIMIT 50;
 - The sync includes ALL items from Shopify, even if quantity is 0
 - Items are sorted with removed items at the bottom in the UI
 
+

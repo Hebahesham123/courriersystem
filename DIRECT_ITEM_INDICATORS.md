@@ -93,3 +93,4 @@ Products:
   - Added summary box at top of Products section
   - Shows clear "X Items ADDED" and "X Items REMOVED" messages
 
+

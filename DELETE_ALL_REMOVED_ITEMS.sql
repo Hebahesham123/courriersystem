@@ -12,3 +12,4 @@ SELECT COUNT(*) as remaining_removed_items
 FROM order_items 
 WHERE is_removed = true;
 
+

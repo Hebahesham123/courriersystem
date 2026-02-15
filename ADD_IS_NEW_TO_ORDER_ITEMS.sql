@@ -11,3 +11,4 @@ CREATE INDEX IF NOT EXISTS idx_order_items_is_new ON order_items(is_new) WHERE i
 -- Refresh schema cache after running: 
 -- Settings -> API -> Refresh Schema Cache
 
+

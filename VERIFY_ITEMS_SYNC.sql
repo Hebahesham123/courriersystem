@@ -70,3 +70,4 @@ GROUP BY o.id, o.order_id, o.shopify_order_id, o.updated_at
 ORDER BY o.updated_at DESC
 LIMIT 20;
 
+
