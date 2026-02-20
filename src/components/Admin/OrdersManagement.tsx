@@ -355,6 +355,10 @@ const OrdersManagement: React.FC = () => {
     payment: "",
     orderId: "",
   })
+
+  // Pagination: show 50 orders per page; selection persists across pages
+  const PAGE_SIZE = 50
+  const [currentPage, setCurrentPage] = useState(0)
   
   // Get all unique tags from orders for filtering
   const [availableTags, setAvailableTags] = useState<string[]>([])
@@ -435,6 +439,7 @@ const OrdersManagement: React.FC = () => {
   
   // Fetch orders and couriers when dependencies change (using debounced values)
   useEffect(() => {
+    setCurrentPage(0) // Reset to first page when filters/view change
     // Only show full loading on initial load, otherwise use subtle refresh indicator
     fetchOrders(false, isInitialLoad)
     if (isInitialLoad) {
@@ -719,10 +724,14 @@ const OrdersManagement: React.FC = () => {
           return activeFilters.fulfillmentStatuses.some(filterStatus => {
             const normalizedFilterStatus = filterStatus.toLowerCase().trim()
             
-            // Handle "unfulfilled" filter explicitly - must NOT be fulfilled AND NOT canceled
+            // Handle "unfulfilled" filter explicitly - must NOT be fulfilled, NOT canceled, and NOT assigned
             if (normalizedFilterStatus === 'unfulfilled') {
               // Canceled orders already excluded above, but double-check for safety
               if (isCanceled) return false
+              
+              // Exclude assigned orders: unfulfilled filter shows only unassigned unfulfilled orders
+              const isAssigned = order.assigned_courier_id != null && order.assigned_courier_id !== ''
+              if (isAssigned) return false
               
               // Define fulfilled values
               const fulfilledValues = ['fulfilled', 'success', 'complete', 'completed']
@@ -1909,11 +1918,19 @@ const OrdersManagement: React.FC = () => {
       : <ChevronDown className="w-3 h-3 text-gray-600" />
   }
 
+  // Pagination: only the current page is shown; selection is by ID so it persists across pages
+  const displayedOrders = orders.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE)
+  const totalPages = Math.max(1, Math.ceil(orders.length / PAGE_SIZE))
+  const canNextPage = currentPage < totalPages - 1
+  const canPrevPage = currentPage > 0
+
   const toggleAllOrders = () => {
-    if (selectedOrders.length === orders.length) {
-      setSelectedOrders([])
+    const displayedIds = displayedOrders.map((o) => o.id)
+    const allDisplayedSelected = displayedIds.length > 0 && displayedIds.every((id) => selectedOrders.includes(id))
+    if (allDisplayedSelected) {
+      setSelectedOrders((prev) => prev.filter((id) => !displayedIds.includes(id)))
     } else {
-      setSelectedOrders(orders.map((order) => order.id))
+      setSelectedOrders((prev) => [...new Set([...prev, ...displayedIds])])
     }
   }
 
@@ -2716,7 +2733,7 @@ const OrdersManagement: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
       {/* Custom CSS for always visible scrollbars */}
       <style>{`
         .scrollbar-always {
@@ -2745,8 +2762,8 @@ const OrdersManagement: React.FC = () => {
       `}</style>
 
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 py-2">
+      <div className="bg-white border-b border-gray-200 flex-shrink-0 z-10">
+        <div className="w-full px-4 py-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
@@ -2791,7 +2808,7 @@ const OrdersManagement: React.FC = () => {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 py-3">
+      <div className="flex-1 flex flex-col min-h-0 w-full px-4 py-3">
         {/* Shopify-style Filter Tabs */}
         <div className="bg-white rounded-lg border border-gray-200 mb-2">
           <div className="flex items-center justify-between px-3 py-1.5 border-b border-gray-200">
@@ -3870,25 +3887,60 @@ const OrdersManagement: React.FC = () => {
           </div>
         )}
 
-        {/* Orders Display */}
+        {/* Orders Display - fills remaining space on desktop */}
+        <div className="flex-1 flex flex-col min-h-0">
         {isMobile ? (
           /* Mobile Card Layout */
-          <div className="space-y-4">
-            {orders.map((order) => (
+          <div className="space-y-4 overflow-auto">
+            {displayedOrders.map((order) => (
               <MobileOrderCard key={order.id} order={order} />
             ))}
+            {/* Pagination on mobile */}
+            {orders.length > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-3 sticky bottom-0 py-3 px-4 bg-gray-50 border-t border-gray-200 rounded-b-xl">
+                <span className="text-sm text-gray-600">
+                  {currentPage * PAGE_SIZE + 1}-{Math.min((currentPage + 1) * PAGE_SIZE, orders.length)} من {orders.length}
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
+                    disabled={!canPrevPage}
+                    className="px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-300 bg-white text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    السابق
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages - 1, p + 1))}
+                    disabled={!canNextPage}
+                    className="px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-300 bg-white text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    التالي 50
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         ) : (
-          /* Desktop Table Layout with Sticky Columns and Always Visible Scrollbars */
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="relative overflow-x-scroll overflow-y-auto max-h-[60vh] scrollbar-always">
+          /* Desktop Table Layout - full height, no box */
+          <div className="flex-1 flex flex-col min-h-0 bg-white overflow-hidden">
+            <div className="flex-1 min-h-0 relative overflow-x-auto overflow-y-auto scrollbar-always">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50 sticky top-0 z-10">
                   <tr>
                     <th className="sticky left-0 z-20 bg-gray-50 px-3 py-2 text-right border-r border-gray-200">
                       <input
                         type="checkbox"
-                        checked={selectedOrders.length === orders.length && orders.length > 0}
+                        ref={(el) => {
+                          if (el) {
+                            const displayedIds = displayedOrders.map((o) => o.id)
+                            const allDisplayedSelected = displayedIds.length > 0 && displayedIds.every((id) => selectedOrders.includes(id))
+                            const someDisplayedSelected = displayedIds.some((id) => selectedOrders.includes(id))
+                            el.indeterminate = someDisplayedSelected && !allDisplayedSelected
+                          }
+                        }}
+                        checked={displayedOrders.length > 0 && displayedOrders.every((o) => selectedOrders.includes(o.id))}
                         onChange={toggleAllOrders}
                         className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-4 h-4"
                       />
@@ -3949,7 +4001,7 @@ const OrdersManagement: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {orders.map((order) => {
+                  {displayedOrders.map((order) => {
                     const edited = orderEdits[order.id] || {}
                     const isEditing = editingOrder === order.id
                     const assigned = isOrderAssigned(order)
@@ -4551,6 +4603,35 @@ const OrdersManagement: React.FC = () => {
                 </tbody>
               </table>
             </div>
+            {/* Pagination: 50 per page; selection persists across pages */}
+            {orders.length > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 px-4 py-3 bg-gray-50">
+                <span className="text-sm text-gray-600">
+                  عرض {currentPage * PAGE_SIZE + 1}-{Math.min((currentPage + 1) * PAGE_SIZE, orders.length)} من {orders.length}
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
+                    disabled={!canPrevPage}
+                    className="px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    السابق
+                  </button>
+                  <span className="text-sm text-gray-600 px-2">
+                    صفحة {currentPage + 1} من {totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages - 1, p + 1))}
+                    disabled={!canNextPage}
+                    className="px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    التالي 50
+                  </button>
+                </div>
+              </div>
+            )}
             {orders.length === 0 && (
               <div className="text-center py-16">
                 <div className="space-y-4">
@@ -4572,6 +4653,7 @@ const OrdersManagement: React.FC = () => {
             )}
           </div>
         )}
+        </div>
 
         {/* Expanded Edit Modal */}
         {expandedField && (
