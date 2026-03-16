@@ -302,6 +302,7 @@ const OrdersManagement: React.FC = () => {
   const [notesPopupOrderId, setNotesPopupOrderId] = useState<string | null>(null)
   const [notesPopupPosition, setNotesPopupPosition] = useState<{ top: number; left: number } | null>(null)
   const [showReceivePieceOrExchange, setShowReceivePieceOrExchange] = useState(false)
+  const [showReceivePieceTypeModal, setShowReceivePieceTypeModal] = useState(false)
   const [duplicatingOrderId, setDuplicatingOrderId] = useState<string | null>(null)
 
   // Date range state - default to last 3 months
@@ -354,6 +355,7 @@ const OrdersManagement: React.FC = () => {
     mobile: "",
     payment: "",
     orderId: "",
+    dateType: "all" as "all" | "with_date" | "without_date", // Filter: orders with/without date suffix
   })
 
   // Pagination: show 50 orders per page; selection persists across pages
@@ -447,7 +449,7 @@ const OrdersManagement: React.FC = () => {
     }
     fetchCouriers()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewMode, debouncedDateRange.from, debouncedDateRange.to, debouncedFilters.couriers, debouncedFilters.statuses, debouncedFilters.paymentStatuses, debouncedFilters.fulfillmentStatuses, debouncedFilters.tags, debouncedSearch, sortField])
+  }, [viewMode, debouncedDateRange.from, debouncedDateRange.to, debouncedFilters.couriers, debouncedFilters.statuses, debouncedFilters.paymentStatuses, debouncedFilters.fulfillmentStatuses, debouncedFilters.tags, debouncedFilters.dateType, debouncedSearch, sortField])
 
   // Auto-hide messages after 5 seconds
   useEffect(() => {
@@ -519,7 +521,7 @@ const OrdersManagement: React.FC = () => {
           line_items, order_note, customer_note, notes, order_tags,
           shopify_created_at, shopify_cancelled_at, assigned_courier_id, original_courier_id, assigned_at, created_at, updated_at,
           archived, archived_at, collected_by, payment_sub_type, delivery_fee, partial_paid_amount, internal_comment, receive_piece_or_exchange,
-          balance, total_paid, shopify_raw_data,
+          balance, total_paid, shopify_raw_data, base_order_id,
           users!orders_assigned_courier_id_fkey(name)
         `,
         )
@@ -597,6 +599,13 @@ const OrdersManagement: React.FC = () => {
       if (activeFilters.mobile) query = query.ilike("mobile_number", `%${activeFilters.mobile}%`)
       if (activeFilters.payment) query = query.ilike("payment_method", `%${activeFilters.payment}%`)
       if (activeFilters.orderId) query = query.ilike("order_id", `%${activeFilters.orderId}%`)
+
+      // Apply date-suffix filter: orders with date (base_order_id not null) or without (base_order_id is null)
+      if (activeFilters.dateType === "with_date") {
+        query = query.not("base_order_id", "is", null)
+      } else if (activeFilters.dateType === "without_date") {
+        query = query.is("base_order_id", null)
+      }
       
       // Apply search query (searches in multiple fields including Shopify fields)
       if (debouncedSearch) {
@@ -875,7 +884,7 @@ const OrdersManagement: React.FC = () => {
       setLoading(false)
       setRefreshing(false)
     }
-  }, [viewMode, debouncedDateRange.from, debouncedDateRange.to, debouncedFilters.couriers, debouncedFilters.statuses, debouncedFilters.paymentStatuses, debouncedFilters.fulfillmentStatuses, debouncedFilters.tags, debouncedSearch, sortField])
+  }, [viewMode, debouncedDateRange.from, debouncedDateRange.to, debouncedFilters.couriers, debouncedFilters.statuses, debouncedFilters.paymentStatuses, debouncedFilters.fulfillmentStatuses, debouncedFilters.tags, debouncedFilters.dateType, debouncedSearch, sortField])
 
   // Keep a ref to the latest fetchOrders to use inside real-time subscription without re-subscribing
   const fetchOrdersRef = useRef(fetchOrders)
@@ -976,14 +985,9 @@ const OrdersManagement: React.FC = () => {
         const options = Array.from(new Set([...shopifyStatuses, ...fetchedStatuses])).sort()
         setFilterOptions(prev => ({ ...prev, fulfillment_status: options }))
       } else if (filterId === 'courier') {
-        const { data: allOrdersData } = await supabase
-          .from("orders")
-          .select("assigned_courier_id, users!orders_assigned_courier_id_fkey(name)")
-          .eq("archived", viewMode === "archived")
-        const courierNames = (allOrdersData || [])
-          .map((o: any) => o.users?.name)
-          .filter((s): s is string => Boolean(s))
-        const options = Array.from(new Set(courierNames)).sort()
+        // Use couriers already loaded from the users table - guarantees ALL couriers appear
+        // regardless of whether they have orders in the current filtered view
+        const options = couriers.map(c => c.name).sort()
         setFilterOptions(prev => ({ ...prev, courier: options }))
       }
     } catch (error: any) {
@@ -991,7 +995,12 @@ const OrdersManagement: React.FC = () => {
     } finally {
       setLoadingFilterOptions(false)
     }
-  }, [viewMode, filterOptions])
+  }, [viewMode, filterOptions, couriers])
+
+  // Clear cached courier filter options when couriers list changes so it reloads fresh
+  useEffect(() => {
+    setFilterOptions(prev => ({ ...prev, courier: [] }))
+  }, [couriers])
 
   // Fetch filter options when dropdown opens
   useEffect(() => {
@@ -1398,24 +1407,28 @@ const OrdersManagement: React.FC = () => {
   }
 
   const handleOpenReceivePieceOrExchange = () => {
-    // If orders are selected, mark them as receive_piece first, then open the page
     if (selectedOrders.length > 0) {
-      const updatePromise = supabase
-        .from("orders")
-        .update({ receive_piece_or_exchange: "receive_piece" })
-        .in("id", selectedOrders)
-      
-      Promise.resolve(updatePromise)
-        .then(() => {
-          setShowReceivePieceOrExchange(true)
-          setSelectedOrders([]) // Clear selection
-        })
-        .catch((error: any) => {
-          setError("خطأ في تحديد الطلبات: " + (error?.message || 'Unknown error'))
-        })
+      // Show modal asking whether to mark as receive_piece or exchange
+      setShowReceivePieceTypeModal(true)
     } else {
-      // Just open the page to view/manage existing orders
       setShowReceivePieceOrExchange(true)
+    }
+  }
+
+  const handleMarkSelectedAsType = async (type: "receive_piece" | "exchange") => {
+    setShowReceivePieceTypeModal(false)
+    try {
+      const { error: updateError } = await supabase
+        .from("orders")
+        .update({ receive_piece_or_exchange: type })
+        .in("id", selectedOrders)
+
+      if (updateError) throw updateError
+
+      setSelectedOrders([])
+      setShowReceivePieceOrExchange(true)
+    } catch (err: any) {
+      setError("خطأ في تحديث الطلبات: " + (err?.message || "Unknown error"))
     }
   }
 
@@ -1948,6 +1961,7 @@ const OrdersManagement: React.FC = () => {
       mobile: "",
       payment: "",
       orderId: "",
+      dateType: "all",
     })
     setActiveFilterTab('all')
     setTextFilters({
@@ -2733,6 +2747,53 @@ const OrdersManagement: React.FC = () => {
   }
 
   return (
+    <>
+    {/* Type choice modal for marking selected orders as receive_piece or exchange */}
+    {showReceivePieceTypeModal && (
+      <>
+        <div
+          className="fixed inset-0 bg-black/50 z-50"
+          onClick={() => setShowReceivePieceTypeModal(false)}
+        />
+        <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-2xl shadow-2xl p-6 z-50 w-full max-w-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-bold text-gray-900">تحديد نوع الطلب</h3>
+            <button
+              onClick={() => setShowReceivePieceTypeModal(false)}
+              className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <X className="w-5 h-5 text-gray-500" />
+            </button>
+          </div>
+          <p className="text-sm text-gray-600 mb-5">
+            تم تحديد <span className="font-bold text-gray-900">{selectedOrders.length}</span> طلب.
+            اختر نوع القائمة لإضافتهم إليها:
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={() => handleMarkSelectedAsType("receive_piece")}
+              className="flex flex-col items-center gap-2 p-4 bg-blue-50 border-2 border-blue-200 rounded-xl hover:bg-blue-100 hover:border-blue-400 transition-all"
+            >
+              <Package className="w-8 h-8 text-blue-600" />
+              <span className="font-bold text-blue-900 text-sm">استلام قطعه</span>
+            </button>
+            <button
+              onClick={() => handleMarkSelectedAsType("exchange")}
+              className="flex flex-col items-center gap-2 p-4 bg-orange-50 border-2 border-orange-200 rounded-xl hover:bg-orange-100 hover:border-orange-400 transition-all"
+            >
+              <RefreshCw className="w-8 h-8 text-orange-600" />
+              <span className="font-bold text-orange-900 text-sm">تبديل</span>
+            </button>
+          </div>
+          <button
+            onClick={() => setShowReceivePieceTypeModal(false)}
+            className="w-full mt-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
+          >
+            إلغاء
+          </button>
+        </div>
+      </>
+    )}
     <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
       {/* Custom CSS for always visible scrollbars */}
       <style>{`
@@ -2923,6 +2984,27 @@ const OrdersManagement: React.FC = () => {
               )}
             </div>
             
+            {/* Date-Suffix Filter Buttons */}
+            <div className="flex items-center gap-1 bg-gray-100 rounded-md p-0.5">
+              {(["all", "without_date", "with_date"] as const).map((type) => {
+                const labels = { all: "الكل", without_date: "بدون تاريخ", with_date: "مع تاريخ" }
+                const isActive = filters.dateType === type
+                return (
+                  <button
+                    key={type}
+                    onClick={() => setFilters(prev => ({ ...prev, dateType: type }))}
+                    className={`px-2.5 py-1 text-xs font-medium rounded transition-all ${
+                      isActive
+                        ? "bg-white text-gray-900 shadow-sm"
+                        : "text-gray-500 hover:text-gray-700"
+                    }`}
+                  >
+                    {labels[type]}
+                  </button>
+                )
+              })}
+            </div>
+
             {/* Add Filter Button - Shopify Style */}
             <div className="relative" ref={addFilterButtonRef}>
               <button
@@ -3351,7 +3433,7 @@ const OrdersManagement: React.FC = () => {
                     selectedOptions = filters.fulfillmentStatuses
                     filterKey = 'fulfillmentStatuses'
                   } else if (filterId === 'courier') {
-                    selectedOptions = filters.couriers.map(id => couriers.find(c => c.id === id)?.name || '').filter(Boolean)
+                    selectedOptions = filters.couriers.map(id => couriers.find(c => c.id === id)?.name?.trim() || '').filter(Boolean)
                     filterKey = 'couriers'
                   }
                   
@@ -3368,7 +3450,7 @@ const OrdersManagement: React.FC = () => {
                       const shopifyStatuses = ['fulfilled', 'unfulfilled', 'partial', 'scheduled', 'on_hold', 'request_fulfillment']
                       availableOptions = Array.from(new Set([...shopifyStatuses, ...fetchedStatuses])).sort()
                     } else if (filterId === 'courier') {
-                      availableOptions = Array.from(new Set(orders.map(o => o.courier_name).filter((s): s is string => Boolean(s)))).sort()
+                      availableOptions = couriers.map(c => c.name).sort()
                     }
                   }
                   
@@ -3400,7 +3482,7 @@ const OrdersManagement: React.FC = () => {
                         {filteredOptions.length > 0 ? (
                           filteredOptions.map((option) => {
                             const isSelected = filterKey === 'couriers' 
-                              ? couriers.find(c => c.name === option && filters.couriers.includes(c.id)) !== undefined
+                              ? couriers.find(c => c.name.trim().toLowerCase() === option.trim().toLowerCase() && filters.couriers.includes(c.id)) !== undefined
                               : selectedOptions.includes(option)
                             return (
                               <label
@@ -3436,8 +3518,8 @@ const OrdersManagement: React.FC = () => {
                                           : prev.fulfillmentStatuses.filter(s => s !== option)
                                       }))
                                     } else if (filterKey === 'couriers') {
-                                      // For couriers, we need to find the courier ID by name
-                                      const courier = couriers.find(c => c.name === option)
+                                      // For couriers, we need to find the courier ID by name (case-insensitive)
+                                      const courier = couriers.find(c => c.name.trim().toLowerCase() === option.trim().toLowerCase())
                                       if (courier) {
                                         setFilters(prev => ({
                                           ...prev,
@@ -4846,6 +4928,7 @@ const OrdersManagement: React.FC = () => {
 
       </div>
     </div>
+    </>
   )
 }
 

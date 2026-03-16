@@ -1090,8 +1090,8 @@ const OrdersList: React.FC = () => {
 
       // Step 2: Fetch the latest version of those orders (to show any updates from other days)
       // This ensures courier edits (delivered, payment info, etc.) are visible even if made on a different day
-      // CRITICAL: Exclude orders with receive_piece_or_exchange status from the main delivery list
-      // These orders should only appear in the separate "استلام قطعة" section, not in the regular delivery list
+      // NOTE: Orders marked as receive_piece_or_exchange are INCLUDED here so the courier can still
+      // see and process them. They display with a special badge (استلام قطعه / تبديل).
       let allOrders: any[] = []
       if (assignedOrderIds.size > 0) {
         const orderIdsArray = Array.from(assignedOrderIds)
@@ -1100,8 +1100,6 @@ const OrdersList: React.FC = () => {
           .select("*")
           .eq("assigned_courier_id", user.id)
           .in("id", orderIdsArray)
-          // Exclude orders with receive_piece_or_exchange status - they appear in a separate section
-          .or("receive_piece_or_exchange.is.null,receive_piece_or_exchange.neq.receive_piece,receive_piece_or_exchange.neq.exchange")
           .order("assigned_at", { ascending: false })
 
         if (latestError) {

@@ -1,5 +1,5 @@
 "use client"
-import React, { useState, useEffect, useCallback } from "react"
+import React, { useState, useEffect, useCallback, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import {
   Package,
@@ -32,6 +32,7 @@ interface Order {
   assigned_courier_id?: string | null
   courier_name?: string | null
   created_at?: string
+  base_order_id?: string | null
 }
 
 interface Courier {
@@ -66,6 +67,9 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
   const [selectedOrderForDetail, setSelectedOrderForDetail] = useState<any>(null)
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([])
   const [assignSelectedLoading, setAssignSelectedLoading] = useState(false)
+  const [listSearchQuery, setListSearchQuery] = useState("")
+  const [bulkRemoveLoading, setBulkRemoveLoading] = useState(false)
+  const [dateTypeFilter, setDateTypeFilter] = useState<"all" | "with_date" | "without_date">("all")
   const [dateRange, setDateRange] = useState<{ from: string; to: string }>(() => {
     // Default to no date filter - show all orders
     // Admin can filter by date range if needed
@@ -75,6 +79,8 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
     }
   })
   const [showDatePicker, setShowDatePicker] = useState(false)
+  const datePickerButtonRef = useRef<HTMLButtonElement>(null)
+  const [datePickerPos, setDatePickerPos] = useState<{ top: number; left: number } | null>(null)
 
   useEffect(() => {
     fetchOrders()
@@ -98,7 +104,7 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
         .from("orders")
         .select(`
           id, order_id, customer_name, address, mobile_number, total_order_fees,
-          receive_piece_or_exchange, assigned_courier_id, created_at, shopify_created_at, updated_at,
+          receive_piece_or_exchange, assigned_courier_id, created_at, shopify_created_at, updated_at, base_order_id,
           users!orders_assigned_courier_id_fkey(name)
         `)
         .in("receive_piece_or_exchange", ["receive_piece", "exchange"])
@@ -754,8 +760,54 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
     }
   }
 
-  const receivePieceOrders = orders.filter((o) => o.receive_piece_or_exchange === "receive_piece")
-  const exchangeOrders = orders.filter((o) => o.receive_piece_or_exchange === "exchange")
+  const handleBulkRemove = async () => {
+    if (selectedOrderIds.length === 0) return
+    setBulkRemoveLoading(true)
+    try {
+      const { error: updateError } = await supabase
+        .from("orders")
+        .update({ receive_piece_or_exchange: null })
+        .in("id", selectedOrderIds)
+
+      if (updateError) throw updateError
+
+      setOrders((prev) => prev.filter((o) => !selectedOrderIds.includes(o.id)))
+      setSuccessMessage(`تم إزالة ${selectedOrderIds.length} طلب من القائمة`)
+      setSelectedOrderIds([])
+    } catch (err: any) {
+      setError(err.message || "خطأ في حذف الطلبات")
+    } finally {
+      setBulkRemoveLoading(false)
+    }
+  }
+
+  // Filter orders by list search query and date-type filter
+  const applyFilters = (list: Order[]) => {
+    let result = list
+
+    // Date-type filter
+    if (dateTypeFilter === "with_date") {
+      result = result.filter((o) => o.base_order_id != null)
+    } else if (dateTypeFilter === "without_date") {
+      result = result.filter((o) => o.base_order_id == null)
+    }
+
+    // Search filter
+    const q = listSearchQuery.trim().toLowerCase()
+    if (q) {
+      result = result.filter(
+        (o) =>
+          o.order_id?.toLowerCase().includes(q) ||
+          o.customer_name?.toLowerCase().includes(q) ||
+          o.mobile_number?.toLowerCase().includes(q)
+      )
+    }
+
+    return result
+  }
+
+  const receivePieceOrders = applyFilters(orders.filter((o) => o.receive_piece_or_exchange === "receive_piece"))
+  const exchangeOrders = applyFilters(orders.filter((o) => o.receive_piece_or_exchange === "exchange"))
 
   if (loading) {
     return (
@@ -822,7 +874,14 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
             <label className="text-sm font-medium text-gray-700">التاريخ:</label>
             <div className="relative">
               <button
-                onClick={() => setShowDatePicker(!showDatePicker)}
+                ref={datePickerButtonRef}
+                onClick={() => {
+                  if (!showDatePicker && datePickerButtonRef.current) {
+                    const rect = datePickerButtonRef.current.getBoundingClientRect()
+                    setDatePickerPos({ top: rect.bottom + 6, left: rect.left })
+                  }
+                  setShowDatePicker(!showDatePicker)
+                }}
                 className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
               >
                 <Calendar className="w-4 h-4 text-gray-600" />
@@ -832,13 +891,16 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
                     : "الكل"}
                 </span>
               </button>
-              {showDatePicker && (
+              {showDatePicker && datePickerPos && (
                 <>
                   <div
-                    className="fixed inset-0 z-10"
+                    className="fixed inset-0 z-40"
                     onClick={() => setShowDatePicker(false)}
                   />
-                  <div className="absolute top-full left-0 mt-2 bg-white border border-gray-300 rounded-lg shadow-lg p-4 z-20 min-w-[300px]">
+                  <div
+                    className="fixed bg-white border border-gray-300 rounded-lg shadow-xl p-4 z-50 min-w-[300px]"
+                    style={{ top: datePickerPos.top, left: datePickerPos.left }}
+                  >
                     <div className="space-y-3">
                       <div>
                         <label className="block text-xs font-medium text-gray-700 mb-1">
@@ -866,7 +928,16 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       </div>
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 flex-wrap">
+                        <button
+                          onClick={() => {
+                            setDateRange({ from: '', to: '' })
+                            setShowDatePicker(false)
+                          }}
+                          className="flex-1 px-3 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm transition-colors"
+                        >
+                          الكل
+                        </button>
                         <button
                           onClick={() => {
                             const now = new Date()
@@ -928,6 +999,50 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
           </button>
         </div>
 
+        {/* List Search Bar + Date-Type Filter */}
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Search */}
+          <div className="relative flex-1 min-w-[220px]">
+            <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+            <input
+              type="text"
+              value={listSearchQuery}
+              onChange={(e) => setListSearchQuery(e.target.value)}
+              placeholder="بحث في القائمة (رقم الطلب، اسم العميل، رقم الهاتف)..."
+              className="w-full pr-10 pl-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            />
+            {listSearchQuery && (
+              <button
+                onClick={() => setListSearchQuery("")}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+          {/* Date-Type Filter Toggle */}
+          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+            {(["all", "without_date", "with_date"] as const).map((type) => {
+              const labels = { all: "الكل", without_date: "بدون تاريخ", with_date: "مع تاريخ" }
+              const isActive = dateTypeFilter === type
+              return (
+                <button
+                  key={type}
+                  onClick={() => setDateTypeFilter(type)}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                    isActive
+                      ? "bg-white text-gray-900 shadow-sm"
+                      : "text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  {labels[type]}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
         {/* Selected Orders Actions */}
         {selectedOrderIds.length > 0 && (
           <div className="bg-blue-50 rounded-xl border-2 border-blue-200 p-4">
@@ -946,31 +1061,45 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
               </button>
             </div>
             <div className="space-y-3">
-              <div className="flex items-center gap-4">
-                <div className="flex-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    تعيين جميع الطلبات المحددة إلى مندوب واحد:
-                  </label>
-                  <select
-                    onChange={(e) => {
-                      if (e.target.value) {
-                        handleAssignSelected(e.target.value)
-                      }
-                    }}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    defaultValue=""
-                  >
-                    <option value="">اختر المندوب</option>
-                    {couriers.map((courier) => (
-                      <option key={courier.id} value={courier.id}>
-                        {courier.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
+              {/* Bulk Remove */}
+              <button
+                onClick={handleBulkRemove}
+                disabled={bulkRemoveLoading}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+              >
+                {bulkRemoveLoading ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Trash2 className="w-4 h-4" />
+                )}
+                إزالة {selectedOrderIds.length} طلب من القائمة
+              </button>
+
               <div className="pt-3 border-t border-blue-200">
-                <p className="text-sm font-medium text-gray-700 mb-2">
+                <div className="flex items-center gap-4">
+                  <div className="flex-1">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      أو تعيين جميع الطلبات المحددة إلى مندوب واحد:
+                    </label>
+                    <select
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          handleAssignSelected(e.target.value)
+                        }
+                      }}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      defaultValue=""
+                    >
+                      <option value="">اختر المندوب</option>
+                      {couriers.map((courier) => (
+                        <option key={courier.id} value={courier.id}>
+                          {courier.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <p className="text-sm text-gray-600 mt-2">
                   أو قم بتعيين كل طلب إلى مندوب مختلف من خلال القائمة أدناه:
                 </p>
               </div>
@@ -1115,13 +1244,21 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
             </div>
             <div>
               <h2 className="text-xl font-bold text-blue-900">استلام قطعه</h2>
-              <p className="text-sm text-blue-700">{receivePieceOrders.length} طلب</p>
+              <p className="text-sm text-blue-700">
+                {listSearchQuery
+                  ? `${receivePieceOrders.length} من ${orders.filter(o => o.receive_piece_or_exchange === "receive_piece").length} طلب`
+                  : `${receivePieceOrders.length} طلب`}
+              </p>
             </div>
           </div>
 
           <div className="space-y-3">
             {receivePieceOrders.length === 0 ? (
-              <p className="text-blue-600 text-center py-8">لا توجد طلبات</p>
+              <p className="text-blue-600 text-center py-8">
+                {listSearchQuery || dateTypeFilter !== "all"
+                  ? "لا توجد نتائج تطابق الفلتر الحالي"
+                  : "لا توجد طلبات"}
+              </p>
             ) : (
               <>
                 {receivePieceOrders.length > 0 && (
@@ -1184,13 +1321,21 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
             </div>
             <div>
               <h2 className="text-xl font-bold text-orange-900">تبديل</h2>
-              <p className="text-sm text-orange-700">{exchangeOrders.length} طلب</p>
+              <p className="text-sm text-orange-700">
+                {listSearchQuery
+                  ? `${exchangeOrders.length} من ${orders.filter(o => o.receive_piece_or_exchange === "exchange").length} طلب`
+                  : `${exchangeOrders.length} طلب`}
+              </p>
             </div>
           </div>
 
           <div className="space-y-3">
             {exchangeOrders.length === 0 ? (
-              <p className="text-orange-600 text-center py-8">لا توجد طلبات</p>
+              <p className="text-orange-600 text-center py-8">
+                {listSearchQuery || dateTypeFilter !== "all"
+                  ? "لا توجد نتائج تطابق الفلتر الحالي"
+                  : "لا توجد طلبات"}
+              </p>
             ) : (
               <>
                 {exchangeOrders.length > 0 && (
