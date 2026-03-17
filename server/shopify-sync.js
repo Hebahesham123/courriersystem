@@ -854,12 +854,13 @@ async function syncOrderItems(orderId, lineItems, refunds = [], fulfillments = [
   if (shopifySubtotal !== null && shopifySubtotal !== undefined && Math.abs(allItemsTotal - shopifySubtotal) > 0.01) {
     // First, check if there are any items with explicit removal indicators
     const itemsWithExplicitRemoval = lineItems.filter(item => {
+      const itemFulfilled = item.fulfillment_status === 'fulfilled' || item.fulfillment_status === 'partial';
       return item.quantity === 0 || 
              (item.current_quantity !== undefined && item.current_quantity === 0) ||
              item.fulfillment_status === 'removed' ||
              (item.properties && (item.properties._is_removed === true || item.properties._is_removed === 'true')) ||
              item.cancelled === true ||
-             (item.fulfillable_quantity !== undefined && item.fulfillable_quantity === 0 && item.quantity > 0);
+             (!itemFulfilled && item.fulfillable_quantity !== undefined && item.fulfillable_quantity === 0 && item.quantity > 0);
     });
     
     // Calculate total of explicitly removed items
@@ -882,12 +883,14 @@ async function syncOrderItems(orderId, lineItems, refunds = [], fulfillments = [
       // Calculate each item's total (excluding already explicitly removed items)
       const itemTotals = lineItems
         .filter(item => {
-          // Exclude items that are already explicitly marked as removed
+          // Exclude items that are already explicitly marked as removed (but not fulfilled ones)
+          const fulfilled = item.fulfillment_status === 'fulfilled' || item.fulfillment_status === 'partial';
           return !(item.quantity === 0 || 
                   (item.current_quantity !== undefined && item.current_quantity === 0) ||
                   item.fulfillment_status === 'removed' ||
                   (item.properties && (item.properties._is_removed === true || item.properties._is_removed === 'true')) ||
-                  item.cancelled === true);
+                  item.cancelled === true ||
+                  (!fulfilled && item.fulfillable_quantity !== undefined && item.fulfillable_quantity === 0 && item.quantity > 0));
         })
         .map(item => ({
           id: String(item.id),
@@ -944,13 +947,16 @@ async function syncOrderItems(orderId, lineItems, refunds = [], fulfillments = [
     // This ensures consistency - same Shopify data always produces same result
     
     // Priority 1: Explicit Shopify removal indicators (most reliable)
+    // NOTE: fulfillable_quantity === 0 is NOT a removal indicator for fulfilled items
+    // (fulfilled items naturally have fulfillable_quantity = 0)
+    const isFulfilled = item.fulfillment_status === 'fulfilled' || item.fulfillment_status === 'partial';
     const hasExplicitRemovalIndicator = 
       item.quantity === 0 || 
       (item.current_quantity !== undefined && item.current_quantity === 0) || // Order-edit removal
       item.fulfillment_status === 'removed' ||
       (item.properties && (item.properties._is_removed === true || item.properties._is_removed === 'true')) ||
       item.cancelled === true ||
-      (item.fulfillable_quantity !== undefined && item.fulfillable_quantity === 0 && item.quantity > 0);
+      (!isFulfilled && item.fulfillable_quantity !== undefined && item.fulfillable_quantity === 0 && item.quantity > 0);
     
     // Priority 2: Subtotal detection (only if no explicit indicator)
     // This catches items that are still in line_items but excluded from the total
@@ -1615,6 +1621,51 @@ async function syncShopifyOrders(updatedAtMin = null) {
       }
     }
 
+    // Detect orders deleted from Shopify (only during full sync, not incremental)
+    let deleted = 0;
+    if (!updatedAtMin) {
+      const shopifyOrderIds = new Set(shopifyOrders.map(o => o.id));
+
+      // Fetch all base orders in DB that have a shopify_order_id and are not already canceled
+      const { data: dbOrders, error: dbFetchError } = await supabase
+        .from('orders')
+        .select('id, shopify_order_id, order_id, status')
+        .is('base_order_id', null)
+        .not('shopify_order_id', 'is', null);
+
+      if (dbFetchError) {
+        console.error('⚠️ Could not fetch DB orders for deletion detection:', dbFetchError.message);
+      } else {
+        const deletedOrders = (dbOrders || []).filter(o => !shopifyOrderIds.has(o.shopify_order_id));
+
+        if (deletedOrders.length > 0) {
+          console.log(`🗑️ Found ${deletedOrders.length} orders in DB no longer in Shopify (deleted)`);
+
+          for (const order of deletedOrders) {
+            const { error: updateError } = await supabase
+              .from('orders')
+              .update({
+                status: 'canceled',
+                archived: true,
+                cancel_reason: 'deleted_from_shopify',
+                cancelled_reason: 'deleted_from_shopify',
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', order.id);
+
+            if (updateError) {
+              console.error(`❌ Error marking deleted order ${order.order_id}:`, updateError.message);
+            } else {
+              console.log(`🗑️ Marked order ${order.order_id} as canceled (deleted from Shopify)`);
+              deleted++;
+            }
+          }
+        } else {
+          console.log(`✅ No deleted orders detected.`);
+        }
+      }
+    }
+
     const skipped = totalOrders - imported - updated;
     console.log(`\n✅ ========================================`);
     console.log(`✅ SYNC COMPLETE SUMMARY`);
@@ -1622,18 +1673,20 @@ async function syncShopifyOrders(updatedAtMin = null) {
     console.log(`✅ Total orders fetched from Shopify: ${totalOrders}`);
     console.log(`✅ New orders imported: ${imported}`);
     console.log(`✅ Existing orders updated: ${updated}`);
+    console.log(`✅ Orders marked canceled (deleted from Shopify): ${deleted}`);
     if (skipped > 0) {
       console.log(`⚠️  Orders skipped (duplicates/errors): ${skipped}`);
     }
     console.log(`✅ ========================================\n`);
-    
-    return { 
-      success: true, 
-      imported, 
-      updated, 
+
+    return {
+      success: true,
+      imported,
+      updated,
+      deleted,
       skipped,
       total: totalOrders,
-      fetched: shopifyOrders.length 
+      fetched: shopifyOrders.length
     };
   } catch (error) {
     console.error('❌ Error syncing Shopify orders:', error);

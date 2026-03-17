@@ -697,12 +697,13 @@ Deno.serve(async (req: Request) => {
         if (Math.abs(allItemsTotal - shopifySubtotal) > 0.01) {
           // First, check if there are any items with explicit removal indicators
           const itemsWithExplicitRemoval = lineItems.filter((item: any) => {
+            const fulfilled = item.fulfillment_status === 'fulfilled' || item.fulfillment_status === 'partial'
             return item.quantity === 0 || 
                    (item.current_quantity !== undefined && item.current_quantity === 0) ||
                    item.fulfillment_status === 'removed' ||
                    (item.properties && (item.properties._is_removed === true || item.properties._is_removed === 'true')) ||
                    item.cancelled === true ||
-                   (item.fulfillable_quantity !== undefined && item.fulfillable_quantity === 0 && item.quantity > 0)
+                   (!fulfilled && item.fulfillable_quantity !== undefined && item.fulfillable_quantity === 0 && item.quantity > 0)
           })
           
           // Calculate total of explicitly removed items
@@ -725,12 +726,14 @@ Deno.serve(async (req: Request) => {
             // Calculate each item's total (excluding already explicitly removed items)
             const itemTotals = lineItems
               .filter((item: any) => {
-                // Exclude items that are already explicitly marked as removed
+                // Exclude items that are already explicitly marked as removed (fulfilled items are not removed)
+                const fulfilled = item.fulfillment_status === 'fulfilled' || item.fulfillment_status === 'partial'
                 return !(item.quantity === 0 || 
                         (item.current_quantity !== undefined && item.current_quantity === 0) ||
                         item.fulfillment_status === 'removed' ||
                         (item.properties && (item.properties._is_removed === true || item.properties._is_removed === 'true')) ||
-                        item.cancelled === true)
+                        item.cancelled === true ||
+                        (!fulfilled && item.fulfillable_quantity !== undefined && item.fulfillable_quantity === 0 && item.quantity > 0))
               })
               .map((item: any) => ({
                 id: String(item.id),
@@ -783,13 +786,15 @@ Deno.serve(async (req: Request) => {
         // This ensures consistency - same Shopify data always produces same result
         
         // Priority 1: Explicit Shopify removal indicators (most reliable)
+        // NOTE: fulfilled items have fulfillable_quantity=0 naturally - not a removal indicator
+        const itemIsFulfilled = item.fulfillment_status === 'fulfilled' || item.fulfillment_status === 'partial'
         const hasExplicitRemovalIndicator = 
           item.quantity === 0 || 
           (item.current_quantity !== undefined && item.current_quantity === 0) || // Order-edit removal
           item.fulfillment_status === 'removed' ||
           (item.properties && (item.properties._is_removed === true || item.properties._is_removed === 'true')) ||
           item.cancelled === true ||
-          (item.fulfillable_quantity !== undefined && item.fulfillable_quantity === 0 && item.quantity > 0)
+          (!itemIsFulfilled && item.fulfillable_quantity !== undefined && item.fulfillable_quantity === 0 && item.quantity > 0)
         
         // Priority 2: Subtotal detection (only if no explicit indicator)
         // This catches items that are still in line_items but excluded from the total

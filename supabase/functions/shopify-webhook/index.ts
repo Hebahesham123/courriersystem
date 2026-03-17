@@ -726,12 +726,14 @@ Deno.serve(async (req: Request) => {
         const itemsFromShopify = shopifyOrder.line_items.map((item: any) => {
           const shopifyItemKey = String(item.id);
           // Check multiple ways Shopify marks items as removed
+          // fulfilled items have fulfillable_quantity=0 naturally - not a removal indicator
+          const itemIsFulfilled = item.fulfillment_status === 'fulfilled' || item.fulfillment_status === 'partial';
           const isRemovedInShopify = item.quantity === 0 || 
                                      (item.current_quantity !== undefined && item.current_quantity === 0) || // Order-edit removal
                                      item.fulfillment_status === 'removed' || 
                                      (item.properties && (item.properties._is_removed === true || item.properties._is_removed === 'true')) ||
                                      item.cancelled === true ||
-                                     (item.fulfillable_quantity !== undefined && item.fulfillable_quantity === 0 && item.quantity > 0) ||
+                                     (!itemIsFulfilled && item.fulfillable_quantity !== undefined && item.fulfillable_quantity === 0 && item.quantity > 0) ||
                                      itemsNotInSubtotal.has(shopifyItemKey); // Item price not in subtotal
           const isNewlyAdded = !existingItemsMap.has(shopifyItemKey) && !isRemovedInShopify;
           

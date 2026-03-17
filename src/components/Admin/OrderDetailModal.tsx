@@ -363,24 +363,10 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
           console.warn('Error fetching order items:', fetchError)
         }
       } else if (data && data.length > 0) {
-        // CRITICAL: Filter out removed items - they should NOT appear in the system at all
-        const activeItems = data.filter((item: any) => {
-          const isRemoved = 
-            item.is_removed === true || 
-            item.quantity === 0 ||
-            item.fulfillment_status === 'removed' ||
-            (item.properties && (item.properties._is_removed === true || item.properties._is_removed === 'true')) ||
-            item.cancelled === true;
-          
-          return !isRemoved; // Only include active items
-        });
-        
-        const removedCount = data.length - activeItems.length;
-        if (removedCount > 0) {
-          console.log(`🗑️ Filtered out ${removedCount} removed items from display`);
-        }
-        console.log(`📦 Fetched ${data.length} items, displaying ${activeItems.length} active items`);
-        setOrderItems(activeItems)
+        // Keep ALL items including removed ones - UI will show them with strikethrough styling
+        const removedCount = data.filter((item: any) => item.is_removed === true).length;
+        console.log(`📦 Fetched ${data.length} items (${removedCount} removed, ${data.length - removedCount} active)`);
+        setOrderItems(data)
       }
     } catch (err: any) {
       // Table might not exist, that's fine - we'll use line_items from order
@@ -952,17 +938,8 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
     console.warn('⚠️ No product_images field in order')
   }
 
-  // CRITICAL: Filter out removed items - they should NOT appear in the system at all
-  // Only include active items (not removed, quantity > 0)
-  const activeOrderItems = orderItems.filter((item: OrderItem) => {
-    const isRemoved = 
-      item.is_removed === true || 
-      item.quantity === 0 ||
-      (item as any).fulfillment_status === 'removed' ||
-      ((item as any).properties && ((item as any).properties._is_removed === true || (item as any).properties._is_removed === 'true')) ||
-      (item as any).cancelled === true;
-    return !isRemoved && item.quantity > 0;
-  });
+  // Keep all items - removed ones will be shown with strikethrough styling
+  const activeOrderItems = orderItems;
   
   // IMPORTANT: Use filtered active items from database
   // Only fall back to parsedLineItems if orderItems is completely empty (sync hasn't run yet)
@@ -1732,7 +1709,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                                        (item as any).fulfillment_status === 'removed';
                       
                       // Check if item is newly added
-                      const isNew = item.is_new === true || (item as any).properties?._is_new === true || (item as any).properties?._is_new === 'true';
+                      const isNew = (item as any).is_new === true || (item as any).properties?._is_new === true || (item as any).properties?._is_new === 'true';
                       
                       // Debug log for removed items - always log to help debug
                       if (isRemoved) {
@@ -1764,13 +1741,11 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                         <div 
                           key={item.id || index} 
                           className={`flex gap-4 pb-4 border-b border-gray-100 last:border-0 ${
-                            isRemoved 
-                              ? 'bg-red-50/80 border-2 border-red-300 -mx-2 px-3 py-3 rounded-xl opacity-75 grayscale' 
-                              : ''
+                            isRemoved ? 'opacity-60' : ''
                           }`}
                         >
                           {/* Product Image */}
-                          <div className="flex-shrink-0">
+                          <div className="flex-shrink-0 relative">
                             {(() => {
                               const hasImage = item.image_url && 
                                              item.image_url !== 'null' && 
@@ -1783,7 +1758,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                                 <img
                                   src={item.image_url}
                                   alt={item.image_alt || item.title}
-                                  className={`w-20 h-20 object-cover rounded-lg border ${isRemoved ? 'border-red-200' : 'border-gray-200'}`}
+                                  className="w-20 h-20 object-cover rounded-lg border border-gray-200"
                                   onError={(e) => {
                                     const target = e.target as HTMLImageElement
                                     target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="80" height="80"%3E%3Crect width="80" height="80" fill="%23f3f4f6"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%239ca3af" font-size="12"%3ENo Image%3C/text%3E%3C/svg%3E'
@@ -1791,11 +1766,17 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                                   }}
                                 />
                               ) : (
-                                <div className={`w-20 h-20 rounded-lg flex items-center justify-center ${isRemoved ? 'bg-red-50' : 'bg-gray-100'}`}>
-                                  <ImageIcon className={`w-8 h-8 ${isRemoved ? 'text-red-300' : 'text-gray-400'}`} />
+                                <div className="w-20 h-20 rounded-lg flex items-center justify-center bg-gray-100">
+                                  <ImageIcon className="w-8 h-8 text-gray-400" />
                                 </div>
                               )
                             })()}
+                            {/* Diagonal strike line over image for removed items */}
+                            {isRemoved && (
+                              <div className="absolute inset-0 rounded-lg overflow-hidden pointer-events-none">
+                                <div className="absolute inset-0" style={{background: 'repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(239,68,68,0.35) 6px, rgba(239,68,68,0.35) 8px)'}} />
+                              </div>
+                            )}
                           </div>
 
                           {/* Product Details */}
@@ -1803,14 +1784,14 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                             <div className="flex items-center justify-between gap-2 mb-1">
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 flex-wrap">
-                                  <h4 className={`font-medium truncate ${isRemoved ? 'text-red-800 line-through' : isNew ? 'text-green-800' : 'text-gray-900'}`}>{item.title}</h4>
+                                  <h4 className={`font-medium truncate ${isRemoved ? 'line-through text-gray-400' : isNew ? 'text-green-800' : 'text-gray-900'}`}>{item.title}</h4>
                                   {isNew && !isRemoved && (
                                     <span className="px-2 py-0.5 bg-green-600 text-white text-[10px] font-bold rounded-full uppercase shadow-sm whitespace-nowrap">
                                       New
                                     </span>
                                   )}
                                   {isRemoved && (
-                                    <span className="px-2 py-0.5 bg-red-600 text-white text-[10px] font-bold rounded-full uppercase shadow-sm whitespace-nowrap">
+                                    <span className="px-2 py-0.5 bg-red-100 text-red-600 text-[10px] font-bold rounded-full border border-red-300 whitespace-nowrap">
                                       Removed
                                     </span>
                                   )}
@@ -1865,10 +1846,10 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                               )}
                             </div>
                             {item.variant_title && (
-                              <p className={`text-sm mb-1 ${isRemoved ? 'text-red-400' : 'text-gray-500'}`}>{item.variant_title}</p>
+                              <p className={`text-sm mb-1 ${isRemoved ? 'line-through text-gray-400' : 'text-gray-500'}`}>{item.variant_title}</p>
                             )}
                             {item.sku && (
-                              <p className={`text-xs mb-1 ${isRemoved ? 'text-red-300' : 'text-gray-400'}`}>SKU: {item.sku}</p>
+                              <p className={`text-xs mb-1 ${isRemoved ? 'line-through text-gray-400' : 'text-gray-400'}`}>SKU: {item.sku}</p>
                             )}
 
                             {isEditing && !isRemoved && (
@@ -1935,21 +1916,16 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                             })()}
                             
                             <div className="flex items-center justify-between mt-2">
-                              <span className={`text-sm ${isRemoved ? 'text-red-500 line-through font-medium' : isNew ? 'text-green-600 font-medium' : 'text-gray-600'}`}>
-                                Quantity: <span className={isRemoved ? 'text-red-600' : isNew ? 'text-green-700' : ''}>{item.quantity}</span>
+                              <span className={`text-sm ${isRemoved ? 'line-through text-gray-400' : isNew ? 'text-green-600 font-medium' : 'text-gray-600'}`}>
+                                Quantity: {item.quantity}
                               </span>
-                              <span className={`font-semibold text-lg ${isRemoved ? 'text-red-600 line-through' : isNew ? 'text-green-700' : 'text-gray-900'}`}>
+                              <span className={`font-semibold text-lg ${isRemoved ? 'line-through text-gray-400' : isNew ? 'text-green-700' : 'text-gray-900'}`}>
                                 {order.currency || 'EGP'} {(item.price * item.quantity).toFixed(2)}
                               </span>
                             </div>
                             {isNew && !isRemoved && (
                               <div className="mt-2 p-2 bg-green-100 border border-green-300 rounded-lg">
                                 <p className="text-xs font-bold text-green-700">✨ This item was newly added to the order in Shopify</p>
-                              </div>
-                            )}
-                            {isRemoved && (
-                              <div className="mt-2 p-2 bg-red-100 border border-red-300 rounded-lg">
-                                <p className="text-xs font-bold text-red-700">⚠️ This item was removed from the order in Shopify</p>
                               </div>
                             )}
                             {item.total_discount > 0 && !isRemoved && (
