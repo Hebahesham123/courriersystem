@@ -285,6 +285,7 @@ const OrdersManagement: React.FC = () => {
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [archiveLoading, setArchiveLoading] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
+  const [syncingTags, setSyncingTags] = useState(false)
   const [savingOrderId, setSavingOrderId] = useState<string | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(false)
@@ -525,8 +526,7 @@ const OrdersManagement: React.FC = () => {
           users!orders_assigned_courier_id_fkey(name)
         `,
         )
-        .limit(1000) // Limit results to prevent loading too many orders at once
-      
+
       // Use debounced filters for consistency
       const activeFilters = debouncedFilters || filters
       
@@ -558,12 +558,12 @@ const OrdersManagement: React.FC = () => {
           query = query.eq("archived", true)
         } else {
           // Active view: show non-archived orders (including canceled ones, like Shopify)
-          // Canceled orders are part of "Open" orders in Shopify if not archived
-          // BUT: When searching, show ALL orders (archived and non-archived) to find the order
-          if (!debouncedSearch) {
+          // BUT: When searching OR filtering by tag, show ALL orders (archived and non-archived)
+          // This matches Shopify behavior where tag filter shows orders regardless of archived status
+          const isFilteringByTag = activeFilters.tags.length > 0 && activeFilters.tags.some((t: any) => t && String(t).trim())
+          if (!debouncedSearch && !isFilteringByTag) {
             query = query.eq("archived", false)
           }
-          // If debouncedSearch exists, don't filter by archived - show all orders
         }
       }
       
@@ -621,57 +621,29 @@ const OrdersManagement: React.FC = () => {
         query = query.or(searchConditions)
       }
 
+      // Use a high limit to cover all orders — tag filtering is done in-memory (case-insensitive)
+      // DB-level tag filtering is avoided because text[] case-insensitive ops aren't supported in PostgREST
+      const validTags = activeFilters.tags.filter((t: any) => t && String(t).trim().length > 0)
+      query = query.limit(5000)
+
       const { data, error } = await query
 
       if (error) throw error
-      
-      // Apply tag filter (filter in memory since tags are JSONB array)
-      // STRICT: When filtering by tag(s), ONLY show orders that have at least one of the selected tags
-      // Orders without the selected tag(s) will be excluded
+
+      // In-memory tag filter as safety net for case-insensitive matching
       let filteredData = data || []
-      if (activeFilters.tags.length > 0 && activeFilters.tags.some(tag => tag)) {
-        // Normalize selected tags once for efficiency - remove empty/whitespace tags
-        const normalizedSelectedTags = activeFilters.tags
-          .map(tag => String(tag).toLowerCase().trim())
-          .filter(tag => tag.length > 0) // Only keep non-empty tags
-        
-        if (normalizedSelectedTags.length > 0) {
-          filteredData = filteredData.filter((order: any) => {
-            // Get order tags - handle various formats (array, null, undefined, string)
-            let orderTags = order.order_tags
-            
-            // STRICT: Orders without tags should be excluded
-            if (!orderTags) return false
-            
-            // Handle string format (shouldn't happen but be safe)
-            if (typeof orderTags === 'string') {
-              try {
-                orderTags = JSON.parse(orderTags)
-              } catch {
-                // If parsing fails, try splitting by comma
-                orderTags = orderTags.split(',').map((t: string) => t.trim()).filter(Boolean)
-              }
-            }
-            
-            // STRICT: Ensure it's an array with at least one tag
-            if (!Array.isArray(orderTags) || orderTags.length === 0) return false
-            
-            // Normalize all order tags for comparison - remove empty/whitespace tags
-            const normalizedOrderTags = orderTags
-              .map((tag: any) => String(tag).toLowerCase().trim())
-              .filter(tag => tag.length > 0) // Only keep non-empty tags
-            
-            // STRICT: Order must have at least one tag that matches one of the selected tags
-            // If you select tag "A", only orders with tag "A" will appear
-            // Orders with only other tags (but not "A") will be excluded
-            const hasMatchingTag = normalizedSelectedTags.some(selectedTag => 
-              normalizedOrderTags.includes(selectedTag)
-            )
-            
-            // Return false if no matching tag found
-            return hasMatchingTag
-          })
-        }
+      if (validTags.length > 0) {
+        const normalizedSelectedTags = validTags.map((t: any) => String(t).toLowerCase().trim())
+        filteredData = filteredData.filter((order: any) => {
+          let orderTags = order.order_tags
+          if (!orderTags) return false
+          if (typeof orderTags === 'string') {
+            try { orderTags = JSON.parse(orderTags) } catch { orderTags = orderTags.split(',').map((t: string) => t.trim()).filter(Boolean) }
+          }
+          if (!Array.isArray(orderTags) || orderTags.length === 0) return false
+          const normalizedOrderTags = orderTags.map((t: any) => String(t).toLowerCase().trim()).filter((t: string) => t.length > 0)
+          return normalizedSelectedTags.some((sel: string) => normalizedOrderTags.includes(sel))
+        })
       }
 
       // Apply Shopify order status filter (Open, Archived, Canceled)
@@ -868,16 +840,8 @@ const OrdersManagement: React.FC = () => {
       } else {
         setOrders(ordersWithCourierNames)
       }
-      
-      // Extract unique tags from all orders (use original data, not filtered)
-      const allTags = new Set<string>()
-      data?.forEach((order: any) => {
-        const orderTags = order.order_tags || []
-        if (Array.isArray(orderTags)) {
-          orderTags.forEach((tag: string) => allTags.add(tag))
-        }
-      })
-      setAvailableTags(Array.from(allTags).sort())
+
+      // availableTags is managed by fetchAllTags which queries all orders without limit
     } catch (error: any) {
       setError("Failed to fetch orders / فشل تحميل الطلبات: " + error.message)
     } finally {
@@ -885,6 +849,27 @@ const OrdersManagement: React.FC = () => {
       setRefreshing(false)
     }
   }, [viewMode, debouncedDateRange.from, debouncedDateRange.to, debouncedFilters.couriers, debouncedFilters.statuses, debouncedFilters.paymentStatuses, debouncedFilters.fulfillmentStatuses, debouncedFilters.tags, debouncedFilters.dateType, debouncedSearch, sortField])
+
+  const handleSyncTags = async () => {
+    setSyncingTags(true)
+    try {
+      // Step 1: Full sync to import any orders missing from DB entirely
+      await fetch('/api/shopify/sync', { method: 'GET' })
+      // Step 2: Sync tags for all orders
+      const response = await fetch('/api/shopify/sync-tags', { method: 'POST' })
+      const result = await response.json()
+      if (result.success) {
+        setSuccessMessage(`مزامنة اكتملت: ${result.tagsUpdated} تم تحديث تاجاتها، ${result.imported || 0} طلب جديد تم استيراده، من أصل ${result.ordersProcessed} طلب`)
+        fetchOrders(true)
+      } else {
+        setError('فشل مزامنة التاجات: ' + result.error)
+      }
+    } catch (err: any) {
+      setError('فشل الاتصال بالسيرفر: ' + err.message)
+    } finally {
+      setSyncingTags(false)
+    }
+  }
 
   // Keep a ref to the latest fetchOrders to use inside real-time subscription without re-subscribing
   const fetchOrdersRef = useRef(fetchOrders)
@@ -920,34 +905,33 @@ const OrdersManagement: React.FC = () => {
     }
   }
 
-  // Fetch ALL tags from ALL orders (not just filtered ones) - like Shopify
-  // This ensures tags always appear in the filter even if current day's orders don't have them
+  // Fetch ALL tags from ALL orders by paginating through every row
   const fetchAllTags = useCallback(async () => {
     try {
-      const { data: allOrders, error } = await supabase
-        .from("orders")
-        .select("order_tags")
-        .eq("archived", viewMode === "archived")
-      
-      if (error) throw error
-      
       const allTags = new Set<string>()
-      allOrders?.forEach((order: any) => {
-        const orderTags = order.order_tags || []
-        if (Array.isArray(orderTags)) {
-          orderTags.forEach((tag: string) => {
-            if (tag && tag.trim()) {
-              allTags.add(tag.trim())
-            }
-          })
-        }
-      })
+      const pageSize = 1000
+      let from = 0
+      while (true) {
+        const { data: batch, error } = await supabase
+          .from("orders")
+          .select("order_tags")
+          .range(from, from + pageSize - 1)
+        if (error) throw error
+        if (!batch || batch.length === 0) break
+        batch.forEach((order: any) => {
+          const tags = order.order_tags || []
+          if (Array.isArray(tags)) {
+            tags.forEach((tag: string) => { if (tag && tag.trim()) allTags.add(tag.trim()) })
+          }
+        })
+        if (batch.length < pageSize) break
+        from += pageSize
+      }
       setAvailableTags(Array.from(allTags).sort())
     } catch (error: any) {
       console.error("Failed to fetch all tags:", error)
-      // Don't show error to user, just log it
     }
-  }, [viewMode])
+  }, [])
 
   // Fetch filter options from all orders (like Shopify)
   const fetchFilterOptions = useCallback(async (filterId: string) => {
@@ -2856,6 +2840,15 @@ const OrdersManagement: React.FC = () => {
                   <span className="hidden sm:inline">جاري التحديث...</span>
                 </div>
               )}
+              <button
+                onClick={handleSyncTags}
+                disabled={syncingTags || loading}
+                title="مزامنة التاجات من Shopify - يجلب جميع التاجات المحدثة"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${syncingTags ? 'animate-spin' : ''}`} />
+                <span className="hidden sm:inline">{syncingTags ? 'جاري مزامنة التاجات...' : 'مزامنة التاجات'}</span>
+              </button>
               <button
                 onClick={() => fetchOrders(true)}
                 disabled={refreshing || loading}

@@ -1855,9 +1855,7 @@ app.post('/api/shopify/sync-order/:shopifyId', async (req, res) => {
       if (error) throw error;
       
       // Log tag update for debugging
-      const existingTags = existing.order_tags || [];
-      const newTags = dbOrder.order_tags || [];
-      if (JSON.stringify(existingTags) !== JSON.stringify(newTags)) {
+      if (tagsChanged) {
         console.log(`🏷️  Tags updated for order ${dbOrder.order_id}: ${JSON.stringify(existingTags)} → ${JSON.stringify(newTags)}`);
       }
       
@@ -2178,6 +2176,162 @@ app.get('/api/shopify/health', (req, res) => {
       SHOPIFY_ACCESS_TOKEN && tokenLength < 50 && 'Access token seems too short (should be ~70+ characters)',
     ].filter(Boolean),
   });
+});
+
+// Diagnostic: look up a specific order by order_id and show its DB state
+app.get('/api/shopify/diagnose-order', async (req, res) => {
+  const orderId = req.query.id;
+  if (!orderId) return res.status(400).json({ error: 'id query param required' });
+  try {
+    const { data, error } = await supabase
+      .from('orders')
+      .select('id, order_id, shopify_order_id, order_tags, base_order_id, archived, status')
+      .ilike('order_id', `%${orderId}%`)
+    if (error) throw error;
+    res.json({ found: data?.length || 0, orders: data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Diagnostic: compare Shopify orders with a specific tag vs DB
+app.get('/api/shopify/diagnose-tag', async (req, res) => {
+  const tag = req.query.tag;
+  if (!tag) return res.status(400).json({ error: 'tag query param required' });
+
+  try {
+    let storeUrl = SHOPIFY_STORE_URL.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const url = `https://${storeUrl}/admin/api/${SHOPIFY_API_VERSION}/orders.json?limit=250&status=any&tag=${encodeURIComponent(tag)}&fields=id,name,tags`;
+    const response = await fetch(url, { headers: { 'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN } });
+    const data = await response.json();
+    const shopifyOrders = data.orders || [];
+
+    const results = [];
+    for (const o of shopifyOrders) {
+      const { data: existing } = await supabase
+        .from('orders').select('id, order_id, order_tags').eq('shopify_order_id', o.id).is('base_order_id', null).maybeSingle();
+      results.push({
+        shopify_id: o.id,
+        shopify_name: o.name,
+        shopify_tags: o.tags,
+        in_db: !!existing,
+        db_tags: existing ? existing.order_tags : null,
+        db_order_id: existing ? existing.order_id : null,
+      });
+    }
+
+    const missing = results.filter(r => !r.in_db);
+    res.json({ total_shopify: shopifyOrders.length, missing_from_db: missing.length, missing, all: results });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Force sync tags endpoint - ensures all tag changes from Shopify are reflected in system immediately
+app.post('/api/shopify/sync-tags', async (req, res) => {
+  console.log(`\n🏷️  Force tag sync requested at ${new Date().toISOString()}`);
+
+  try {
+    // Fetch ALL orders from Shopify with pagination (no date limit so older tagged orders are included)
+    let allOrders = [];
+    let sinceId = null;
+    let apiVersion = null;
+    let pageCount = 0;
+    const maxPages = 100;
+
+    while (pageCount < maxPages) {
+      pageCount++;
+      console.log(`📄 Tag sync: fetching page ${pageCount}...`);
+      const result = await fetchShopifyOrdersPage(250, sinceId, apiVersion, null);
+      const orders = result.orders;
+      apiVersion = result.apiVersion;
+
+      if (!orders || orders.length === 0) break;
+
+      allOrders = allOrders.concat(orders);
+      console.log(`✅ Tag sync page ${pageCount}: ${orders.length} orders (total: ${allOrders.length})`);
+
+      if (orders.length < 250) break;
+      sinceId = orders[orders.length - 1].id;
+    }
+
+    if (allOrders.length === 0) {
+      return res.json({ success: true, message: 'No orders found to sync tags', ordersProcessed: 0 });
+    }
+
+    let tagsUpdated = 0;
+    let tagsMismatch = 0;
+    let imported = 0;
+
+    for (const shopifyOrder of allOrders) {
+      try {
+        const { data: existing } = await supabase
+          .from('orders')
+          .select('id, order_id, order_tags')
+          .eq('shopify_order_id', shopifyOrder.id)
+          .is('base_order_id', null)
+          .maybeSingle();
+
+        const shopifyTags = shopifyOrder.tags && shopifyOrder.tags.trim()
+          ? shopifyOrder.tags.split(',').map(t => t.trim()).filter(t => t.length > 0)
+          : [];
+
+        if (!existing) {
+          // Order not in DB — import it now
+          console.log(`📥 Importing missing order ${shopifyOrder.name || shopifyOrder.id} from Shopify...`);
+          try {
+            const dbOrder = await convertShopifyOrderToDB(shopifyOrder, {}, null);
+            const { error: insertError } = await supabase.from('orders').insert(dbOrder);
+            if (insertError) {
+              console.error(`❌ Failed to import order ${shopifyOrder.id}:`, insertError);
+            } else {
+              imported++;
+              console.log(`✅ Imported missing order ${shopifyOrder.name || shopifyOrder.id}`);
+            }
+          } catch (importErr) {
+            console.error(`❌ Error converting order ${shopifyOrder.id}:`, importErr);
+          }
+          continue;
+        }
+
+        const existingTags = existing.order_tags || [];
+
+        if (JSON.stringify(shopifyTags.sort()) !== JSON.stringify([...existingTags].sort())) {
+          tagsMismatch++;
+          console.log(`🏷️  Tags differ for order ${existing.order_id}:`);
+          console.log(`   Shopify: ${JSON.stringify(shopifyTags)}`);
+          console.log(`   System:  ${JSON.stringify(existingTags)}`);
+
+          const { error } = await supabase
+            .from('orders')
+            .update({ order_tags: shopifyTags, updated_at: new Date().toISOString() })
+            .eq('id', existing.id);
+
+          if (error) {
+            console.error(`❌ Error updating tags for order ${existing.order_id}:`, error);
+          } else {
+            tagsUpdated++;
+            console.log(`✅ Tags updated for order ${existing.order_id}: ${JSON.stringify(shopifyTags)}`);
+          }
+        }
+      } catch (error) {
+        console.error(`⚠️  Error processing order ${shopifyOrder.id}:`, error);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: 'Tag sync complete',
+      ordersProcessed: allOrders.length,
+      tagsMismatch,
+      tagsUpdated,
+      imported,
+    });
+
+  } catch (error) {
+    console.error('❌ Error in tag sync:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
 });
 
 // Schedule sync every 5 minutes

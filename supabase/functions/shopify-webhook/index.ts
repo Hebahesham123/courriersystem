@@ -22,7 +22,12 @@ Deno.serve(async (req: Request) => {
     const shopifyOrder = await req.json()
     const topic = req.headers.get('x-shopify-topic') || 'orders/create'
 
-    console.log(`Received webhook: ${topic}`, shopifyOrder.id || shopifyOrder.order_id)
+    console.log(`\n📨 Webhook received: ${topic}`)
+    console.log(`Order ID: ${shopifyOrder.id || shopifyOrder.order_id}`)
+    console.log(`Order Name: ${shopifyOrder.name}`)
+    console.log(`Tags: ${shopifyOrder.tags || '(no tags)'}`)
+    console.log(`Financial Status: ${shopifyOrder.financial_status}`)
+    console.log(`Fulfillment Status: ${shopifyOrder.fulfillment_status}`)
 
     // Normalize payment method (enhanced to handle gift cards and partial payments)
     const normalizePayment = (gateway: string, financialStatus: string, transactions: any[] = []) => {
@@ -446,6 +451,9 @@ Deno.serve(async (req: Request) => {
                              existingMain.internal_comment ||
                              (existingMain.status && existingMain.status !== 'pending' && existingMain.status !== 'assigned')
       
+      // Check if tags have changed (CRITICAL: Always sync tag changes immediately)
+      const tagsChanged = JSON.stringify(existingMain.order_tags || []) !== JSON.stringify(orderData.order_tags || [])
+      
       // Update existing order - preserve ALL courier-edited fields
       const updateData: any = {
         shopify_updated_at: orderData.shopify_updated_at,
@@ -504,8 +512,8 @@ Deno.serve(async (req: Request) => {
         updated_at: new Date().toISOString()
       }
       
-      // Log tag update for debugging
-      if (JSON.stringify(existingMain.order_tags || []) !== JSON.stringify(orderData.order_tags || [])) {
+      // Log tag update for debugging and check if tags changed
+      if (tagsChanged) {
         console.log(`🏷️  Tags updated for order ${shopifyOrder.id}: ${JSON.stringify(existingMain.order_tags || [])} → ${JSON.stringify(orderData.order_tags || [])}`)
       }
 
@@ -565,10 +573,25 @@ Deno.serve(async (req: Request) => {
         }
       }
 
-      await supabaseClient
+      // CRITICAL: If only tags changed, force update by setting updated_at
+      // This ensures that tag deletions in Shopify are immediately reflected in the system
+      if (tagsChanged) {
+        console.log(`🏷️  Tag change detected - forcing update for order ${shopifyOrder.id}`)
+        updateData.updated_at = new Date().toISOString()
+      }
+
+      const { data: updateResult, error: updateError } = await supabaseClient
         .from('orders')
         .update(updateData)
         .eq('id', existingMain.id)
+        .select()
+        .single()
+      
+      if (updateError) {
+        console.error(`❌ Error updating order ${shopifyOrder.id}:`, updateError)
+      } else {
+        console.log(`✅ Order ${shopifyOrder.id} updated successfully${tagsChanged ? ' (tags synced)' : ''}`)
+      }
     } else {
       // Insert new order - only if it doesn't exist
       // Use upsert but check if order exists first to avoid overwriting courier edits
