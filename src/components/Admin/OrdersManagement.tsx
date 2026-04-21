@@ -46,6 +46,7 @@ import { supabase } from "../../lib/supabase"
 import { useLanguage } from "../../contexts/LanguageContext"
 import { useAuth } from "../../contexts/AuthContext"
 import OrderDetailModal from "./OrderDetailModal"
+import SplitPaymentModal from "./SplitPaymentModal"
 import ReceivePieceOrExchange from "./ReceivePieceOrExchange"
 
 interface Order {
@@ -100,6 +101,10 @@ interface Order {
   partial_paid_amount?: number | null
   internal_comment?: string | null
   receive_piece_or_exchange?: string | null
+  admin_prepaid_amount?: number | null
+  admin_prepaid_method?: string | null
+  admin_prepaid_at?: string | null
+  admin_prepaid_by?: string | null
 }
 
 interface Courier {
@@ -300,6 +305,7 @@ const OrdersManagement: React.FC = () => {
   const [expandedRows, setExpandedRows] = useState<string[]>([])
   const [isMobile, setIsMobile] = useState(false)
   const [selectedOrderForDetail, setSelectedOrderForDetail] = useState<Order | null>(null)
+  const [selectedOrderForSplit, setSelectedOrderForSplit] = useState<Order | null>(null)
   const [notesPopupOrderId, setNotesPopupOrderId] = useState<string | null>(null)
   const [notesPopupPosition, setNotesPopupPosition] = useState<{ top: number; left: number } | null>(null)
   const [showReceivePieceOrExchange, setShowReceivePieceOrExchange] = useState(false)
@@ -522,6 +528,7 @@ const OrdersManagement: React.FC = () => {
           line_items, order_note, customer_note, notes, order_tags,
           shopify_created_at, shopify_cancelled_at, assigned_courier_id, original_courier_id, assigned_at, created_at, updated_at,
           archived, archived_at, collected_by, payment_sub_type, delivery_fee, partial_paid_amount, internal_comment, receive_piece_or_exchange,
+          admin_prepaid_amount, admin_prepaid_method, admin_prepaid_at, admin_prepaid_by,
           balance, total_paid, shopify_raw_data, base_order_id,
           users!orders_assigned_courier_id_fkey(name)
         `,
@@ -2690,6 +2697,14 @@ const OrdersManagement: React.FC = () => {
                     )}
                     نسخ
                   </button>
+                  <button
+                    onClick={() => setSelectedOrderForSplit(order)}
+                    className="flex items-center gap-1 px-3 py-1 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-sm"
+                    title="Split Payment / دفع مقسم"
+                  >
+                    <CreditCard className="w-3 h-3" />
+                    {order.admin_prepaid_amount ? `Split ${Number(order.admin_prepaid_amount).toFixed(0)}` : 'Split'}
+                  </button>
                   {viewMode === "active" && (
                     <button
                       onClick={() => startEdit(order.id)}
@@ -4455,6 +4470,14 @@ const OrdersManagement: React.FC = () => {
                                   )}
                                   نسخ
                                 </button>
+                                <button
+                                  onClick={() => setSelectedOrderForSplit(order)}
+                                  className="flex items-center gap-1 px-3 py-1 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-sm"
+                                  title="Split Payment / دفع مقسم"
+                                >
+                                  <CreditCard className="w-3 h-3" />
+                                  {order.admin_prepaid_amount ? `Split ${Number(order.admin_prepaid_amount).toFixed(0)}` : 'Split'}
+                                </button>
                                 {viewMode === "active" && (
                                   <button
                                     onClick={() => startEdit(order.id)}
@@ -4907,7 +4930,8 @@ const OrdersManagement: React.FC = () => {
                   status, fulfillment_status, shipping_method, tracking_number, tracking_url,
                   line_items, product_images, order_note, customer_note, notes, order_tags,
                   shopify_created_at, shopify_cancelled_at, assigned_courier_id, original_courier_id, created_at, updated_at,
-                  archived, archived_at, collected_by, payment_sub_type, delivery_fee, partial_paid_amount, internal_comment, shopify_raw_data
+                  archived, archived_at, collected_by, payment_sub_type, delivery_fee, partial_paid_amount, internal_comment, shopify_raw_data,
+                  admin_prepaid_amount, admin_prepaid_method, admin_prepaid_at, admin_prepaid_by
                 `)
                 .eq('id', selectedOrderForDetail.id)
                 .single()
@@ -4915,6 +4939,21 @@ const OrdersManagement: React.FC = () => {
               if (updatedOrder) {
                 setSelectedOrderForDetail(updatedOrder as any)
               }
+            }}
+          />
+        )}
+
+        {/* Split Payment Modal */}
+        {selectedOrderForSplit && (
+          <SplitPaymentModal
+            orderId={selectedOrderForSplit.id}
+            orderTotal={Number(selectedOrderForSplit.total_order_fees) || 0}
+            currentPrepaidAmount={selectedOrderForSplit.admin_prepaid_amount ?? null}
+            currentPrepaidMethod={selectedOrderForSplit.admin_prepaid_method ?? null}
+            currentPrepaidAt={selectedOrderForSplit.admin_prepaid_at ?? null}
+            onClose={() => setSelectedOrderForSplit(null)}
+            onSaved={() => {
+              fetchOrders()
             }}
           />
         )}

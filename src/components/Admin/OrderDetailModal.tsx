@@ -25,6 +25,7 @@ import {
   RotateCcw,
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
+import SplitPaymentModal from "./SplitPaymentModal"
 
 interface OrderItem {
   id: string
@@ -86,6 +87,10 @@ interface Order {
   assigned_courier_id?: string | null
   original_courier_id?: string | null
   courier_name?: string
+  admin_prepaid_amount?: number | null
+  admin_prepaid_method?: string | null
+  admin_prepaid_at?: string | null
+  admin_prepaid_by?: string | null
 }
 
 interface OrderDetailModalProps {
@@ -115,6 +120,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
   const [removingItemId, setRemovingItemId] = useState<string | null>(null)
   const [restoringItemId, setRestoringItemId] = useState<string | null>(null)
   const [isEditing, setIsEditing] = useState(false)
+  const [showSplitModal, setShowSplitModal] = useState(false)
   const [editingPrice, setEditingPrice] = useState<string>("")
   const [editingNotes, setEditingNotes] = useState<string>("")
   const [editingOrderNote, setEditingOrderNote] = useState<string>("")
@@ -1586,6 +1592,14 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                   <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
                   {isSyncing ? 'Syncing...' : 'Sync with Shopify'}
                 </button>
+                <button
+                  onClick={() => setShowSplitModal(true)}
+                  className="flex items-center gap-1.5 px-3 py-1 bg-emerald-500 hover:bg-emerald-600 rounded-full text-xs font-medium transition-colors"
+                  title="Split Payment / دفع مقسم"
+                >
+                  <CreditCard className="w-3.5 h-3.5" />
+                  {order.admin_prepaid_amount ? `Split: ${Number(order.admin_prepaid_amount).toFixed(2)}` : 'Split Payment'}
+                </button>
               </div>
               <div className="flex items-center gap-4 mt-3 text-blue-100 text-sm">
                 <div className="flex items-center gap-1">
@@ -2425,6 +2439,17 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
           </div>
         </div>
       </div>
+      {showSplitModal && order && (
+        <SplitPaymentModal
+          orderId={order.id}
+          orderTotal={Number(order.total_order_fees) || 0}
+          currentPrepaidAmount={order.admin_prepaid_amount ?? null}
+          currentPrepaidMethod={order.admin_prepaid_method ?? null}
+          currentPrepaidAt={order.admin_prepaid_at ?? null}
+          onClose={() => setShowSplitModal(false)}
+          onSaved={() => onUpdate?.()}
+        />
+      )}
     </div>,
     document.body
   )

@@ -2866,7 +2866,14 @@ const Summary: React.FC = () => {
                                   {order.status === "partial" && (
                                     <p className="flex items-start gap-1">
                                       <CheckCircle className="w-3 h-3 text-yellow-600 mt-0.5 flex-shrink-0" />
-                                      <span><strong className="text-yellow-700">SUCCESS (Partial):</strong> This order is counted as successful but with partial payment. The courier collected {order.partial_paid_amount || 0} EGP out of {order.total_order_fees || 0} EGP.</span>
+                                      <span>
+                                        <strong className="text-yellow-700">SUCCESS (Partial):</strong> This order is counted as successful but with partial payment.
+                                        {Number(order.admin_prepaid_amount || 0) > 0 ? (
+                                          <> Admin prepaid <strong>{Number(order.admin_prepaid_amount).toFixed(2)} EGP</strong>{order.admin_prepaid_method ? ` via ${order.admin_prepaid_method}` : ""} + courier collected <strong>{Number(order.partial_paid_amount || 0).toFixed(2)} EGP</strong> = <strong className="text-emerald-700">{(Number(order.admin_prepaid_amount || 0) + Number(order.partial_paid_amount || 0)).toFixed(2)} EGP</strong> out of {Number(order.total_order_fees || 0).toFixed(2)} EGP.</>
+                                        ) : (
+                                          <> The courier collected {order.partial_paid_amount || 0} EGP out of {order.total_order_fees || 0} EGP.</>
+                                        )}
+                                      </span>
                                     </p>
                                   )}
                                   {order.status === "canceled" && (
@@ -3107,6 +3114,33 @@ const Summary: React.FC = () => {
                                   </div>
                                 )}
 
+                                {/* Admin Prepaid Split Payment */}
+                                {Number(order.admin_prepaid_amount || 0) > 0 && (
+                                  <div className="flex justify-between items-center py-1 px-2 bg-emerald-50 rounded border border-emerald-200">
+                                    <span className="text-xs text-emerald-700 font-medium flex items-center gap-1">
+                                      <CreditCard className="w-3 h-3" />
+                                      مدفوع مسبقاً
+                                      {order.admin_prepaid_method && (
+                                        <span className="text-[10px] px-1.5 py-0.5 bg-emerald-200 text-emerald-800 rounded ml-1">
+                                          {({ cash: "كاش", paymob: "Paymob", instapay: "إنستاباي", valu: "Valu", card: "بطاقة" } as Record<string, string>)[order.admin_prepaid_method] || order.admin_prepaid_method}
+                                        </span>
+                                      )}
+                                      :
+                                    </span>
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-xs font-semibold text-emerald-700">
+                                        {Number(order.admin_prepaid_amount).toFixed(2)} {translate("EGP")}
+                                      </span>
+                                      <button
+                                        onClick={() => copyToClipboard(Number(order.admin_prepaid_amount).toFixed(2), 'Admin Prepaid')}
+                                        className="p-0.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                                      >
+                                        <Copy className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+
                                 {/* Delivery Fee */}
                                 {deliveryFee > 0 && (
                                   <div className="flex justify-between items-center py-1">
@@ -3225,8 +3259,180 @@ const Summary: React.FC = () => {
                                     </div>
                                   </div>
                                 )}
+
+                                {/* Grand Total Collected (courier + admin prepaid) */}
+                                {Number(order.admin_prepaid_amount || 0) > 0 && (
+                                  <div className="flex justify-between items-center pt-2 mt-1 border-t-2 border-emerald-300 bg-emerald-50 -mx-3 px-3 pb-2 rounded-b-lg">
+                                    <span className="text-xs font-bold text-emerald-800">إجمالي المحصل (مندوب + مقدم):</span>
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-sm font-bold text-emerald-700">
+                                        {(totalCourierAmount + Number(order.admin_prepaid_amount || 0)).toFixed(2)} {translate("EGP")}
+                                      </span>
+                                      <button
+                                        onClick={() => copyToClipboard((totalCourierAmount + Number(order.admin_prepaid_amount || 0)).toFixed(2), 'Grand Total')}
+                                        className="p-0.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                                      >
+                                        <Copy className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             </div>
+
+                            {/* DEBUG: raw DB state - remove after verifying */}
+                            <div className="mt-2 p-2 bg-yellow-50 border border-yellow-300 rounded text-[10px] font-mono text-yellow-900 break-all">
+                              <strong>DEBUG:</strong> payment_sub_type=<code className="bg-yellow-100 px-1">{String(order.payment_sub_type ?? "null")}</code>
+                              {" · "}
+                              onther_payments=<code className="bg-yellow-100 px-1">{order.onther_payments ? JSON.stringify(order.onther_payments) : "null"}</code>
+                              {" · "}
+                              partial_paid_amount=<code className="bg-yellow-100 px-1">{String(order.partial_paid_amount ?? "null")}</code>
+                            </div>
+
+                            {/* Payment Breakdown - detailed, per-method */}
+                            {(() => {
+                              const methodLabels: Record<string, string> = {
+                                cash: "نقداً",
+                                on_hand: "نقداً",
+                                paymob: "باي موب",
+                                instapay: "إنستاباي",
+                                valu: "فاليو",
+                                card: "بطاقة",
+                                wallet: "المحفظة",
+                                visa_machine: "ماكينة فيزا",
+                                fawry: "فوري",
+                                vodafone_cash: "فودافون كاش",
+                                orange_cash: "أورانج كاش",
+                                we_pay: "وي باي",
+                              }
+
+                              // Admin prepaid portion
+                              const adminAmt = Number(order.admin_prepaid_amount || 0)
+                              const adminRow = adminAmt > 0
+                                ? { method: order.admin_prepaid_method || "—", amount: adminAmt }
+                                : null
+
+                              // Courier portion - split OR single method
+                              let ontherArr: { method: string; amount: string | number }[] = []
+                              if (order.payment_sub_type === "onther" && order.onther_payments) {
+                                try {
+                                  const parsed = typeof order.onther_payments === "string"
+                                    ? JSON.parse(order.onther_payments)
+                                    : order.onther_payments
+                                  if (Array.isArray(parsed)) ontherArr = parsed
+                                } catch {}
+                              }
+                              const courierIsSplit = ontherArr.length > 0
+                              const courierRows: { method: string; amount: number }[] = courierIsSplit
+                                ? ontherArr
+                                    .map((p) => ({ method: String(p.method || "—"), amount: Number(p.amount) || 0 }))
+                                    .filter((r) => r.amount > 0)
+                                : courierOrderAmount > 0
+                                ? [{ method: order.payment_sub_type || order.collected_by || "—", amount: courierOrderAmount }]
+                                : []
+
+                              if (!adminRow && courierRows.length === 0) return null
+                              const courierSubTotal = courierRows.reduce((s, r) => s + r.amount, 0)
+                              const breakdownTotal = (adminRow?.amount || 0) + courierSubTotal
+
+                              return (
+                                <div className="mt-2 pt-2 border-t border-gray-200">
+                                  <h6 className="text-xs font-bold text-gray-700 mb-2 uppercase flex items-center gap-1.5">
+                                    <CreditCard className="w-3.5 h-3.5 text-gray-600" />
+                                    تفاصيل التحصيل حسب الطريقة
+                                  </h6>
+                                  <div className="space-y-1.5">
+                                    {/* Admin prepaid */}
+                                    {adminRow && (
+                                      <div className="flex justify-between items-center py-1.5 px-2 rounded-lg border bg-emerald-50 border-emerald-200">
+                                        <div className="flex items-center gap-2 min-w-0">
+                                          <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold bg-emerald-200 text-emerald-800">
+                                            إدارة
+                                          </span>
+                                          <span className="text-xs text-gray-700 truncate">مدفوع مسبقاً (الإدارة)</span>
+                                          <span className="text-[10px] px-1.5 py-0.5 bg-white border border-gray-300 rounded text-gray-800 font-medium">
+                                            {methodLabels[adminRow.method] || adminRow.method}
+                                          </span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                                          <span className="text-xs font-bold text-emerald-700">
+                                            {adminRow.amount.toFixed(2)} {translate("EGP")}
+                                          </span>
+                                          <button
+                                            onClick={() => copyToClipboard(adminRow.amount.toFixed(2), 'Admin Prepaid')}
+                                            className="p-0.5 text-gray-400 hover:text-gray-600 hover:bg-white/50 rounded transition-colors"
+                                          >
+                                            <Copy className="w-3 h-3" />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* Courier rows - grouped when split */}
+                                    {courierRows.length > 0 && (
+                                      <div className={courierIsSplit ? "bg-indigo-50/60 border-2 border-dashed border-indigo-300 rounded-lg p-1.5 space-y-1" : ""}>
+                                        {courierIsSplit && (
+                                          <div className="flex items-center justify-between px-1.5 py-0.5">
+                                            <div className="flex items-center gap-1.5">
+                                              <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-indigo-200 text-indigo-900">
+                                                🔀 دفع مقسم من المندوب
+                                              </span>
+                                              <span className="text-[10px] text-indigo-700 font-medium">
+                                                ({courierRows.length} طرق)
+                                              </span>
+                                            </div>
+                                          </div>
+                                        )}
+                                        {courierRows.map((r, idx) => (
+                                          <div
+                                            key={idx}
+                                            className="flex justify-between items-center py-1.5 px-2 rounded-lg border bg-blue-50 border-blue-200"
+                                          >
+                                            <div className="flex items-center gap-2 min-w-0">
+                                              <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold bg-blue-200 text-blue-800">
+                                                مندوب
+                                              </span>
+                                              <span className="text-xs text-gray-700 truncate">
+                                                {courierIsSplit ? `الطريقة ${idx + 1}` : "حصّله المندوب"}
+                                              </span>
+                                              <span className="text-[10px] px-1.5 py-0.5 bg-white border border-gray-300 rounded text-gray-800 font-medium">
+                                                {methodLabels[r.method] || r.method}
+                                              </span>
+                                            </div>
+                                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                                              <span className="text-xs font-bold text-blue-700">
+                                                {r.amount.toFixed(2)} {translate("EGP")}
+                                              </span>
+                                              <button
+                                                onClick={() => copyToClipboard(r.amount.toFixed(2), `Courier ${idx + 1}`)}
+                                                className="p-0.5 text-gray-400 hover:text-gray-600 hover:bg-white/50 rounded transition-colors"
+                                              >
+                                                <Copy className="w-3 h-3" />
+                                              </button>
+                                            </div>
+                                          </div>
+                                        ))}
+                                        {courierIsSplit && courierRows.length > 1 && (
+                                          <div className="flex justify-between items-center px-2 pt-1 border-t border-indigo-200">
+                                            <span className="text-[11px] font-bold text-indigo-800">مجموع المندوب:</span>
+                                            <span className="text-xs font-bold text-indigo-700">
+                                              {courierSubTotal.toFixed(2)} {translate("EGP")}
+                                            </span>
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+
+                                    <div className="flex justify-between items-center pt-1.5 mt-1 border-t border-gray-300 px-2">
+                                      <span className="text-xs font-bold text-gray-800">المجموع الكلي:</span>
+                                      <span className="text-sm font-bold text-gray-900">
+                                        {breakdownTotal.toFixed(2)} {translate("EGP")}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              )
+                            })()}
 
                             {/* Payment Information - Compact */}
                             <div className="mt-2 pt-2 border-t border-gray-200">
@@ -4756,7 +4962,14 @@ const Summary: React.FC = () => {
                                   {order.status === "partial" && (
                                     <p className="flex items-start gap-1">
                                       <CheckCircle className={`text-yellow-600 mt-0.5 flex-shrink-0 ${isCourier ? "w-3 h-3" : "w-3 h-3"}`} />
-                                      <span><strong className="text-yellow-700">SUCCESS (Partial):</strong> This order is counted as successful but with partial payment. The courier collected {order.partial_paid_amount || 0} EGP out of {order.total_order_fees || 0} EGP.</span>
+                                      <span>
+                                        <strong className="text-yellow-700">SUCCESS (Partial):</strong> This order is counted as successful but with partial payment.
+                                        {Number(order.admin_prepaid_amount || 0) > 0 ? (
+                                          <> Admin prepaid <strong>{Number(order.admin_prepaid_amount).toFixed(2)} EGP</strong>{order.admin_prepaid_method ? ` via ${order.admin_prepaid_method}` : ""} + courier collected <strong>{Number(order.partial_paid_amount || 0).toFixed(2)} EGP</strong> = <strong className="text-emerald-700">{(Number(order.admin_prepaid_amount || 0) + Number(order.partial_paid_amount || 0)).toFixed(2)} EGP</strong> out of {Number(order.total_order_fees || 0).toFixed(2)} EGP.</>
+                                        ) : (
+                                          <> The courier collected {order.partial_paid_amount || 0} EGP out of {order.total_order_fees || 0} EGP.</>
+                                        )}
+                                      </span>
                                     </p>
                                   )}
                                   {order.status === "canceled" && (
@@ -5025,8 +5238,165 @@ const Summary: React.FC = () => {
                                     </span>
                                   </div>
                                 )}
+
+                                {/* Admin Prepaid Row */}
+                                {Number(order.admin_prepaid_amount || 0) > 0 && (
+                                  <div className="flex justify-between items-center py-1.5 px-2 mt-2 bg-emerald-50 rounded border border-emerald-200">
+                                    <span className={`font-medium text-emerald-700 flex items-center gap-1 ${isCourier ? "text-xs" : "text-sm"}`}>
+                                      <CreditCard className="w-3 h-3" />
+                                      مدفوع مسبقاً
+                                      {order.admin_prepaid_method && (
+                                        <span className="text-[10px] px-1.5 py-0.5 bg-emerald-200 text-emerald-800 rounded">
+                                          {({ cash: "كاش", paymob: "Paymob", instapay: "إنستاباي", valu: "Valu", card: "بطاقة" } as Record<string, string>)[order.admin_prepaid_method] || order.admin_prepaid_method}
+                                        </span>
+                                      )}
+                                      :
+                                    </span>
+                                    <span className={`font-bold text-emerald-700 ${isCourier ? "text-xs" : "text-sm"}`}>
+                                      {Number(order.admin_prepaid_amount).toFixed(2)} {translate("EGP")}
+                                    </span>
+                                  </div>
+                                )}
+
+                                {/* Grand Total Collected */}
+                                {Number(order.admin_prepaid_amount || 0) > 0 && (
+                                  <div className="flex justify-between items-center pt-2 mt-1 border-t-2 border-emerald-300 bg-emerald-50 -mx-3 px-3 pb-2 rounded-b-lg">
+                                    <span className={`font-bold text-emerald-800 ${isCourier ? "text-xs" : "text-sm"}`}>إجمالي المحصل (مندوب + مقدم):</span>
+                                    <span className={`font-bold text-emerald-700 ${isCourier ? "text-sm" : "text-base"}`}>
+                                      {(totalCourierAmount + Number(order.admin_prepaid_amount || 0)).toFixed(2)} {translate("EGP")}
+                                    </span>
+                                  </div>
+                                )}
                               </div>
                             </div>
+
+                            {/* DEBUG: raw DB state - remove after verifying */}
+                            <div className="mt-2 p-2 bg-yellow-50 border border-yellow-300 rounded text-[10px] font-mono text-yellow-900 break-all">
+                              <strong>DEBUG-2:</strong> payment_sub_type=<code className="bg-yellow-100 px-1">{String(order.payment_sub_type ?? "null")}</code>
+                              {" · "}
+                              onther_payments=<code className="bg-yellow-100 px-1">{order.onther_payments ? JSON.stringify(order.onther_payments) : "null"}</code>
+                              {" · "}
+                              partial_paid_amount=<code className="bg-yellow-100 px-1">{String(order.partial_paid_amount ?? "null")}</code>
+                            </div>
+
+                            {/* Payment Breakdown - detailed, per-method */}
+                            {(() => {
+                              const methodLabels: Record<string, string> = {
+                                cash: "نقداً",
+                                on_hand: "نقداً",
+                                paymob: "باي موب",
+                                instapay: "إنستاباي",
+                                valu: "فاليو",
+                                card: "بطاقة",
+                                wallet: "المحفظة",
+                                visa_machine: "ماكينة فيزا",
+                                fawry: "فوري",
+                                vodafone_cash: "فودافون كاش",
+                                orange_cash: "أورانج كاش",
+                                we_pay: "وي باي",
+                              }
+                              const adminAmt = Number(order.admin_prepaid_amount || 0)
+                              const adminRow = adminAmt > 0
+                                ? { method: order.admin_prepaid_method || "—", amount: adminAmt }
+                                : null
+                              let ontherArr: { method: string; amount: string | number }[] = []
+                              if (order.payment_sub_type === "onther" && order.onther_payments) {
+                                try {
+                                  const parsed = typeof order.onther_payments === "string"
+                                    ? JSON.parse(order.onther_payments)
+                                    : order.onther_payments
+                                  if (Array.isArray(parsed)) ontherArr = parsed
+                                } catch {}
+                              }
+                              const courierIsSplit = ontherArr.length > 0
+                              const courierRows: { method: string; amount: number }[] = courierIsSplit
+                                ? ontherArr
+                                    .map((p) => ({ method: String(p.method || "—"), amount: Number(p.amount) || 0 }))
+                                    .filter((r) => r.amount > 0)
+                                : courierOrderAmount > 0
+                                ? [{ method: order.payment_sub_type || order.collected_by || "—", amount: courierOrderAmount }]
+                                : []
+                              if (!adminRow && courierRows.length === 0) return null
+                              const courierSubTotal = courierRows.reduce((s, r) => s + r.amount, 0)
+                              const breakdownTotal = (adminRow?.amount || 0) + courierSubTotal
+                              return (
+                                <div className={`mt-3 pt-3 border-t border-gray-200`}>
+                                  <h6 className={`font-bold text-gray-700 mb-2 uppercase flex items-center gap-1.5 ${isCourier ? "text-xs" : "text-xs"}`}>
+                                    <CreditCard className="w-3.5 h-3.5 text-gray-600" />
+                                    تفاصيل التحصيل حسب الطريقة
+                                  </h6>
+                                  <div className="space-y-1.5">
+                                    {adminRow && (
+                                      <div className="flex justify-between items-center py-1.5 px-2 rounded-lg border bg-emerald-50 border-emerald-200">
+                                        <div className="flex items-center gap-2 min-w-0">
+                                          <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold bg-emerald-200 text-emerald-800">
+                                            إدارة
+                                          </span>
+                                          <span className={`text-gray-700 truncate ${isCourier ? "text-xs" : "text-xs"}`}>مدفوع مسبقاً (الإدارة)</span>
+                                          <span className="text-[10px] px-1.5 py-0.5 bg-white border border-gray-300 rounded text-gray-800 font-medium">
+                                            {methodLabels[adminRow.method] || adminRow.method}
+                                          </span>
+                                        </div>
+                                        <span className={`font-bold text-emerald-700 ${isCourier ? "text-xs" : "text-xs"}`}>
+                                          {adminRow.amount.toFixed(2)} {translate("EGP")}
+                                        </span>
+                                      </div>
+                                    )}
+                                    {courierRows.length > 0 && (
+                                      <div className={courierIsSplit ? "bg-indigo-50/60 border-2 border-dashed border-indigo-300 rounded-lg p-1.5 space-y-1" : ""}>
+                                        {courierIsSplit && (
+                                          <div className="flex items-center justify-between px-1.5 py-0.5">
+                                            <div className="flex items-center gap-1.5">
+                                              <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-indigo-200 text-indigo-900">
+                                                🔀 دفع مقسم من المندوب
+                                              </span>
+                                              <span className="text-[10px] text-indigo-700 font-medium">
+                                                ({courierRows.length} طرق)
+                                              </span>
+                                            </div>
+                                          </div>
+                                        )}
+                                        {courierRows.map((r, idx) => (
+                                          <div
+                                            key={idx}
+                                            className="flex justify-between items-center py-1.5 px-2 rounded-lg border bg-blue-50 border-blue-200"
+                                          >
+                                            <div className="flex items-center gap-2 min-w-0">
+                                              <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold bg-blue-200 text-blue-800">
+                                                مندوب
+                                              </span>
+                                              <span className={`text-gray-700 truncate ${isCourier ? "text-xs" : "text-xs"}`}>
+                                                {courierIsSplit ? `الطريقة ${idx + 1}` : "حصّله المندوب"}
+                                              </span>
+                                              <span className="text-[10px] px-1.5 py-0.5 bg-white border border-gray-300 rounded text-gray-800 font-medium">
+                                                {methodLabels[r.method] || r.method}
+                                              </span>
+                                            </div>
+                                            <span className={`font-bold text-blue-700 ${isCourier ? "text-xs" : "text-xs"}`}>
+                                              {r.amount.toFixed(2)} {translate("EGP")}
+                                            </span>
+                                          </div>
+                                        ))}
+                                        {courierIsSplit && courierRows.length > 1 && (
+                                          <div className="flex justify-between items-center px-2 pt-1 border-t border-indigo-200">
+                                            <span className="text-[11px] font-bold text-indigo-800">مجموع المندوب:</span>
+                                            <span className="text-xs font-bold text-indigo-700">
+                                              {courierSubTotal.toFixed(2)} {translate("EGP")}
+                                            </span>
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+                                    <div className="flex justify-between items-center pt-1.5 mt-1 border-t border-gray-300 px-2">
+                                      <span className={`font-bold text-gray-800 ${isCourier ? "text-xs" : "text-xs"}`}>المجموع الكلي:</span>
+                                      <span className={`font-bold text-gray-900 ${isCourier ? "text-xs" : "text-sm"}`}>
+                                        {breakdownTotal.toFixed(2)} {translate("EGP")}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              )
+                            })()}
 
                             {/* Payment Information */}
                             <div className={`mt-3 pt-3 border-t border-gray-200`}>

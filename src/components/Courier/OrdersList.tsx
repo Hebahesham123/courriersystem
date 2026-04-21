@@ -32,6 +32,7 @@ import {
   CheckCircle,
   DollarSign,
   Trash2,
+  Plus,
   UserCheck,
   Copy,
   Percent,
@@ -97,6 +98,11 @@ interface Order {
   order_note?: string | null
   customer_note?: string | null
   receive_piece_or_exchange?: string | null
+  admin_prepaid_amount?: number | null
+  admin_prepaid_method?: string | null
+  admin_prepaid_at?: string | null
+  admin_prepaid_by?: string | null
+  onther_payments?: string | { method: string; amount: string | number }[] | null
 }
 
 const statusLabels: Record<string, { label: string; icon: React.ComponentType<any>; color: string; bgColor: string }> =
@@ -150,6 +156,16 @@ const collectionMethodsForCourier: Record<string, string> = {}
 
 // Modified payment sub-types for courier's choice in modal
 const paymentSubTypesForCourier: Record<string, string> = {
+  on_hand: "نقداً",
+  instapay: "إنستاباي",
+  wallet: "المحفظة",
+  visa_machine: "ماكينة فيزا",
+  paymob: "باي موب",
+  onther: "دفع مقسم / طرق متعددة",
+}
+
+// Methods the courier can split across
+const ontherSplitMethods: Record<string, string> = {
   on_hand: "نقداً",
   instapay: "إنستاباي",
   wallet: "المحفظة",
@@ -326,6 +342,8 @@ const OrdersList: React.FC = () => {
     payment_sub_type: "",
     collected_by: "",
   })
+  // Courier-side split payments: array of { method, amount }
+  const [ontherPayments, setOntherPayments] = useState<{ method: string; amount: string }[]>([])
   const [imageUploading, setImageUploading] = useState(false)
   const [uploadingImages, setUploadingImages] = useState<string[]>([]) // Track which images are uploading
   const [saving, setSaving] = useState(false)
@@ -479,6 +497,23 @@ const OrdersList: React.FC = () => {
       collected_by: initialCollectedBy,
       payment_sub_type: initialPaymentSubType,
     })
+
+    // Load existing split payments from order (if any)
+    let existingSplits: { method: string; amount: string }[] = []
+    if (order.onther_payments) {
+      try {
+        const parsed = typeof order.onther_payments === "string"
+          ? JSON.parse(order.onther_payments)
+          : order.onther_payments
+        if (Array.isArray(parsed)) {
+          existingSplits = parsed.map((p: any) => ({
+            method: String(p.method || ""),
+            amount: String(p.amount ?? ""),
+          }))
+        }
+      } catch {}
+    }
+    setOntherPayments(existingSplits)
   }
 
   // When modal opens, position it EXACTLY at card location
@@ -1989,6 +2024,37 @@ const OrdersList: React.FC = () => {
       let fee = Number.parseFloat(updateData.delivery_fee) || 0
       let partial = Number.parseFloat(updateData.partial_paid_amount) || 0
 
+      // Validate courier-side split payments
+      if (updateData.payment_sub_type === "onther") {
+        const validSplits = ontherPayments.filter(
+          (r) => r.method && Number.parseFloat(r.amount) > 0,
+        )
+        if (validSplits.length < 1) {
+          alert("يرجى إضافة طريقة دفع واحدة على الأقل للتقسيم")
+          setSaving(false)
+          setUpdatingOrderId(null)
+          return
+        }
+        const splitTotal = validSplits.reduce(
+          (sum, r) => sum + (Number.parseFloat(r.amount) || 0),
+          0,
+        )
+        // If courier set partial amount (e.g. 15000), the split must equal it.
+        // Otherwise the split total IS the collected amount — backfill it into partial.
+        if (partial > 0) {
+          if (Math.abs(splitTotal - partial) > 0.01) {
+            alert(
+              `مجموع التقسيم (${splitTotal.toFixed(2)}) لا يساوي المبلغ المحصل (${partial.toFixed(2)}). يرجى تعديل المبالغ.`,
+            )
+            setSaving(false)
+            setUpdatingOrderId(null)
+            return
+          }
+        } else {
+          partial = splitTotal
+        }
+      }
+
       const isReturnStatus = updateData.status === "return"
       const isReceivingPartWithNoFees = updateData.status === "receiving_part" && fee === 0 && partial === 0
       const isHandToHandWithNoFees = updateData.status === "hand_to_hand" && fee === 0 && partial === 0
@@ -2008,6 +2074,16 @@ const OrdersList: React.FC = () => {
 
       updatePayload.delivery_fee = fee
       updatePayload.partial_paid_amount = partial
+
+      // Persist courier-side split payments when payment_sub_type = onther
+      if (updateData.payment_sub_type === "onther") {
+        const validSplits = ontherPayments
+          .filter((r) => r.method && Number.parseFloat(r.amount) > 0)
+          .map((r) => ({ method: r.method, amount: String(r.amount) }))
+        updatePayload.onther_payments = validSplits.length > 0 ? validSplits : null
+      } else {
+        updatePayload.onther_payments = null
+      }
 
       if (updateData.internal_comment?.trim()) {
         updatePayload.internal_comment = updateData.internal_comment.trim()
@@ -2297,17 +2373,36 @@ const OrdersList: React.FC = () => {
         finalStatus = hasCourierEdits ? (selectedOrder.status || "assigned") : "pending"
       }
       
-      const finalUpdatePayload = {
+      const finalUpdatePayload: any = {
         ...updatePayload,
         status: finalStatus
       }
-      
+
+      // FORCE-PRESERVE courier split payment: if the courier chose "onther" in the UI
+      // and provided valid splits, make sure the DB actually stores payment_sub_type='onther'
+      // and the onther_payments array — some of the earlier save-flow branches reset these.
+      if (updateData.payment_sub_type === "onther") {
+        const validSplits = ontherPayments
+          .filter((r) => r.method && Number.parseFloat(r.amount) > 0)
+          .map((r) => ({ method: r.method, amount: String(r.amount) }))
+        if (validSplits.length > 0) {
+          finalUpdatePayload.payment_sub_type = "onther"
+          finalUpdatePayload.onther_payments = validSplits
+          finalUpdatePayload.collected_by = "courier"
+        }
+      } else {
+        // Not a split payment — make sure stale onther_payments don't linger
+        finalUpdatePayload.onther_payments = null
+      }
+
       console.log("💾 Final database update:", {
         order_id: selectedOrder.order_id,
         final_status: finalStatus,
+        payment_sub_type: finalUpdatePayload.payment_sub_type,
+        onther_payments: finalUpdatePayload.onther_payments,
         all_fields: Object.keys(finalUpdatePayload)
       })
-      
+
       const { error } = await supabase.from("orders").update(finalUpdatePayload).eq("id", selectedOrder.id)
 
       if (error) {
@@ -4446,8 +4541,44 @@ const deleteDuplicatedOrder = async (order: Order) => {
                       const { fulfilledTotal, unfulfilledTotal, removedTotal } = getFulfillmentTotals(selectedOrder)
                       const adjustedOrderForCalc = { ...selectedOrder, total_order_fees: fulfilledTotal }
                       const showAdjustment = removedTotal > 0 || unfulfilledTotal > 0
+                      const adminPrepaidAmount = Number(selectedOrder.admin_prepaid_amount) || 0
+                      const adminPrepaidMethod = selectedOrder.admin_prepaid_method || ""
+                      const methodLabelMap: Record<string, string> = {
+                        cash: "كاش",
+                        paymob: "Paymob",
+                        instapay: "Instapay",
+                        valu: "Valu",
+                        card: "بطاقة",
+                      }
                       return (
                         <div className="bg-white/80 backdrop-blur-sm rounded-xl p-4 space-y-3 border border-white/50">
+                      {adminPrepaidAmount > 0 && (
+                        <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border-2 border-emerald-300 rounded-xl p-3 shadow-sm">
+                          <div className="flex items-center gap-2 mb-2">
+                            <div className="w-7 h-7 bg-emerald-500 rounded-lg flex items-center justify-center">
+                              <CreditCard className="w-4 h-4 text-white" />
+                            </div>
+                            <span className="text-sm font-bold text-emerald-800">دفع مقسم - جزء مدفوع مسبقاً</span>
+                          </div>
+                          <div className="flex justify-between items-center py-1 px-2 bg-white/70 rounded-lg">
+                            <span className="text-xs text-gray-700 font-medium">
+                              مدفوع عبر {methodLabelMap[adminPrepaidMethod] || adminPrepaidMethod || "—"}:
+                            </span>
+                            <span className="font-bold text-emerald-700 text-sm">
+                              {adminPrepaidAmount.toFixed(2)} ج.م
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center py-1 px-2 mt-1 bg-white/70 rounded-lg">
+                            <span className="text-xs text-gray-700 font-medium">المتبقي للتحصيل منك:</span>
+                            <span className="font-bold text-blue-700 text-sm">
+                              {Math.max(0, (Number(selectedOrder.total_order_fees) || 0) - adminPrepaidAmount).toFixed(2)} ج.م
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-emerald-700 mt-2">
+                            اختر طريقة دفع المتبقي فقط في القسم أدناه.
+                          </p>
+                        </div>
+                      )}
                       <div className="flex justify-between items-center py-2 px-3 bg-gray-50 rounded-lg">
                         <span className="text-sm text-gray-600 font-medium">قيمة الطلب الأساسية:</span>
                         <span className="font-bold text-gray-900 text-base">
@@ -4791,6 +4922,92 @@ const deleteDuplicatedOrder = async (order: Order) => {
                                     </option>
                                   ))}
                                 </select>
+                              </div>
+                            )}
+
+                            {/* Split Payment Rows - shown when courier picks onther */}
+                            {updateData.payment_sub_type === "onther" && (
+                              <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-xl border-2 border-emerald-300 p-4">
+                                <div className="flex items-center gap-2 mb-3">
+                                  <div className="w-8 h-8 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-lg flex items-center justify-center">
+                                    <CreditCard className="w-4 h-4 text-white" />
+                                  </div>
+                                  <span className="text-base font-bold text-emerald-800">
+                                    تقسيم الدفع على أكثر من طريقة
+                                  </span>
+                                </div>
+                                <p className="text-xs text-emerald-700 mb-3">
+                                  أضف كل طريقة دفع والمبلغ المحصل بها. يجب أن يساوي مجموع المبالغ المبلغ الإجمالي للتحصيل.
+                                </p>
+                                <div className="space-y-2">
+                                  {ontherPayments.length === 0 && (
+                                    <p className="text-xs text-gray-500 italic text-center py-2">
+                                      لا توجد طرق دفع حتى الآن، اضغط "إضافة طريقة" للبدء.
+                                    </p>
+                                  )}
+                                  {ontherPayments.map((row, idx) => (
+                                    <div key={idx} className="flex items-center gap-2 bg-white rounded-lg p-2 border border-emerald-200">
+                                      <select
+                                        value={row.method}
+                                        onChange={(e) => {
+                                          const newRows = [...ontherPayments]
+                                          newRows[idx] = { ...newRows[idx], method: e.target.value }
+                                          setOntherPayments(newRows)
+                                        }}
+                                        className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                      >
+                                        <option value="">-- اختر الطريقة --</option>
+                                        {Object.entries(ontherSplitMethods).map(([key, label]) => (
+                                          <option key={key} value={key}>
+                                            {label}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      <input
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        value={row.amount}
+                                        onChange={(e) => {
+                                          const newRows = [...ontherPayments]
+                                          newRows[idx] = { ...newRows[idx], amount: e.target.value }
+                                          setOntherPayments(newRows)
+                                        }}
+                                        placeholder="المبلغ"
+                                        className="w-28 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setOntherPayments(ontherPayments.filter((_, i) => i !== idx))
+                                        }}
+                                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                        title="حذف"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setOntherPayments([...ontherPayments, { method: "", amount: "" }])
+                                  }}
+                                  className="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium transition-colors"
+                                >
+                                  <Plus className="w-4 h-4" />
+                                  إضافة طريقة
+                                </button>
+                                <div className="mt-3 pt-3 border-t border-emerald-200 flex justify-between items-center bg-white -mx-4 px-4 py-2 rounded-b-xl">
+                                  <span className="text-sm font-bold text-emerald-800">مجموع التقسيم:</span>
+                                  <span className="text-lg font-bold text-emerald-700">
+                                    {ontherPayments
+                                      .reduce((sum, r) => sum + (Number.parseFloat(r.amount) || 0), 0)
+                                      .toFixed(2)}{" "}
+                                    ج.م
+                                  </span>
+                                </div>
                               </div>
                             )}
 
