@@ -1,6 +1,7 @@
 "use client"
 import React from "react"
 import { useState, useEffect, useRef, useCallback } from "react"
+import { createPortal } from "react-dom"
 import {
   Trash2,
   UserPlus,
@@ -2093,11 +2094,14 @@ const OrdersManagement: React.FC = () => {
     const { unfulfilledItems, unfulfilledTotal, collectibleAmount } = getUnfulfilledSummary(order)
 
     const hasComment = !!(order.order_note?.includes("200") || order.notes?.includes("200"))
+    const isSpecial = !!order.receive_piece_or_exchange
     return (
       <div
         className={`rounded-lg border p-4 space-y-4 ${
           hasComment
             ? "bg-purple-200 border-purple-400 shadow-sm"
+            : isSpecial
+            ? "bg-green-100 border-green-300 shadow-sm"
             : assigned
             ? "bg-green-50 border-green-200 shadow-sm"
             : "bg-white border-gray-200"
@@ -2201,52 +2205,19 @@ const OrdersManagement: React.FC = () => {
                   const notesContent = order.notes || order.order_note || order.customer_note || ""
                   
                   return hasNotes ? (
-                    <div className="relative">
-                      <button
-                        onClick={(e) => {
-                          const rect = e.currentTarget.getBoundingClientRect()
-                          setNotesPopupPosition({
-                            top: rect.bottom + 4,
-                            left: rect.left
-                          })
-                          setNotesPopupOrderId(notesPopupOrderId === order.id ? null : order.id)
-                        }}
-                        className="text-gray-400 hover:text-gray-600 transition-colors"
-                        title="View notes"
-                      >
-                        <MessageCircle className="w-4 h-4" />
-                      </button>
-                      
-                      {/* Notes Popup */}
-                      {notesPopupOrderId === order.id && notesPopupPosition && (
-                        <>
-                          <div 
-                            className="fixed inset-0 z-40" 
-                            onClick={() => {
-                              setNotesPopupOrderId(null)
-                              setNotesPopupPosition(null)
-                            }}
-                          ></div>
-                          <div 
-                            className="fixed bg-white border border-gray-200 rounded-lg shadow-lg z-50 p-3 max-w-xs"
-                            style={{
-                              top: `${notesPopupPosition.top}px`,
-                              left: `${notesPopupPosition.left}px`,
-                              minWidth: '250px'
-                            }}
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            {/* Tail */}
-                            <div className="absolute -top-2 left-4 w-4 h-4 bg-white border-l border-t border-gray-200 transform rotate-45"></div>
-                            
-                            {/* Notes Content */}
-                            <div className="text-sm text-gray-900 whitespace-pre-wrap break-words">
-                              {renderNotesWithLinks(notesContent)}
-                            </div>
-                          </div>
-                        </>
-                      )}
-                    </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        const rect = e.currentTarget.getBoundingClientRect()
+                        setNotesPopupPosition({ top: rect.bottom + 4, left: rect.left })
+                        setNotesPopupOrderId(notesPopupOrderId === order.id ? null : order.id)
+                      }}
+                      className="text-blue-400 hover:text-blue-600 transition-colors"
+                      title="View notes"
+                      type="button"
+                    >
+                      <MessageCircle className="w-4 h-4" />
+                    </button>
                   ) : null
                 })()}
                 {assigned && <div className="w-2 h-2 bg-green-500 rounded-full" title="مخصص لمندوب"></div>}
@@ -4108,6 +4079,7 @@ const OrdersManagement: React.FC = () => {
                       !!order.shopify_cancelled_at
 
                     const hasComment = !!(order.order_note?.includes("200") || order.notes?.includes("200"))
+                    const isSpecial = !!(order.receive_piece_or_exchange)
                     return (
                       <React.Fragment key={`${order.id}-fragment`}>
                       <tr
@@ -4117,12 +4089,16 @@ const OrdersManagement: React.FC = () => {
                             ? "bg-red-50/70 hover:bg-red-50 border-red-200 border-dashed"
                             : hasComment
                             ? "bg-purple-200 hover:bg-purple-300 border-purple-400"
-                            : "border-gray-100"
-                        } ${assigned && !isCanceled && !hasComment ? "bg-green-50/50 hover:bg-green-50" : !isCanceled && !hasComment ? "bg-white hover:bg-gray-50" : ""}`}
+                            : isSpecial
+                            ? "bg-green-100 hover:bg-green-200 border-green-300"
+                            : assigned
+                            ? "bg-green-50/50 hover:bg-green-50 border-gray-100"
+                            : "bg-white hover:bg-gray-50 border-gray-100"
+                        }`}
                       >
                         <td
                           className={`sticky left-0 z-10 px-3 py-2.5 border-r border-gray-200 ${
-                            isCanceled ? "bg-red-50/70" : hasComment ? "bg-purple-200" : assigned ? "bg-green-50/50" : "bg-white"
+                            isCanceled ? "bg-red-50/70" : hasComment ? "bg-purple-200" : isSpecial ? "bg-green-100" : assigned ? "bg-green-50/50" : "bg-white"
                           }`}
                         >
                           <input
@@ -4134,7 +4110,7 @@ const OrdersManagement: React.FC = () => {
                         </td>
                         <td
                           className={`sticky left-8 z-10 px-3 py-2 border-r border-gray-200 ${
-                            isCanceled ? "bg-red-50/70" : hasComment ? "bg-purple-200" : assigned ? "bg-green-50/50" : "bg-white"
+                            isCanceled ? "bg-red-50/70" : hasComment ? "bg-purple-200" : isSpecial ? "bg-green-100" : assigned ? "bg-green-50/50" : "bg-white"
                           }`}
                         >
                           {(() => {
@@ -4148,37 +4124,29 @@ const OrdersManagement: React.FC = () => {
                                 {isCanceled && (
                                   <span className="px-1.5 py-0.5 text-[10px] font-semibold text-red-700 bg-red-100 border border-red-300 border-dashed rounded-full">ملغي</span>
                                 )}
+                                {isSpecial && (
+                                  <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded-full border ${
+                                    order.receive_piece_or_exchange === "exchange"
+                                      ? "text-emerald-800 bg-emerald-100 border-emerald-400"
+                                      : "text-teal-800 bg-teal-100 border-teal-400"
+                                  }`}>
+                                    {order.receive_piece_or_exchange === "exchange" ? "تبديل" : "استلام قطعه"}
+                                  </span>
+                                )}
                                 {hasNotes && (
-                                  <div className="relative">
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation()
-                                        const rect = e.currentTarget.getBoundingClientRect()
-                                        setNotesPopupPosition({ top: rect.bottom + window.scrollY + 4, left: rect.left + window.scrollX })
-                                        setNotesPopupOrderId(notesPopupOrderId === order.id ? null : order.id)
-                                      }}
-                                      className="text-blue-400 hover:text-blue-600 transition-colors"
-                                      title="View notes"
-                                      type="button"
-                                    >
-                                      <MessageCircle className="w-3.5 h-3.5" />
-                                    </button>
-                                    {notesPopupOrderId === order.id && notesPopupPosition && (
-                                      <>
-                                        <div className="fixed inset-0 z-[9998]" onClick={() => { setNotesPopupOrderId(null); setNotesPopupPosition(null) }}></div>
-                                        <div
-                                          className="fixed bg-white border border-gray-300 rounded-lg shadow-xl z-[9999] p-4"
-                                          style={{ top: `${notesPopupPosition.top}px`, left: `${notesPopupPosition.left}px`, minWidth: '280px', maxWidth: '400px' }}
-                                          onClick={(e) => e.stopPropagation()}
-                                        >
-                                          <div className="absolute -top-2 left-6 w-4 h-4 bg-white border-l border-t border-gray-300 transform rotate-45"></div>
-                                          <div className="text-sm text-gray-900 whitespace-pre-wrap break-words leading-relaxed">
-                                            {renderNotesWithLinks(notesContent)}
-                                          </div>
-                                        </div>
-                                      </>
-                                    )}
-                                  </div>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      const rect = e.currentTarget.getBoundingClientRect()
+                                      setNotesPopupPosition({ top: rect.bottom + 4, left: rect.left })
+                                      setNotesPopupOrderId(notesPopupOrderId === order.id ? null : order.id)
+                                    }}
+                                    className="text-blue-400 hover:text-blue-600 transition-colors"
+                                    title="View notes"
+                                    type="button"
+                                  >
+                                    <MessageCircle className="w-3.5 h-3.5" />
+                                  </button>
                                 )}
                               </div>
                             )
@@ -4867,6 +4835,36 @@ const OrdersManagement: React.FC = () => {
             }}
           />
         )}
+
+        {/* Global notes popup — rendered in a portal to escape any stacking context */}
+        {notesPopupOrderId && notesPopupPosition && (() => {
+          const order = orders.find(o => o.id === notesPopupOrderId)
+          if (!order) return null
+          const notesContent = order.notes || order.order_note || order.customer_note || ""
+          if (!notesContent) return null
+          const popupWidth = 340
+          const margin = 8
+          const left = Math.min(notesPopupPosition.left, window.innerWidth - popupWidth - margin)
+          const top = Math.min(notesPopupPosition.top, window.innerHeight - 200)
+          return createPortal(
+            <>
+              <div
+                className="fixed inset-0 z-[9998]"
+                onClick={() => { setNotesPopupOrderId(null); setNotesPopupPosition(null) }}
+              />
+              <div
+                className="fixed z-[9999] bg-white border border-gray-300 rounded-lg shadow-2xl p-4"
+                style={{ top, left, width: popupWidth }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="text-sm text-gray-900 whitespace-pre-wrap break-words leading-relaxed">
+                  {renderNotesWithLinks(notesContent)}
+                </div>
+              </div>
+            </>,
+            document.body
+          )
+        })()}
 
       </div>
     </div>
