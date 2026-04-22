@@ -4049,8 +4049,8 @@ const OrdersManagement: React.FC = () => {
                         className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-4 h-4"
                       />
                     </th>
-                    <th 
-                      className="sticky left-8 z-20 bg-gray-50 px-3 py-2 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider border-r border-gray-200 min-w-[100px] cursor-pointer hover:bg-gray-100 transition-colors"
+                    <th
+                      className="sticky left-8 z-20 bg-gray-50 px-3 py-2 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider border-r border-gray-200 min-w-[130px] cursor-pointer hover:bg-gray-100 transition-colors"
                       onClick={() => handleSort('order_id')}
                     >
                       <div className="flex items-center justify-end gap-1">
@@ -4058,11 +4058,8 @@ const OrdersManagement: React.FC = () => {
                         {getSortIcon('order_id')}
                       </div>
                     </th>
-                    <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[80px]">
-                      Notes
-                    </th>
-                    <th 
-                      className="px-3 py-2 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[150px] cursor-pointer hover:bg-gray-100 transition-colors"
+                    <th
+                      className="px-3 py-2 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[130px] cursor-pointer hover:bg-gray-100 transition-colors"
                       onClick={() => handleSort('customer_name')}
                     >
                       <div className="flex items-center justify-end gap-1">
@@ -4070,36 +4067,22 @@ const OrdersManagement: React.FC = () => {
                         {getSortIcon('customer_name')}
                       </div>
                     </th>
-                    <th 
-                      className="px-3 py-2 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[180px] cursor-pointer hover:bg-gray-100 transition-colors"
-                      onClick={() => handleSort('created_at')}
+                    <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[160px]">
+                      Address
+                    </th>
+                    <th
+                      className="px-3 py-2 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[100px] cursor-pointer hover:bg-gray-100 transition-colors"
+                      onClick={() => handleSort('total_order_fees')}
                     >
-                      <div className="flex items-center justify-end gap-1">
-                        <span>Date</span>
-                        {getSortIcon('created_at')}
-                      </div>
-                    </th>
-                    <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[200px]">
-                      <div className="flex items-center justify-end gap-1">
-                        <span>Address</span>
-                      </div>
-                    </th>
-                    <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[100px]">
                       <div className="flex items-center justify-end gap-1">
                         <span>Total</span>
                         {getSortIcon('total_order_fees')}
                       </div>
                     </th>
-                    <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[120px]">
-                      Payment status
+                    <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[110px]">
+                      Status
                     </th>
-                    <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[120px]">
-                      Fulfillment status
-                    </th>
-                    <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[80px]">
-                      Items
-                    </th>
-                    <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[100px]">
+                    <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[70px]">
                       Tags
                     </th>
                   </tr>
@@ -4150,82 +4133,54 @@ const OrdersManagement: React.FC = () => {
                           />
                         </td>
                         <td
-                          className={`sticky left-8 z-10 px-3 py-2.5 border-r border-gray-200 ${
+                          className={`sticky left-8 z-10 px-3 py-2 border-r border-gray-200 ${
                             isCanceled ? "bg-red-50/70" : hasComment ? "bg-purple-200" : assigned ? "bg-green-50/50" : "bg-white"
                           }`}
                         >
-                          <div className="flex items-center gap-2">
-                            <span className={`text-sm font-semibold ${isCanceled ? "text-red-700 line-through" : "text-gray-900"}`}>
-                              #{order.order_id}
-                            </span>
-                            {isCanceled && (
-                              <span className="px-2 py-0.5 text-[11px] font-semibold text-red-700 bg-red-100 border border-red-300 border-dashed rounded-full">
-                                ملغي
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-3 py-2.5">
-                          {/* Notes Icon - Only show icon, never show notes text in table */}
                           {(() => {
-                            // Check all note fields
-                            const hasNotes = (order.notes && order.notes.trim() !== "") ||
-                                           (order.order_note && order.order_note.trim() !== "") ||
-                                           (order.customer_note && order.customer_note.trim() !== "")
+                            const hasNotes = !!(order.notes?.trim() || order.order_note?.trim() || order.customer_note?.trim())
                             const notesContent = order.notes || order.order_note || order.customer_note || ""
-                            
-                            return hasNotes ? (
-                              <div className="relative flex justify-center">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    const rect = e.currentTarget.getBoundingClientRect()
-                                    setNotesPopupPosition({
-                                      top: rect.bottom + window.scrollY + 4,
-                                      left: rect.left + window.scrollX
-                                    })
-                                    setNotesPopupOrderId(notesPopupOrderId === order.id ? null : order.id)
-                                  }}
-                                  className="text-gray-400 hover:text-blue-600 transition-colors p-0.5"
-                                  title="View notes"
-                                  type="button"
-                                >
-                                  <MessageCircle className="w-4 h-4" />
-                                </button>
-                                
-                                {/* Notes Popup */}
-                                {notesPopupOrderId === order.id && notesPopupPosition && (
-                                  <>
-                                    <div 
-                                      className="fixed inset-0 z-[9998]" 
-                                      onClick={() => {
-                                        setNotesPopupOrderId(null)
-                                        setNotesPopupPosition(null)
+                            return (
+                              <div className="flex items-center gap-1.5">
+                                <span className={`text-sm font-semibold ${isCanceled ? "text-red-700 line-through" : "text-gray-900"}`}>
+                                  #{order.order_id}
+                                </span>
+                                {isCanceled && (
+                                  <span className="px-1.5 py-0.5 text-[10px] font-semibold text-red-700 bg-red-100 border border-red-300 border-dashed rounded-full">ملغي</span>
+                                )}
+                                {hasNotes && (
+                                  <div className="relative">
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        const rect = e.currentTarget.getBoundingClientRect()
+                                        setNotesPopupPosition({ top: rect.bottom + window.scrollY + 4, left: rect.left + window.scrollX })
+                                        setNotesPopupOrderId(notesPopupOrderId === order.id ? null : order.id)
                                       }}
-                                    ></div>
-                                    <div 
-                                      className="fixed bg-white border border-gray-300 rounded-lg shadow-xl z-[9999] p-4 max-w-sm"
-                                      style={{
-                                        top: `${notesPopupPosition.top}px`,
-                                        left: `${notesPopupPosition.left}px`,
-                                        minWidth: '280px',
-                                        maxWidth: '400px'
-                                      }}
-                                      onClick={(e) => e.stopPropagation()}
+                                      className="text-blue-400 hover:text-blue-600 transition-colors"
+                                      title="View notes"
+                                      type="button"
                                     >
-                                      {/* Tail */}
-                                      <div className="absolute -top-2 left-6 w-4 h-4 bg-white border-l border-t border-gray-300 transform rotate-45"></div>
-                                      
-                                      {/* Notes Content */}
-                                      <div className="text-sm text-gray-900 whitespace-pre-wrap break-words leading-relaxed">
-                                        {renderNotesWithLinks(notesContent)}
-                                      </div>
-                                    </div>
-                                  </>
+                                      <MessageCircle className="w-3.5 h-3.5" />
+                                    </button>
+                                    {notesPopupOrderId === order.id && notesPopupPosition && (
+                                      <>
+                                        <div className="fixed inset-0 z-[9998]" onClick={() => { setNotesPopupOrderId(null); setNotesPopupPosition(null) }}></div>
+                                        <div
+                                          className="fixed bg-white border border-gray-300 rounded-lg shadow-xl z-[9999] p-4"
+                                          style={{ top: `${notesPopupPosition.top}px`, left: `${notesPopupPosition.left}px`, minWidth: '280px', maxWidth: '400px' }}
+                                          onClick={(e) => e.stopPropagation()}
+                                        >
+                                          <div className="absolute -top-2 left-6 w-4 h-4 bg-white border-l border-t border-gray-300 transform rotate-45"></div>
+                                          <div className="text-sm text-gray-900 whitespace-pre-wrap break-words leading-relaxed">
+                                            {renderNotesWithLinks(notesContent)}
+                                          </div>
+                                        </div>
+                                      </>
+                                    )}
+                                  </div>
                                 )}
                               </div>
-                            ) : (
-                              <span className="text-sm text-gray-400">-</span>
                             )
                           })()}
                         </td>
@@ -4260,15 +4215,10 @@ const OrdersManagement: React.FC = () => {
                             </div>
                           )}
                         </td>
-                        <td className="px-3 py-2.5">
-                          <span className={`text-sm ${isCanceled ? "text-red-700 line-through" : "text-gray-900"}`}>
-                            {formatShopifyDate(order.shopify_created_at || order.created_at || '')}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2.5">
-                          <div className="flex items-center gap-2">
-                            <MapPin className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                            <span className={`text-sm ${isCanceled ? "text-red-700 line-through" : "text-gray-900"} truncate max-w-[200px]`} title={order.address}>
+                        <td className="px-3 py-2">
+                          <div className="flex items-start gap-1">
+                            <MapPin className="w-3.5 h-3.5 text-gray-400 flex-shrink-0 mt-0.5" />
+                            <span className={`text-xs ${isCanceled ? "text-red-700 line-through" : "text-gray-700"} truncate max-w-[150px]`} title={order.address}>
                               {order.address || '-'}
                             </span>
                           </div>
@@ -4308,8 +4258,8 @@ const OrdersManagement: React.FC = () => {
                                       </span>
                                     )}
                                     {!hasPartialPayment && unfulfilledTotal > 0 && collectibleAmount < orderTotal && (
-                                      <span className="text-[11px] text-amber-700 font-semibold">
-                                        طرح {unfulfilledTotal.toFixed(2)} ج.م لمنتجات غير منفذة
+                                      <span className="text-[10px] text-amber-600 font-semibold">
+                                        طرح {unfulfilledTotal.toFixed(0)}
                                       </span>
                                     )}
                                   </>
@@ -4332,111 +4282,46 @@ const OrdersManagement: React.FC = () => {
                             </select>
                           ) : (
                             (() => {
-                              // Payment status badge (Shopify-style with dot)
                               const paymentStatus = order.payment_status || 'pending'
                               const isPaid = paymentStatus === 'paid'
-                              const isPaymentCanceled =
-                                paymentStatus === 'cancelled' ||
-                                paymentStatus === 'canceled' ||
-                                paymentStatus === 'voided' ||
-                                financialLower === 'void' ||
-                                financialLower === 'voided'
+                              const isPaymentCanceled = paymentStatus === 'cancelled' || paymentStatus === 'canceled' || paymentStatus === 'voided' || financialLower === 'void' || financialLower === 'voided'
+                              const fulfillmentStatus = order.fulfillment_status || 'unfulfilled'
+                              const isFulfilled = fulfillmentStatus === 'fulfilled'
                               return (
-                                <div className="flex items-center gap-1.5">
-                                  <div className={`w-2 h-2 rounded-full ${
-                                    isPaymentCanceled ? 'bg-red-500' : isPaid ? 'bg-gray-500' : 'bg-orange-500'
-                                  }`}></div>
-                                  <span className={`text-sm ${isCanceled || isPaymentCanceled ? 'text-red-700' : 'text-gray-900'}`}>
-                                    {isPaymentCanceled ? 'Cancelled' : isPaid ? 'Paid' : 'Payment pending'}
-                                  </span>
+                                <div className="flex flex-col gap-1">
+                                  <div className="flex items-center gap-1">
+                                    <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isPaymentCanceled ? 'bg-red-500' : isPaid ? 'bg-gray-500' : 'bg-orange-500'}`}></div>
+                                    <span className={`text-xs ${isCanceled || isPaymentCanceled ? 'text-red-700' : 'text-gray-700'}`}>
+                                      {isPaymentCanceled ? 'Cancelled' : isPaid ? 'Paid' : 'Pending'}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isFulfilled ? 'bg-gray-500' : 'bg-yellow-500'}`}></div>
+                                    <span className="text-xs text-gray-700">{isFulfilled ? 'Fulfilled' : 'Unfulfilled'}</span>
+                                  </div>
                                 </div>
                               )
                             })()
                           )}
                         </td>
-                        <td className="px-3 py-2.5">
+                        <td className="px-2 py-2">
                           {(() => {
-                            // Fulfillment status badge (Shopify-style with dot)
-                            const fulfillmentStatus = order.fulfillment_status || 'unfulfilled'
-                            const isFulfilled = fulfillmentStatus === 'fulfilled'
-                            return (
-                              <div className="flex items-center gap-1.5">
-                                <div className={`w-2 h-2 rounded-full ${isFulfilled ? 'bg-gray-500' : 'bg-yellow-500'}`}></div>
-                                <span className="text-sm text-gray-900">
-                                  {isFulfilled ? 'Fulfilled' : 'Unfulfilled'}
-                                </span>
-                              </div>
-                            )
-                          })()}
-                        </td>
-                        <td className="px-3 py-2.5">
-                          {(() => {
-                            // Count items from line_items
-                            let itemCount = 0
-                            try {
-                              if (order.line_items) {
-                                const lineItems = typeof order.line_items === 'string' 
-                                  ? JSON.parse(order.line_items) 
-                                  : order.line_items
-                                if (Array.isArray(lineItems)) {
-                                  itemCount = lineItems.reduce((sum: number, item: any) => sum + (item.quantity || 1), 0)
-                                }
-                              }
-                            } catch (e) {
-                              // Silently handle errors
-                            }
-                            
-                            // Get new/removed item counts
-                            const { newCount, removedCount, hasChanges } = getItemChangeCounts(order)
-                            
-                            return (
-                              <div className="space-y-1">
-                                <span className="text-sm text-gray-900">
-                                  {itemCount > 0 ? `${itemCount} item${itemCount > 1 ? 's' : ''}` : '0 items'}
-                                </span>
-                                {hasChanges && (
-                                  <div className="flex flex-col gap-1">
-                                    {newCount > 0 && (
-                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-green-100 text-green-700 border border-green-300">
-                                        <span>+{newCount}</span>
-                                        <span>Added</span>
-                                      </span>
-                                    )}
-                                    {removedCount > 0 && (
-                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700 border border-red-300">
-                                        <span>-{removedCount}</span>
-                                        <span>Removed</span>
-                                      </span>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            )
-                          })()}
-                        </td>
-                        <td className="px-3 py-2.5">
-                          {(() => {
-                            // Display order tags (Shopify-style)
                             const tags = order.order_tags || []
-                            if (tags.length === 0) {
-                              return <span className="text-sm text-gray-400">-</span>
-                            }
+                            if (tags.length === 0) return <span className="text-xs text-gray-400">-</span>
                             return (
-                              <div className="flex flex-wrap gap-1">
-                                {tags.map((tag: string, idx: number) => (
-                                  <span
-                                    key={idx}
-                                    className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700"
-                                  >
+                              <div className="flex flex-wrap gap-0.5">
+                                {tags.slice(0, 2).map((tag: string, idx: number) => (
+                                  <span key={idx} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-700 whitespace-nowrap">
                                     {tag}
                                   </span>
                                 ))}
+                                {tags.length > 2 && <span className="text-[10px] text-gray-400">+{tags.length - 2}</span>}
                               </div>
                             )
                           })()}
                         </td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-2">
+                        <td className="px-3 py-2.5">
+                          <div className="flex items-center gap-1">
                             {isEditing ? (
                               <>
                                 <button
@@ -4468,40 +4353,37 @@ const OrdersManagement: React.FC = () => {
                               <>
                                 <button
                                   onClick={() => setSelectedOrderForDetail(order)}
-                                  className="flex items-center gap-1 px-3 py-1 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm"
-                                  title="View Full Details"
+                                  className="p-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                                  title="تفاصيل"
                                 >
-                                  <Eye className="w-3 h-3" />
-                                  تفاصيل
+                                  <Eye className="w-3.5 h-3.5" />
                                 </button>
                                 <button
                                   onClick={() => handleDuplicateOrder(order.id)}
                                   disabled={duplicatingOrderId === order.id}
-                                  className="flex items-center gap-1 px-3 py-1 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                                  className="p-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                   title="نسخ/تقسيم الطلب"
                                 >
                                   {duplicatingOrderId === order.id ? (
-                                    <RefreshCw className="w-3 h-3 animate-spin" />
+                                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                                   ) : (
-                                    <Copy className="w-3 h-3" />
+                                    <Copy className="w-3.5 h-3.5" />
                                   )}
-                                  نسخ
                                 </button>
                                 <button
                                   onClick={() => setSelectedOrderForSplit(order)}
-                                  className="flex items-center gap-1 px-3 py-1 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-sm"
-                                  title="Split Payment / دفع مقسم"
+                                  className={`p-1.5 text-white rounded-lg transition-colors ${order.admin_prepaid_amount ? 'bg-emerald-700 ring-2 ring-emerald-400' : 'bg-emerald-600 hover:bg-emerald-700'}`}
+                                  title={order.admin_prepaid_amount ? `Split: ${Number(order.admin_prepaid_amount).toFixed(0)} EGP` : 'Split Payment'}
                                 >
-                                  <CreditCard className="w-3 h-3" />
-                                  {order.admin_prepaid_amount ? `Split ${Number(order.admin_prepaid_amount).toFixed(0)}` : 'Split'}
+                                  <CreditCard className="w-3.5 h-3.5" />
                                 </button>
                                 {viewMode === "active" && (
                                   <button
                                     onClick={() => startEdit(order.id)}
-                                    className="flex items-center gap-1 px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                                    className="p-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                                    title="تعديل"
                                   >
-                                    <Edit3 className="w-3 h-3" />
-                                    تعديل
+                                    <Edit3 className="w-3.5 h-3.5" />
                                   </button>
                                 )}
                                 <button
@@ -4509,10 +4391,10 @@ const OrdersManagement: React.FC = () => {
                                     setSelectedOrders([order.id])
                                     setShowDeleteConfirm(true)
                                   }}
-                                  className="flex items-center gap-1 px-3 py-1 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
+                                  className="p-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                                  title="حذف"
                                 >
-                                  <Trash2 className="w-3 h-3" />
-                                  حذف
+                                  <Trash2 className="w-3.5 h-3.5" />
                                 </button>
                               </>
                             )}
