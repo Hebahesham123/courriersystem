@@ -3314,12 +3314,12 @@ const Summary: React.FC = () => {
 
                               // Courier portion - split OR single method
                               let ontherArr: { method: string; amount: string | number }[] = []
-                              if (order.payment_sub_type === "onther" && order.onther_payments) {
+                              if (order.onther_payments) {
                                 try {
                                   const parsed = typeof order.onther_payments === "string"
                                     ? JSON.parse(order.onther_payments)
                                     : order.onther_payments
-                                  if (Array.isArray(parsed)) ontherArr = parsed
+                                  if (Array.isArray(parsed) && parsed.length > 0) ontherArr = parsed
                                 } catch {}
                               }
                               const courierIsSplit = ontherArr.length > 0
@@ -5270,15 +5270,6 @@ const Summary: React.FC = () => {
                               </div>
                             </div>
 
-                            {/* DEBUG: raw DB state - remove after verifying */}
-                            <div className="mt-2 p-2 bg-yellow-50 border border-yellow-300 rounded text-[10px] font-mono text-yellow-900 break-all">
-                              <strong>DEBUG-2:</strong> payment_sub_type=<code className="bg-yellow-100 px-1">{String(order.payment_sub_type ?? "null")}</code>
-                              {" · "}
-                              onther_payments=<code className="bg-yellow-100 px-1">{order.onther_payments ? JSON.stringify(order.onther_payments) : "null"}</code>
-                              {" · "}
-                              partial_paid_amount=<code className="bg-yellow-100 px-1">{String(order.partial_paid_amount ?? "null")}</code>
-                            </div>
-
                             {/* Payment Breakdown - detailed, per-method */}
                             {(() => {
                               const methodLabels: Record<string, string> = {
@@ -5300,12 +5291,12 @@ const Summary: React.FC = () => {
                                 ? { method: order.admin_prepaid_method || "—", amount: adminAmt }
                                 : null
                               let ontherArr: { method: string; amount: string | number }[] = []
-                              if (order.payment_sub_type === "onther" && order.onther_payments) {
+                              if (order.onther_payments) {
                                 try {
                                   const parsed = typeof order.onther_payments === "string"
                                     ? JSON.parse(order.onther_payments)
                                     : order.onther_payments
-                                  if (Array.isArray(parsed)) ontherArr = parsed
+                                  if (Array.isArray(parsed) && parsed.length > 0) ontherArr = parsed
                                 } catch {}
                               }
                               const courierIsSplit = ontherArr.length > 0
