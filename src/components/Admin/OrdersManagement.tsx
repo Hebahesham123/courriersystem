@@ -568,10 +568,11 @@ const OrdersManagement: React.FC = () => {
           query = query.eq("archived", true)
         } else {
           // Active view: show non-archived orders (including canceled ones, like Shopify)
-          // BUT: When searching OR filtering by tag, show ALL orders (archived and non-archived)
-          // This matches Shopify behavior where tag filter shows orders regardless of archived status
+          // BUT: When searching OR filtering by tag OR filtering by courier+date, show ALL orders
+          // Courier+date: matches courier sheet which includes archived orders assigned that day
           const isFilteringByTag = activeFilters.tags.length > 0 && activeFilters.tags.some((t: any) => t && String(t).trim())
-          if (!debouncedSearch && !isFilteringByTag) {
+          const isFilteringByCourierWithDate = activeFilters.couriers.length > 0 && activeDateRange?.from && activeDateRange?.to
+          if (!debouncedSearch && !isFilteringByTag && !isFilteringByCourierWithDate) {
             query = query.eq("archived", false)
           }
         }
