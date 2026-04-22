@@ -47,6 +47,7 @@ import { useLanguage } from "../../contexts/LanguageContext"
 import { useAuth } from "../../contexts/AuthContext"
 import OrderDetailModal from "./OrderDetailModal"
 import SplitPaymentModal from "./SplitPaymentModal"
+import BulkSplitPaymentModal from "./BulkSplitPaymentModal"
 import ReceivePieceOrExchange from "./ReceivePieceOrExchange"
 
 interface Order {
@@ -306,6 +307,7 @@ const OrdersManagement: React.FC = () => {
   const [isMobile, setIsMobile] = useState(false)
   const [selectedOrderForDetail, setSelectedOrderForDetail] = useState<Order | null>(null)
   const [selectedOrderForSplit, setSelectedOrderForSplit] = useState<Order | null>(null)
+  const [showBulkSplitModal, setShowBulkSplitModal] = useState(false)
   const [notesPopupOrderId, setNotesPopupOrderId] = useState<string | null>(null)
   const [notesPopupPosition, setNotesPopupPosition] = useState<{ top: number; left: number } | null>(null)
   const [showReceivePieceOrExchange, setShowReceivePieceOrExchange] = useState(false)
@@ -2090,10 +2092,15 @@ const OrdersManagement: React.FC = () => {
     const assigned = isOrderAssigned(order)
     const { unfulfilledItems, unfulfilledTotal, collectibleAmount } = getUnfulfilledSummary(order)
 
+    const hasComment = !!(order.order_note?.includes("200") || order.notes?.includes("200"))
     return (
       <div
         className={`rounded-lg border p-4 space-y-4 ${
-          assigned ? "bg-green-50 border-green-200 shadow-sm" : "bg-white border-gray-200"
+          hasComment
+            ? "bg-purple-200 border-purple-400 shadow-sm"
+            : assigned
+            ? "bg-green-50 border-green-200 shadow-sm"
+            : "bg-white border-gray-200"
         }`}
       >
         {/* Header */}
@@ -3922,6 +3929,13 @@ const OrdersManagement: React.FC = () => {
                       تعيين المحدد
                     </button>
                     <button
+                      onClick={() => setShowBulkSplitModal(true)}
+                      className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+                    >
+                      <CreditCard className="w-4 h-4" />
+                      دفع مسبق للمحدد
+                    </button>
+                    <button
                       onClick={() => setShowArchiveConfirm(true)}
                       disabled={archiveLoading}
                       className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -4110,6 +4124,7 @@ const OrdersManagement: React.FC = () => {
                       financialLower === 'voided' ||
                       !!order.shopify_cancelled_at
 
+                    const hasComment = !!(order.order_note?.includes("200") || order.notes?.includes("200"))
                     return (
                       <React.Fragment key={`${order.id}-fragment`}>
                       <tr
@@ -4117,12 +4132,14 @@ const OrdersManagement: React.FC = () => {
                         className={`transition-colors border-b ${
                           isCanceled
                             ? "bg-red-50/70 hover:bg-red-50 border-red-200 border-dashed"
+                            : hasComment
+                            ? "bg-purple-200 hover:bg-purple-300 border-purple-400"
                             : "border-gray-100"
-                        } ${assigned && !isCanceled ? "bg-green-50/50 hover:bg-green-50" : !isCanceled ? "bg-white hover:bg-gray-50" : ""}`}
+                        } ${assigned && !isCanceled && !hasComment ? "bg-green-50/50 hover:bg-green-50" : !isCanceled && !hasComment ? "bg-white hover:bg-gray-50" : ""}`}
                       >
                         <td
                           className={`sticky left-0 z-10 px-3 py-2.5 border-r border-gray-200 ${
-                            isCanceled ? "bg-red-50/70" : assigned ? "bg-green-50/50" : "bg-white"
+                            isCanceled ? "bg-red-50/70" : hasComment ? "bg-purple-200" : assigned ? "bg-green-50/50" : "bg-white"
                           }`}
                         >
                           <input
@@ -4134,7 +4151,7 @@ const OrdersManagement: React.FC = () => {
                         </td>
                         <td
                           className={`sticky left-8 z-10 px-3 py-2.5 border-r border-gray-200 ${
-                            isCanceled ? "bg-red-50/70" : assigned ? "bg-green-50/50" : "bg-white"
+                            isCanceled ? "bg-red-50/70" : hasComment ? "bg-purple-200" : assigned ? "bg-green-50/50" : "bg-white"
                           }`}
                         >
                           <div className="flex items-center gap-2">
@@ -4953,6 +4970,17 @@ const OrdersManagement: React.FC = () => {
             currentPrepaidAt={selectedOrderForSplit.admin_prepaid_at ?? null}
             onClose={() => setSelectedOrderForSplit(null)}
             onSaved={() => {
+              fetchOrders()
+            }}
+          />
+        )}
+
+        {showBulkSplitModal && selectedOrders.length > 0 && (
+          <BulkSplitPaymentModal
+            orderIds={selectedOrders}
+            onClose={() => setShowBulkSplitModal(false)}
+            onSaved={() => {
+              setShowBulkSplitModal(false)
               fetchOrders()
             }}
           />
