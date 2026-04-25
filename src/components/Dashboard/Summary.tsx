@@ -2275,11 +2275,13 @@ const Summary: React.FC = () => {
                             <span className="text-xs text-red-700">الغير مُسلَّم:</span>
                             <span className="text-xs font-bold text-red-900">
                               {(() => {
+                                const sumPrepaid = (orders: any[]) =>
+                                  orders.reduce((s, o) => s + toNumber(o.admin_prepaid_amount), 0)
                                 let totalNotDelivered = 0
-                                totalNotDelivered += metrics.canceled.originalValue
-                                totalNotDelivered += Math.max(0, metrics.partial.originalValue - metrics.partial.courierCollected)
-                                totalNotDelivered += Math.max(0, metrics.handToHand.originalValue - metrics.handToHand.courierCollected)
-                                totalNotDelivered += Math.max(0, metrics.receivingPart.originalValue - metrics.receivingPart.courierCollected)
+                                totalNotDelivered += Math.max(0, metrics.canceled.originalValue - sumPrepaid(metrics.canceled.orders))
+                                totalNotDelivered += Math.max(0, metrics.partial.originalValue - metrics.partial.courierCollected - sumPrepaid(metrics.partial.orders))
+                                totalNotDelivered += Math.max(0, metrics.handToHand.originalValue - metrics.handToHand.courierCollected - sumPrepaid(metrics.handToHand.orders))
+                                totalNotDelivered += Math.max(0, metrics.receivingPart.originalValue - metrics.receivingPart.courierCollected - sumPrepaid(metrics.receivingPart.orders))
                                 totalNotDelivered += metrics.assigned.originalValue
                                 totalNotDelivered += metrics.returned.originalValue
                                 return totalNotDelivered.toFixed(2)
@@ -3902,7 +3904,7 @@ const Summary: React.FC = () => {
                         المحصل فعلياً:
                       </span>
                       <span className={`font-bold text-green-900 ${isCourier ? "text-sm" : "text-xl"}`}>
-                        {metrics.delivered.courierCollected.toFixed(0)} ج.م
+                        {(metrics.delivered.courierCollected + metrics.delivered.orders.reduce((s: number, o: any) => s + toNumber(o.admin_prepaid_amount), 0)).toFixed(0)} ج.م
                       </span>
                     </div>
                   </div>
@@ -3948,7 +3950,7 @@ const Summary: React.FC = () => {
                         المحصل (رسوم فقط):
                       </span>
                       <span className={`font-bold text-red-900 ${isCourier ? "text-sm" : "text-xl"}`}>
-                        {metrics.canceled.courierCollected.toFixed(0)} ج.م
+                        {(metrics.canceled.courierCollected + metrics.canceled.orders.reduce((s: number, o: any) => s + toNumber(o.admin_prepaid_amount), 0)).toFixed(0)} ج.م
                       </span>
                     </div>
                   </div>
@@ -3994,7 +3996,7 @@ const Summary: React.FC = () => {
                         المحصل فعلياً:
                       </span>
                       <span className={`font-bold text-yellow-900 ${isCourier ? "text-sm" : "text-xl"}`}>
-                        {metrics.partial.courierCollected.toFixed(0)} ج.م
+                        {(metrics.partial.courierCollected + metrics.partial.orders.reduce((s: number, o: any) => s + toNumber(o.admin_prepaid_amount), 0)).toFixed(0)} ج.م
                       </span>
                     </div>
                   </div>
@@ -4086,7 +4088,7 @@ const Summary: React.FC = () => {
                         المحصل فعلياً:
                       </span>
                       <span className={`font-bold text-indigo-900 ${isCourier ? "text-sm" : "text-xl"}`}>
-                        {metrics.receivingPart.courierCollected.toFixed(0)} ج.م
+                        {(metrics.receivingPart.courierCollected + metrics.receivingPart.orders.reduce((s: number, o: any) => s + toNumber(o.admin_prepaid_amount), 0)).toFixed(0)} ج.م
                       </span>
                     </div>
                   </div>
@@ -4132,7 +4134,7 @@ const Summary: React.FC = () => {
                         المحصل فعلياً:
                       </span>
                       <span className={`font-bold text-purple-900 ${isCourier ? "text-sm" : "text-xl"}`}>
-                        {metrics.handToHand.courierCollected.toFixed(0)} ج.م
+                        {(metrics.handToHand.courierCollected + metrics.handToHand.orders.reduce((s: number, o: any) => s + toNumber(o.admin_prepaid_amount), 0)).toFixed(0)} ج.م
                       </span>
                     </div>
                   </div>
@@ -4292,27 +4294,29 @@ const Summary: React.FC = () => {
                       </span>
                       <span className={`font-bold text-red-900 ${isCourier ? "text-sm" : "text-xl"}`}>
                         {(() => {
+                          const sumPrepaid = (orders: any[]) =>
+                            orders.reduce((s, o) => s + toNumber(o.admin_prepaid_amount), 0)
                           // Calculate total not delivered according to the specified rules
                           let totalNotDelivered = 0
-                          
-                          // Canceled orders: full original value (as specified)
-                          totalNotDelivered += metrics.canceled.originalValue
-                          
-                          // Partial orders: (original value - actually collected)
-                          totalNotDelivered += Math.max(0, metrics.partial.originalValue - metrics.partial.courierCollected)
-                          
-                          // Hand-to-hand orders: (original value - actually collected) if not collected
-                          totalNotDelivered += Math.max(0, metrics.handToHand.originalValue - metrics.handToHand.courierCollected)
-                          
-                          // Receiving part orders: (original value - actually collected)
-                          totalNotDelivered += Math.max(0, metrics.receivingPart.originalValue - metrics.receivingPart.courierCollected)
-                          
+
+                          // Canceled orders: original value minus any admin prepaid (already counted as collected)
+                          totalNotDelivered += Math.max(0, metrics.canceled.originalValue - sumPrepaid(metrics.canceled.orders))
+
+                          // Partial orders: (original value - actually collected - prepaid)
+                          totalNotDelivered += Math.max(0, metrics.partial.originalValue - metrics.partial.courierCollected - sumPrepaid(metrics.partial.orders))
+
+                          // Hand-to-hand orders: (original value - actually collected - prepaid)
+                          totalNotDelivered += Math.max(0, metrics.handToHand.originalValue - metrics.handToHand.courierCollected - sumPrepaid(metrics.handToHand.orders))
+
+                          // Receiving part orders: (original value - actually collected - prepaid)
+                          totalNotDelivered += Math.max(0, metrics.receivingPart.originalValue - metrics.receivingPart.courierCollected - sumPrepaid(metrics.receivingPart.orders))
+
                           // Assigned orders: full original value (not yet delivered)
                           totalNotDelivered += metrics.assigned.originalValue
-                          
+
                           // Return orders: full original value (as specified - fees only are not subtracted)
                           totalNotDelivered += metrics.returned.originalValue
-                          
+
                           return totalNotDelivered.toFixed(0)
                         })()} ج.م
                       </span>
