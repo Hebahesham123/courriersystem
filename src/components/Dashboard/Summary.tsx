@@ -3952,7 +3952,7 @@ const Summary: React.FC = () => {
                         المحصل (رسوم فقط):
                       </span>
                       <span className={`font-bold text-red-900 ${isCourier ? "text-sm" : "text-xl"}`}>
-                        {metrics.canceled.courierCollected.toFixed(0)} ج.م
+                        {(metrics.canceled.courierCollected + metrics.canceled.orders.reduce((s: number, o: any) => s + toNumber(o.admin_prepaid_amount), 0)).toFixed(0)} ج.م
                       </span>
                     </div>
                   </div>
