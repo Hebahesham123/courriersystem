@@ -1483,6 +1483,10 @@ const OrdersManagement: React.FC = () => {
         ? { ...o, admin_prepaid_amount: null, admin_prepaid_method: null, admin_prepaid_at: null, admin_prepaid_by: null }
         : o
       ))
+      setSelectedOrderForDetail((prev) => prev?.id === orderId
+        ? { ...prev, admin_prepaid_amount: null, admin_prepaid_method: null, admin_prepaid_at: null, admin_prepaid_by: null }
+        : prev
+      )
     } catch (e: any) {
       setError(e?.message || "فشل مسح الدفع المسبق")
     }
