@@ -1187,8 +1187,9 @@ const Summary: React.FC = () => {
     let orderAmount = 0
 
     if (order.status === "canceled") {
-      // If there's a prepaid deposit, count it (admin already collected it even though order was cancelled)
-      orderAmount = toNumber((order as any).admin_prepaid_amount)
+      // Canceled: courier handled nothing. Any admin prepaid deposit is shown separately
+      // in the "Total Collected (courier + prepaid)" row, so don't add it here.
+      orderAmount = 0
     } else if (order.status === "return") {
       orderAmount = 0
     } else if (order.payment_sub_type === "onther" && order.onther_payments) {
