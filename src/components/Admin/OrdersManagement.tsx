@@ -203,11 +203,13 @@ const getItemChangeCounts = (order: Order) => {
 // Returns null if no recognizable deposit number is found.
 const extractNoteDeposit = (note?: string | null): number | null => {
   if (!note) return null
+  // Numbers inside parentheses are NOT deposits — strip them first
+  const stripped = note.replace(/\([^)]*\)/g, '')
   // Try "حولت <number>" first (most explicit)
-  const transferred = note.match(/حولت\s*(\d+(?:\.\d+)?)/)
+  const transferred = stripped.match(/حولت\s*(\d+(?:\.\d+)?)/)
   if (transferred) return parseFloat(transferred[1])
-  // Fall back to any standalone number ≥ 100 (3+ digits) in the note
-  const standalone = note.match(/\b(\d{3,}(?:\.\d+)?)\b/)
+  // Fall back to any standalone number ≥ 100 (3+ digits)
+  const standalone = stripped.match(/\b(\d{3,}(?:\.\d+)?)\b/)
   return standalone ? parseFloat(standalone[1]) : null
 }
 
