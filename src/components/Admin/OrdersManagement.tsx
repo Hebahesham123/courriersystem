@@ -874,7 +874,12 @@ const OrdersManagement: React.FC = () => {
         const { data: { user: currentUser } } = await supabase.auth.getUser()
         const ordersToAutoDeposit = (ordersWithCourierNames || [])
           .map((o: any) => ({ order: o, depositAmount: getNoteDeposit(o) }))
-          .filter(({ order, depositAmount }) => depositAmount !== null && Number(order.admin_prepaid_amount || 0) !== depositAmount)
+          .filter(({ order, depositAmount }) => {
+            if (depositAmount === null) return false
+            // Skip if admin explicitly cleared the deposit (prepaid_at set but amount null)
+            if (order.admin_prepaid_at && (order.admin_prepaid_amount === null || order.admin_prepaid_amount === undefined)) return false
+            return Number(order.admin_prepaid_amount || 0) !== depositAmount
+          })
         if (ordersToAutoDeposit.length > 0) {
           for (const { order, depositAmount } of ordersToAutoDeposit) {
             await supabase.from("orders").update({
@@ -1472,19 +1477,21 @@ const OrdersManagement: React.FC = () => {
   const handleClearDeposit = async (orderId: string) => {
     if (!window.confirm("مسح الدفع المسبق من هذا الطلب؟")) return
     try {
+      const { data: { user } } = await supabase.auth.getUser()
+      const clearedAt = new Date().toISOString()
       const { error } = await supabase.from("orders").update({
         admin_prepaid_amount: null,
         admin_prepaid_method: null,
-        admin_prepaid_at: null,
-        admin_prepaid_by: null,
+        admin_prepaid_at: clearedAt,
+        admin_prepaid_by: user?.id ?? null,
       }).eq("id", orderId)
       if (error) throw error
       setOrders((prev) => prev.map((o) => o.id === orderId
-        ? { ...o, admin_prepaid_amount: null, admin_prepaid_method: null, admin_prepaid_at: null, admin_prepaid_by: null }
+        ? { ...o, admin_prepaid_amount: null, admin_prepaid_method: null, admin_prepaid_at: clearedAt, admin_prepaid_by: user?.id ?? null }
         : o
       ))
       setSelectedOrderForDetail((prev) => prev?.id === orderId
-        ? { ...prev, admin_prepaid_amount: null, admin_prepaid_method: null, admin_prepaid_at: null, admin_prepaid_by: null }
+        ? { ...prev, admin_prepaid_amount: null, admin_prepaid_method: null, admin_prepaid_at: clearedAt, admin_prepaid_by: user?.id ?? null }
         : prev
       )
     } catch (e: any) {
