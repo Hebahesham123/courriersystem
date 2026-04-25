@@ -852,6 +852,32 @@ const OrdersManagement: React.FC = () => {
         setOrders(ordersWithCourierNames)
       }
 
+      // Auto-apply 200 EGP instapay prepaid for orders whose note contains "200" and don't have it set yet
+      try {
+        const { data: { user: currentUser } } = await supabase.auth.getUser()
+        const ordersToAutoDeposit = (ordersWithCourierNames || []).filter((o: any) =>
+          (o.order_note?.includes("200") || o.notes?.includes("200")) &&
+          !o.admin_prepaid_amount
+        )
+        if (ordersToAutoDeposit.length > 0) {
+          const ids = ordersToAutoDeposit.map((o: any) => o.id)
+          await supabase.from("orders").update({
+            admin_prepaid_amount: 200,
+            admin_prepaid_method: "instapay",
+            admin_prepaid_at: new Date().toISOString(),
+            admin_prepaid_by: currentUser?.id ?? null,
+          }).in("id", ids)
+          // reflect in local state immediately
+          setOrders((prev: any[]) => prev.map((o: any) =>
+            ids.includes(o.id)
+              ? { ...o, admin_prepaid_amount: 200, admin_prepaid_method: "instapay" }
+              : o
+          ))
+        }
+      } catch (autoErr) {
+        console.warn("Auto-deposit 200 failed:", autoErr)
+      }
+
       // availableTags is managed by fetchAllTags which queries all orders without limit
     } catch (error: any) {
       setError("Failed to fetch orders / فشل تحميل الطلبات: " + error.message)
