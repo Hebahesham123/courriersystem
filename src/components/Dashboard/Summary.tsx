@@ -2215,13 +2215,13 @@ const Summary: React.FC = () => {
                                   metrics.handToHand.courierCollected +
                                   metrics.canceled.courierCollected +
                                   metrics.returned.courierCollected
-                                // Add admin prepaid deposits for collected orders. Canceled deposits
-                                // are excluded from order accounting (admin-only income).
+                                // Add admin prepaid deposits — including canceled (collected by admin)
                                 const totalPrepaid = [
                                   ...metrics.delivered.orders,
                                   ...metrics.partial.orders,
                                   ...metrics.receivingPart.orders,
                                   ...metrics.handToHand.orders,
+                                  ...metrics.canceled.orders,
                                 ].reduce((sum, o: any) => sum + toNumber(o.admin_prepaid_amount), 0)
                                 return (totalCollected + totalPrepaid).toFixed(2)
                               })()} ج.م
@@ -4218,13 +4218,13 @@ const Summary: React.FC = () => {
                             metrics.handToHand.courierCollected +
                             metrics.canceled.courierCollected + // رسوم فقط
                             metrics.returned.courierCollected    // رسوم فقط
-                          // Add admin prepaid deposits for collected orders. Canceled deposits
-                          // are excluded from order accounting (admin-only income).
+                          // Add admin prepaid deposits — including canceled (collected by admin)
                           const totalPrepaid = [
                             ...metrics.delivered.orders,
                             ...metrics.partial.orders,
                             ...metrics.receivingPart.orders,
                             ...metrics.handToHand.orders,
+                            ...metrics.canceled.orders,
                           ].reduce((sum, o: any) => sum + toNumber(o.admin_prepaid_amount), 0)
                           return (totalCollected + totalPrepaid).toFixed(0)
                         })()} ج.م
