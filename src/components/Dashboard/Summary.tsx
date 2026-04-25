@@ -1484,7 +1484,9 @@ const Summary: React.FC = () => {
     // Recalculate total orders count as sum of all status counts to ensure accuracy
     // Include pending orders in total count
     const calculatedTotalOrdersCount = pending.count + assigned.count + delivered.count + canceled.count + partial.count + returned.count + receivingPart.count + handToHand.count
-    const calculatedTotalOrdersOriginalValue = pending.originalValue + assigned.originalValue + delivered.originalValue + canceled.originalValue + partial.originalValue + returned.originalValue + receivingPart.originalValue + handToHand.originalValue
+    // Canceled deposits are admin-only income, not part of order value at-risk — subtract them
+    const canceledPrepaidSum = canceled.orders.reduce((s: number, o: any) => s + toNumber(o.admin_prepaid_amount), 0)
+    const calculatedTotalOrdersOriginalValue = pending.originalValue + assigned.originalValue + delivered.originalValue + canceled.originalValue + partial.originalValue + returned.originalValue + receivingPart.originalValue + handToHand.originalValue - canceledPrepaidSum
 
     // Validate that calculated totals match original totals
     if (calculatedTotalOrdersCount !== totalOrdersCount) {
@@ -2213,13 +2215,13 @@ const Summary: React.FC = () => {
                                   metrics.handToHand.courierCollected +
                                   metrics.canceled.courierCollected +
                                   metrics.returned.courierCollected
-                                // Add admin prepaid deposits (excluded from courierCollected)
+                                // Add admin prepaid deposits for collected orders. Canceled deposits
+                                // are excluded from order accounting (admin-only income).
                                 const totalPrepaid = [
                                   ...metrics.delivered.orders,
                                   ...metrics.partial.orders,
                                   ...metrics.receivingPart.orders,
                                   ...metrics.handToHand.orders,
-                                  ...metrics.canceled.orders,
                                 ].reduce((sum, o: any) => sum + toNumber(o.admin_prepaid_amount), 0)
                                 return (totalCollected + totalPrepaid).toFixed(2)
                               })()} ج.م
@@ -3950,7 +3952,7 @@ const Summary: React.FC = () => {
                         المحصل (رسوم فقط):
                       </span>
                       <span className={`font-bold text-red-900 ${isCourier ? "text-sm" : "text-xl"}`}>
-                        {(metrics.canceled.courierCollected + metrics.canceled.orders.reduce((s: number, o: any) => s + toNumber(o.admin_prepaid_amount), 0)).toFixed(0)} ج.م
+                        {metrics.canceled.courierCollected.toFixed(0)} ج.م
                       </span>
                     </div>
                   </div>
@@ -4216,13 +4218,13 @@ const Summary: React.FC = () => {
                             metrics.handToHand.courierCollected +
                             metrics.canceled.courierCollected + // رسوم فقط
                             metrics.returned.courierCollected    // رسوم فقط
-                          // Add admin prepaid deposits (excluded from courierCollected)
+                          // Add admin prepaid deposits for collected orders. Canceled deposits
+                          // are excluded from order accounting (admin-only income).
                           const totalPrepaid = [
                             ...metrics.delivered.orders,
                             ...metrics.partial.orders,
                             ...metrics.receivingPart.orders,
                             ...metrics.handToHand.orders,
-                            ...metrics.canceled.orders,
                           ].reduce((sum, o: any) => sum + toNumber(o.admin_prepaid_amount), 0)
                           return (totalCollected + totalPrepaid).toFixed(0)
                         })()} ج.م
