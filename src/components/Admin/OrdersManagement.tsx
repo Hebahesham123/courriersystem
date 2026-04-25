@@ -1469,6 +1469,25 @@ const OrdersManagement: React.FC = () => {
     }
   }
 
+  const handleClearDeposit = async (orderId: string) => {
+    if (!window.confirm("مسح الدفع المسبق من هذا الطلب؟")) return
+    try {
+      const { error } = await supabase.from("orders").update({
+        admin_prepaid_amount: null,
+        admin_prepaid_method: null,
+        admin_prepaid_at: null,
+        admin_prepaid_by: null,
+      }).eq("id", orderId)
+      if (error) throw error
+      setOrders((prev) => prev.map((o) => o.id === orderId
+        ? { ...o, admin_prepaid_amount: null, admin_prepaid_method: null, admin_prepaid_at: null, admin_prepaid_by: null }
+        : o
+      ))
+    } catch (e: any) {
+      setError(e?.message || "فشل مسح الدفع المسبق")
+    }
+  }
+
   const handleDuplicateOrder = async (orderId: string) => {
     if (!orderId) return
 
@@ -2726,6 +2745,15 @@ const OrdersManagement: React.FC = () => {
                     <CreditCard className="w-3 h-3" />
                     {order.admin_prepaid_amount ? `Split ${Number(order.admin_prepaid_amount).toFixed(0)}` : 'Split'}
                   </button>
+                  {order.admin_prepaid_amount && (
+                    <button
+                      onClick={() => handleClearDeposit(order.id)}
+                      className="flex items-center gap-1 px-2 py-1 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors text-sm"
+                      title="مسح الدفع المسبق"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
                   {viewMode === "active" && (
                     <button
                       onClick={() => startEdit(order.id)}
@@ -4388,6 +4416,15 @@ const OrdersManagement: React.FC = () => {
                                 >
                                   <CreditCard className="w-3.5 h-3.5" />
                                 </button>
+                                {order.admin_prepaid_amount && (
+                                  <button
+                                    onClick={() => handleClearDeposit(order.id)}
+                                    className="p-1.5 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
+                                    title="مسح الدفع المسبق"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
                                 {viewMode === "active" && (
                                   <button
                                     onClick={() => startEdit(order.id)}
