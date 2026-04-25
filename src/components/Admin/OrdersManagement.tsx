@@ -199,6 +199,21 @@ const getItemChangeCounts = (order: Order) => {
   return { newCount, removedCount, hasChanges: newCount > 0 || removedCount > 0 }
 }
 
+// Extract a deposit amount from a Shopify note (e.g. "حولت 2000" → 2000, "200" → 200).
+// Returns null if no recognizable deposit number is found.
+const extractNoteDeposit = (note?: string | null): number | null => {
+  if (!note) return null
+  // Try "حولت <number>" first (most explicit)
+  const transferred = note.match(/حولت\s*(\d+(?:\.\d+)?)/)
+  if (transferred) return parseFloat(transferred[1])
+  // Fall back to any standalone number ≥ 100 (3+ digits) in the note
+  const standalone = note.match(/\b(\d{3,}(?:\.\d+)?)\b/)
+  return standalone ? parseFloat(standalone[1]) : null
+}
+
+const getNoteDeposit = (order: { order_note?: string | null; notes?: string | null }): number | null =>
+  extractNoteDeposit(order.order_note) ?? extractNoteDeposit(order.notes)
+
 const isOrderItemFulfilled = (i: any) => {
   const statusCandidates = [
     i?.fulfillment_status,
@@ -855,24 +870,23 @@ const OrdersManagement: React.FC = () => {
       // Auto-apply 200 EGP instapay prepaid for orders whose note contains "200" and don't have it set yet
       try {
         const { data: { user: currentUser } } = await supabase.auth.getUser()
-        const ordersToAutoDeposit = (ordersWithCourierNames || []).filter((o: any) =>
-          (o.order_note?.includes("200") || o.notes?.includes("200")) &&
-          !o.admin_prepaid_amount
-        )
+        const ordersToAutoDeposit = (ordersWithCourierNames || [])
+          .map((o: any) => ({ order: o, depositAmount: getNoteDeposit(o) }))
+          .filter(({ order, depositAmount }) => depositAmount !== null && Number(order.admin_prepaid_amount || 0) !== depositAmount)
         if (ordersToAutoDeposit.length > 0) {
-          const ids = ordersToAutoDeposit.map((o: any) => o.id)
-          await supabase.from("orders").update({
-            admin_prepaid_amount: 200,
-            admin_prepaid_method: "instapay",
-            admin_prepaid_at: new Date().toISOString(),
-            admin_prepaid_by: currentUser?.id ?? null,
-          }).in("id", ids)
+          for (const { order, depositAmount } of ordersToAutoDeposit) {
+            await supabase.from("orders").update({
+              admin_prepaid_amount: depositAmount,
+              admin_prepaid_method: "instapay",
+              admin_prepaid_at: new Date().toISOString(),
+              admin_prepaid_by: currentUser?.id ?? null,
+            }).eq("id", order.id)
+          }
           // reflect in local state immediately
-          setOrders((prev: any[]) => prev.map((o: any) =>
-            ids.includes(o.id)
-              ? { ...o, admin_prepaid_amount: 200, admin_prepaid_method: "instapay" }
-              : o
-          ))
+          setOrders((prev: any[]) => prev.map((o: any) => {
+            const match = ordersToAutoDeposit.find(({ order: r }) => r.id === o.id)
+            return match ? { ...o, admin_prepaid_amount: match.depositAmount, admin_prepaid_method: "instapay" } : o
+          }))
         }
       } catch (autoErr) {
         console.warn("Auto-deposit 200 failed:", autoErr)
@@ -2120,7 +2134,7 @@ const OrdersManagement: React.FC = () => {
     const assigned = isOrderAssigned(order)
     const { unfulfilledItems, unfulfilledTotal, collectibleAmount } = getUnfulfilledSummary(order)
 
-    const hasComment = !!(order.order_note?.includes("200") || order.notes?.includes("200"))
+    const hasComment = getNoteDeposit(order) !== null
     const isSpecial = !!order.receive_piece_or_exchange
     return (
       <div
@@ -4105,7 +4119,7 @@ const OrdersManagement: React.FC = () => {
                       financialLower === 'voided' ||
                       !!order.shopify_cancelled_at
 
-                    const hasComment = !!(order.order_note?.includes("200") || order.notes?.includes("200"))
+                    const hasComment = getNoteDeposit(order) !== null
                     const isSpecial = !!(order.receive_piece_or_exchange)
                     return (
                       <React.Fragment key={`${order.id}-fragment`}>

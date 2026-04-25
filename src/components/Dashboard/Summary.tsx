@@ -1149,7 +1149,8 @@ const Summary: React.FC = () => {
     }
 
     if (["delivered", "hand_to_hand"].includes(order.status)) {
-      return toNumber(order.total_order_fees)
+      const adminPrepaid = toNumber((order as any).admin_prepaid_amount)
+      return Math.max(0, toNumber(order.total_order_fees) - adminPrepaid)
     }
     // For return orders, don't count the full order amount as collected
     if (order.status === "return") {
@@ -1186,7 +1187,8 @@ const Summary: React.FC = () => {
     let orderAmount = 0
 
     if (order.status === "canceled") {
-      orderAmount = 0
+      // If there's a prepaid deposit, count it (admin already collected it even though order was cancelled)
+      orderAmount = toNumber((order as any).admin_prepaid_amount)
     } else if (order.status === "return") {
       orderAmount = 0
     } else if (order.payment_sub_type === "onther" && order.onther_payments) {
