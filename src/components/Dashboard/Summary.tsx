@@ -2206,14 +2206,22 @@ const Summary: React.FC = () => {
                             <span className="text-xs text-emerald-700">المحصل:</span>
                             <span className="text-xs font-bold text-emerald-900">
                               {(() => {
-                                const totalCollected = 
+                                const totalCollected =
                                   metrics.delivered.courierCollected +
                                   metrics.partial.courierCollected +
                                   metrics.receivingPart.courierCollected +
                                   metrics.handToHand.courierCollected +
                                   metrics.canceled.courierCollected +
                                   metrics.returned.courierCollected
-                                return totalCollected.toFixed(2)
+                                // Add admin prepaid deposits (excluded from courierCollected)
+                                const totalPrepaid = [
+                                  ...metrics.delivered.orders,
+                                  ...metrics.partial.orders,
+                                  ...metrics.receivingPart.orders,
+                                  ...metrics.handToHand.orders,
+                                  ...metrics.canceled.orders,
+                                ].reduce((sum, o: any) => sum + toNumber(o.admin_prepaid_amount), 0)
+                                return (totalCollected + totalPrepaid).toFixed(2)
                               })()} ج.م
                             </span>
                           </div>
@@ -4199,14 +4207,22 @@ const Summary: React.FC = () => {
                       <span className={`font-bold text-emerald-900 ${isCourier ? "text-sm" : "text-xl"}`}>
                         {(() => {
                           // Calculate total collected from all statuses including fees only
-                          const totalCollected = 
+                          const totalCollected =
                             metrics.delivered.courierCollected +
                             metrics.partial.courierCollected +
                             metrics.receivingPart.courierCollected +
                             metrics.handToHand.courierCollected +
                             metrics.canceled.courierCollected + // رسوم فقط
                             metrics.returned.courierCollected    // رسوم فقط
-                          return totalCollected.toFixed(0)
+                          // Add admin prepaid deposits (excluded from courierCollected)
+                          const totalPrepaid = [
+                            ...metrics.delivered.orders,
+                            ...metrics.partial.orders,
+                            ...metrics.receivingPart.orders,
+                            ...metrics.handToHand.orders,
+                            ...metrics.canceled.orders,
+                          ].reduce((sum, o: any) => sum + toNumber(o.admin_prepaid_amount), 0)
+                          return (totalCollected + totalPrepaid).toFixed(0)
                         })()} ج.م
                       </span>
                     </div>
