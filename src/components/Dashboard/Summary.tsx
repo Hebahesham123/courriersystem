@@ -1536,7 +1536,7 @@ const Summary: React.FC = () => {
           console.log('Skipping order with hold fee:', o.order_id, 'hold_fee_added_at:', o.hold_fee_added_at, 'hold_fee_removed_at:', o.hold_fee_removed_at)
           continue
         }
-        
+
         if (o.payment_sub_type === 'onther' && o.onther_payments) {
           let arr: { method: string; amount: string }[] = []
           try {
@@ -1563,7 +1563,16 @@ const Summary: React.FC = () => {
             : (o.collected_by || o.payment_method)
           // Use normalized payment method for non-onther orders
           const normalized = normalizePaymentMethod(sourceMethod)
-          const amt = getTotalCourierAmount(o)
+          let amt = getTotalCourierAmount(o)
+          // If the admin prepaid deposit is in the same method as the main payment,
+          // merge it into this entry so the outer total matches the modal's grand total.
+          const prepaidAmt = toNumber((o as any).admin_prepaid_amount)
+          const prepaidMethodNorm = (o as any).admin_prepaid_method
+            ? normalizePaymentMethod((o as any).admin_prepaid_method)
+            : null
+          if (prepaidAmt > 0 && prepaidMethodNorm && prepaidMethodNorm === normalized) {
+            amt += prepaidAmt
+          }
           
           // For Paymob/Valu orders that are delivered and were paid from Shopify:
           // Include them even if amount is 0 (they were already paid online)
@@ -1585,14 +1594,51 @@ const Summary: React.FC = () => {
           // Include Paymob/Valu delivered orders even if amount is 0 (they were paid online)
           if (amt > 0 || normalized === 'on_hand' || isPaymobValuDelivered) {
             // For Paymob/Valu delivered orders with 0 amount, use order total (they were already paid)
-            const finalAmount = isPaymobValuDelivered && amt === 0 
-              ? toNumber(o.total_order_fees) 
+            const finalAmount = isPaymobValuDelivered && amt === 0
+              ? toNumber(o.total_order_fees)
               : amt
             // Determine the correct method (paymob or valu)
-            const finalMethod = isPaymobValuDelivered 
+            const finalMethod = isPaymobValuDelivered
               ? (isValu ? 'valu' : 'paymob')  // Prefer valu if both match, otherwise paymob
               : normalized
-            result.push({ order: o, method: finalMethod, amount: finalAmount })
+            result.push({ order: { ...o, _onther_amount: finalAmount } as any, method: finalMethod, amount: finalAmount })
+          }
+        }
+
+        // Cross-method prepaid: deposit was paid in a method DIFFERENT from the main payment
+        // (e.g., canceled/cash order with 200 instapay prepaid). Add it to the prepaid method's
+        // card so the deposit is represented. Skip if it was already merged (same-method) above
+        // or if the courier already recorded it in onther_payments.
+        // Skip return orders entirely — their deposits are typically refunded and shouldn't count.
+        const xPrepaidAmt = toNumber((o as any).admin_prepaid_amount)
+        const xPrepaidMethodRaw = (o as any).admin_prepaid_method
+        if (xPrepaidAmt > 0 && xPrepaidMethodRaw && o.status !== 'return') {
+          const xPrepaidMethod = normalizePaymentMethod(xPrepaidMethodRaw)
+          // Determine the order's main method to know if same-method merge happened
+          const xMainSource = (o.payment_sub_type && o.payment_sub_type !== 'onther')
+            ? o.payment_sub_type
+            : (o.collected_by || o.payment_method)
+          const xMainNormalized = normalizePaymentMethod(xMainSource)
+          const isSameMethodMerge = o.payment_sub_type !== 'onther' && xPrepaidMethod === xMainNormalized
+          // Check if the prepaid is already represented in onther_payments
+          let alreadyInOnther = false
+          if (o.payment_sub_type === 'onther' && o.onther_payments) {
+            try {
+              const arr = typeof o.onther_payments === 'string' ? JSON.parse(o.onther_payments) : o.onther_payments
+              if (Array.isArray(arr)) {
+                alreadyInOnther = arr.some((it: any) =>
+                  normalizePaymentMethod(it.method) === xPrepaidMethod &&
+                  Math.abs((parseFloat(it.amount) || 0) - xPrepaidAmt) < 0.01
+                )
+              }
+            } catch {}
+          }
+          if (!isSameMethodMerge && !alreadyInOnther) {
+            result.push({
+              order: { ...o, _onther_amount: xPrepaidAmt, payment_sub_type: xPrepaidMethod, _is_prepaid: true } as any,
+              method: xPrepaidMethod,
+              amount: xPrepaidAmt,
+            })
           }
         }
       }
