@@ -199,9 +199,19 @@ const getItemChangeCounts = (order: Order) => {
   return { newCount, removedCount, hasChanges: newCount > 0 || removedCount > 0 }
 }
 
-// Extract a deposit amount from a Shopify note (e.g. "حولت 2000" → 2000, "200" → 200).
-// Returns null if no recognizable deposit number is found.
-const extractNoteDeposit = (note?: string | null): number | null => {
+// Cutoff: orders created on/after this date use the strict "d-<number>" pattern only.
+// Older orders keep the legacy behavior so already-assigned orders aren't disturbed.
+const NEW_DEPOSIT_RULE_START = new Date('2026-04-29T00:00:00')
+
+// Strict pattern: matches "d-900", "D-1500.50" (case-insensitive). Returns the number or null.
+const extractStrictDDeposit = (note?: string | null): number | null => {
+  if (!note) return null
+  const m = note.match(/(?:^|[^a-zA-Z0-9])[dD]-(\d+(?:\.\d+)?)/)
+  return m ? parseFloat(m[1]) : null
+}
+
+// Legacy extractor used for orders created before the cutoff.
+const extractLegacyNoteDeposit = (note?: string | null): number | null => {
   if (!note) return null
   // Numbers inside parentheses are NOT deposits — strip them first
   const stripped = note.replace(/\([^)]*\)/g, '')
@@ -213,8 +223,28 @@ const extractNoteDeposit = (note?: string | null): number | null => {
   return standalone ? parseFloat(standalone[1]) : null
 }
 
-const getNoteDeposit = (order: { order_note?: string | null; notes?: string | null }): number | null =>
-  extractNoteDeposit(order.order_note) ?? extractNoteDeposit(order.notes)
+const isNewRuleOrder = (order: { created_at?: string | null }): boolean => {
+  if (!order.created_at) return false
+  const created = new Date(order.created_at)
+  return !isNaN(created.getTime()) && created >= NEW_DEPOSIT_RULE_START
+}
+
+// Extract a deposit amount from a Shopify note. Behavior depends on order age:
+//  - For orders created on/after 2026-04-29: ONLY "d-<number>" counts as a deposit.
+//  - For older orders: legacy behavior (حولت <num>, or any standalone 3+ digit number).
+const extractNoteDeposit = (
+  note?: string | null,
+  order?: { created_at?: string | null }
+): number | null => {
+  if (!note) return null
+  if (order && isNewRuleOrder(order)) {
+    return extractStrictDDeposit(note)
+  }
+  return extractLegacyNoteDeposit(note)
+}
+
+const getNoteDeposit = (order: { order_note?: string | null; notes?: string | null; created_at?: string | null }): number | null =>
+  extractNoteDeposit(order.order_note, order) ?? extractNoteDeposit(order.notes, order)
 
 const isOrderItemFulfilled = (i: any) => {
   const statusCandidates = [
