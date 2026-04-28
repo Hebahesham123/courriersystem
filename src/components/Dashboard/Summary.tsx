@@ -3369,7 +3369,7 @@ const Summary: React.FC = () => {
 
                               // Admin prepaid portion
                               const adminAmt = Number(order.admin_prepaid_amount || 0)
-                              const adminRow = adminAmt > 0
+                              let adminRow = adminAmt > 0
                                 ? { method: order.admin_prepaid_method || "—", amount: adminAmt }
                                 : null
 
@@ -3384,13 +3384,29 @@ const Summary: React.FC = () => {
                                 } catch {}
                               }
                               const courierIsSplit = ontherArr.length > 0
-                              const courierRows: { method: string; amount: number }[] = courierIsSplit
+                              let courierRows: { method: string; amount: number }[] = courierIsSplit
                                 ? ontherArr
                                     .map((p) => ({ method: String(p.method || "—"), amount: Number(p.amount) || 0 }))
                                     .filter((r) => r.amount > 0)
                                 : courierOrderAmount > 0
                                 ? [{ method: order.payment_sub_type || order.collected_by || "—", amount: courierOrderAmount }]
                                 : []
+
+                              // Method-specific filtering for the modal context
+                              if ((order as any)._is_prepaid) {
+                                // This entry represents the prepaid deposit only — hide courier rows
+                                courierRows = []
+                              } else {
+                                // Regular entry. Hide admin row if it belongs to a different method
+                                // (the admin portion shows in the other method's modal)
+                                if (adminRow) {
+                                  const mainMethodNorm = normalizePaymentMethod(order.payment_sub_type || order.collected_by || order.payment_method || "")
+                                  const adminMethodNorm = normalizePaymentMethod(adminRow.method)
+                                  if (adminMethodNorm !== mainMethodNorm) {
+                                    adminRow = null
+                                  }
+                                }
+                              }
 
                               if (!adminRow && courierRows.length === 0) return null
                               const courierSubTotal = courierRows.reduce((s, r) => s + r.amount, 0)
@@ -5358,7 +5374,7 @@ const Summary: React.FC = () => {
                                 we_pay: "وي باي",
                               }
                               const adminAmt = Number(order.admin_prepaid_amount || 0)
-                              const adminRow = adminAmt > 0
+                              let adminRow = adminAmt > 0
                                 ? { method: order.admin_prepaid_method || "—", amount: adminAmt }
                                 : null
                               let ontherArr: { method: string; amount: string | number }[] = []
@@ -5371,13 +5387,23 @@ const Summary: React.FC = () => {
                                 } catch {}
                               }
                               const courierIsSplit = ontherArr.length > 0
-                              const courierRows: { method: string; amount: number }[] = courierIsSplit
+                              let courierRows: { method: string; amount: number }[] = courierIsSplit
                                 ? ontherArr
                                     .map((p) => ({ method: String(p.method || "—"), amount: Number(p.amount) || 0 }))
                                     .filter((r) => r.amount > 0)
                                 : courierOrderAmount > 0
                                 ? [{ method: order.payment_sub_type || order.collected_by || "—", amount: courierOrderAmount }]
                                 : []
+                              // Method-specific filtering for the modal context
+                              if ((order as any)._is_prepaid) {
+                                courierRows = []
+                              } else if (adminRow) {
+                                const mainMethodNorm = normalizePaymentMethod(order.payment_sub_type || order.collected_by || order.payment_method || "")
+                                const adminMethodNorm = normalizePaymentMethod(adminRow.method)
+                                if (adminMethodNorm !== mainMethodNorm) {
+                                  adminRow = null
+                                }
+                              }
                               if (!adminRow && courierRows.length === 0) return null
                               const courierSubTotal = courierRows.reduce((s, r) => s + r.amount, 0)
                               const breakdownTotal = (adminRow?.amount || 0) + courierSubTotal
