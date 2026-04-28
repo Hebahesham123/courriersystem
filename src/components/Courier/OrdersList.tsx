@@ -861,8 +861,57 @@ const OrdersList: React.FC = () => {
       )
       .subscribe()
 
+    // Realtime subscription for order_items changes — keeps the items list live
+    // so courier sees additions/removals from Shopify without manual refresh.
+    const itemsChannel = supabase
+      .channel('courier-order-items-changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'order_items' },
+        async (payload: any) => {
+          const changedOrderId = (payload.new && payload.new.order_id) || (payload.old && payload.old.order_id)
+          if (!changedOrderId) return
+          // Only refetch if this order is one we currently show
+          let isOurs = false
+          setOrders((prev) => {
+            isOurs = prev.some((o) => o.id === changedOrderId)
+            return prev
+          })
+          if (!isOurs) return
+          const { data: freshItems } = await supabase
+            .from('order_items')
+            .select('id, order_id, title, variant_title, quantity, price, sku, image_url, vendor, product_type, is_removed, is_new, properties')
+            .eq('order_id', changedOrderId)
+            .or('is_removed.is.null,is_removed.eq.false')
+          setOrders((prev) =>
+            prev.map((o) =>
+              o.id === changedOrderId
+                ? {
+                    ...o,
+                    order_items: (freshItems || []).map((it: any) => ({
+                      id: it.id,
+                      title: it.title,
+                      variant_title: it.variant_title,
+                      quantity: it.quantity,
+                      price: it.price,
+                      sku: it.sku,
+                      image_url: it.image_url,
+                      vendor: it.vendor,
+                      product_type: it.product_type,
+                      is_removed: it.is_removed,
+                      properties: it.properties,
+                    })),
+                  }
+                : o
+            )
+          )
+        }
+      )
+      .subscribe()
+
     return () => {
       supabase.removeChannel(channel)
+      supabase.removeChannel(itemsChannel)
     }
   }, [user?.id])
 
@@ -1174,11 +1223,12 @@ const OrdersList: React.FC = () => {
           })
         }
 
-        // Fetch order items (products)
+        // Fetch order items (products) — exclude items removed from Shopify
         const { data: orderItems, error: itemsError } = await supabase
           .from("order_items")
           .select("id, order_id, title, variant_title, quantity, price, sku, image_url, vendor, product_type, is_removed, is_new, properties")
           .in("order_id", orderIds)
+          .or("is_removed.is.null,is_removed.eq.false")
 
         if (itemsError) {
           console.warn("Error fetching order items:", itemsError)
