@@ -2215,14 +2215,16 @@ const Summary: React.FC = () => {
                                   metrics.handToHand.courierCollected +
                                   metrics.canceled.courierCollected +
                                   metrics.returned.courierCollected
-                                // Add admin prepaid deposits — including canceled (collected by admin)
+                                // Add admin prepaid deposits — exclude orders with an active hold fee
                                 const totalPrepaid = [
                                   ...metrics.delivered.orders,
                                   ...metrics.partial.orders,
                                   ...metrics.receivingPart.orders,
                                   ...metrics.handToHand.orders,
                                   ...metrics.canceled.orders,
-                                ].reduce((sum, o: any) => sum + toNumber(o.admin_prepaid_amount), 0)
+                                ]
+                                  .filter((o: any) => !(toNumber(o.hold_fee) > 0))
+                                  .reduce((sum, o: any) => sum + toNumber(o.admin_prepaid_amount), 0)
                                 return (totalCollected + totalPrepaid).toFixed(2)
                               })()} ج.م
                             </span>
@@ -3136,24 +3138,26 @@ const Summary: React.FC = () => {
                                 المعلومات المالية
                               </h5>
                               <div className="space-y-1.5">
-                                {/* Order Total */}
-                                <div className="flex justify-between items-center py-1">
-                                  <span className="text-xs text-gray-600">{translate("orderTotalLabel")}:</span>
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="text-xs font-semibold text-gray-900">
-                                      {Number(order.total_order_fees).toFixed(2)} {translate("EGP")}
-                                    </span>
-                                    <button
-                                      onClick={() => copyToClipboard(Number(order.total_order_fees).toFixed(2), 'Order Total')}
-                                      className="p-0.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
-                                    >
-                                      <Copy className="w-3 h-3" />
-                                    </button>
+                                {/* Order Total — hidden for prepaid-only entries */}
+                                {!(order as any)._is_prepaid && (
+                                  <div className="flex justify-between items-center py-1">
+                                    <span className="text-xs text-gray-600">{translate("orderTotalLabel")}:</span>
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-xs font-semibold text-gray-900">
+                                        {Number(order.total_order_fees).toFixed(2)} {translate("EGP")}
+                                      </span>
+                                      <button
+                                        onClick={() => copyToClipboard(Number(order.total_order_fees).toFixed(2), 'Order Total')}
+                                        className="p-0.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                                      >
+                                        <Copy className="w-3 h-3" />
+                                      </button>
+                                    </div>
                                   </div>
-                                </div>
+                                )}
 
-                                {/* Collected Amount */}
-                                {courierOrderAmount > 0 && (
+                                {/* Collected Amount — hidden for prepaid-only entries */}
+                                {!(order as any)._is_prepaid && courierOrderAmount > 0 && (
                                   <div className="flex justify-between items-center py-1">
                                     <span className="text-xs text-gray-600">
                                       {Number(order.partial_paid_amount || 0) > 0
@@ -3175,8 +3179,11 @@ const Summary: React.FC = () => {
                                   </div>
                                 )}
 
-                                {/* Admin Prepaid Split Payment */}
-                                {Number(order.admin_prepaid_amount || 0) > 0 && (
+                                {/* Admin Prepaid Split Payment — hidden for prepaid-only entries and for orders shown
+                                     in a different method's modal (where the deposit is recorded under another method). */}
+                                {!(order as any)._is_prepaid && Number(order.admin_prepaid_amount || 0) > 0 &&
+                                  (!order.admin_prepaid_method ||
+                                    normalizePaymentMethod(order.admin_prepaid_method) === normalizePaymentMethod(order.payment_sub_type || order.collected_by || order.payment_method || "")) && (
                                   <div className="flex justify-between items-center py-1 px-2 bg-emerald-50 rounded border border-emerald-200">
                                     <span className="text-xs text-emerald-700 font-medium flex items-center gap-1">
                                       <CreditCard className="w-3 h-3" />
@@ -3303,8 +3310,8 @@ const Summary: React.FC = () => {
                                     )}
                                   </div>
                                 )}
-                                {/* Total Courier Amount */}
-                                {totalCourierAmount !== 0 && (
+                                {/* Total Courier Amount — hidden when this entry is a prepaid-only deposit row */}
+                                {!(order as any)._is_prepaid && totalCourierAmount !== 0 && (
                                   <div className="flex justify-between items-center pt-2 mt-2 border-t border-gray-300">
                                     <span className="text-xs font-semibold text-gray-700">{translate("totalCourierHandledLabel")}:</span>
                                     <div className="flex items-center gap-1.5">
@@ -3321,8 +3328,10 @@ const Summary: React.FC = () => {
                                   </div>
                                 )}
 
-                                {/* Grand Total Collected (courier + admin prepaid) */}
-                                {Number(order.admin_prepaid_amount || 0) > 0 && (
+                                {/* Grand Total Collected (courier + admin prepaid) — hidden for prepaid-only entries and cross-method */}
+                                {!(order as any)._is_prepaid && Number(order.admin_prepaid_amount || 0) > 0 &&
+                                  (!order.admin_prepaid_method ||
+                                    normalizePaymentMethod(order.admin_prepaid_method) === normalizePaymentMethod(order.payment_sub_type || order.collected_by || order.payment_method || "")) && (
                                   <div className="flex justify-between items-center pt-2 mt-1 border-t-2 border-emerald-300 bg-emerald-50 -mx-3 px-3 pb-2 rounded-b-lg">
                                     <span className="text-xs font-bold text-emerald-800">إجمالي المحصل (مندوب + مقدم):</span>
                                     <div className="flex items-center gap-1.5">
@@ -4234,14 +4243,16 @@ const Summary: React.FC = () => {
                             metrics.handToHand.courierCollected +
                             metrics.canceled.courierCollected + // رسوم فقط
                             metrics.returned.courierCollected    // رسوم فقط
-                          // Add admin prepaid deposits — including canceled (collected by admin)
+                          // Add admin prepaid deposits — exclude orders with an active hold fee
                           const totalPrepaid = [
                             ...metrics.delivered.orders,
                             ...metrics.partial.orders,
                             ...metrics.receivingPart.orders,
                             ...metrics.handToHand.orders,
                             ...metrics.canceled.orders,
-                          ].reduce((sum, o: any) => sum + toNumber(o.admin_prepaid_amount), 0)
+                          ]
+                            .filter((o: any) => !(toNumber(o.hold_fee) > 0))
+                            .reduce((sum, o: any) => sum + toNumber(o.admin_prepaid_amount), 0)
                           return (totalCollected + totalPrepaid).toFixed(0)
                         })()} ج.م
                       </span>
@@ -5166,15 +5177,17 @@ const Summary: React.FC = () => {
                                 {isCourier ? "المالية" : "المعلومات المالية"}
                               </h5>
                               <div className={isCourier ? "space-y-2" : "space-y-3"}>
-                                <div className="flex justify-between items-center">
-                                  <span className={`text-gray-600 ${isCourier ? "text-xs" : "text-sm"}`}>
-                                    {isCourier ? "الطلب:" : translate("orderTotalLabel") + ":"}
-                                  </span>
-                                  <span className={`font-medium ${isCourier ? "text-xs" : "text-sm"}`}>
-                                    {Number(order.total_order_fees).toFixed(0)} {translate("EGP")}
-                                  </span>
-                                </div>
-                                {courierOrderAmount > 0 && (
+                                {!(order as any)._is_prepaid && (
+                                  <div className="flex justify-between items-center">
+                                    <span className={`text-gray-600 ${isCourier ? "text-xs" : "text-sm"}`}>
+                                      {isCourier ? "الطلب:" : translate("orderTotalLabel") + ":"}
+                                    </span>
+                                    <span className={`font-medium ${isCourier ? "text-xs" : "text-sm"}`}>
+                                      {Number(order.total_order_fees).toFixed(0)} {translate("EGP")}
+                                    </span>
+                                  </div>
+                                )}
+                                {!(order as any)._is_prepaid && courierOrderAmount > 0 && (
                                   <div className="flex justify-between items-center">
                                     <span className={`text-gray-600 ${isCourier ? "text-xs" : "text-sm"}`}>
                                       {Number(order.partial_paid_amount || 0) > 0
@@ -5192,7 +5205,7 @@ const Summary: React.FC = () => {
                                     </span>
                                   </div>
                                 )}
-                                {deliveryFee > 0 && (
+                                {!(order as any)._is_prepaid && deliveryFee > 0 && (
                                   <div className="flex justify-between items-center">
                                     <span className={`text-gray-600 ${isCourier ? "text-xs" : "text-sm"}`}>
                                       {isCourier ? "رسوم:" : translate("deliveryFee") + ":"}
@@ -5204,8 +5217,8 @@ const Summary: React.FC = () => {
                                     </span>
                                   </div>
                                 )}
-                                {/* Hold Fee Section */}
-                                {isAdmin && (
+                                {/* Hold Fee Section — hidden for prepaid-only entries */}
+                                {!(order as any)._is_prepaid && isAdmin && (
                                   <div className="border-t border-gray-200 pt-3">
                                     <div className="flex items-center justify-between mb-2">
                                       <span className="text-sm font-medium text-gray-700 flex items-center gap-2">
@@ -5311,7 +5324,7 @@ const Summary: React.FC = () => {
                                     )}
                                   </div>
                                 )}
-                                {totalCourierAmount !== 0 && (
+                                {!(order as any)._is_prepaid && totalCourierAmount !== 0 && (
                                   <div className={`flex justify-between items-center pt-3 border-t border-gray-200`}>
                                     <span
                                       className={`font-semibold text-gray-700 ${isCourier ? "text-xs" : "text-sm"}`}
@@ -5326,8 +5339,10 @@ const Summary: React.FC = () => {
                                   </div>
                                 )}
 
-                                {/* Admin Prepaid Row */}
-                                {Number(order.admin_prepaid_amount || 0) > 0 && (
+                                {/* Admin Prepaid Row — hidden for prepaid-only entries and cross-method orders */}
+                                {!(order as any)._is_prepaid && Number(order.admin_prepaid_amount || 0) > 0 &&
+                                  (!order.admin_prepaid_method ||
+                                    normalizePaymentMethod(order.admin_prepaid_method) === normalizePaymentMethod(order.payment_sub_type || order.collected_by || order.payment_method || "")) && (
                                   <div className="flex justify-between items-center py-1.5 px-2 mt-2 bg-emerald-50 rounded border border-emerald-200">
                                     <span className={`font-medium text-emerald-700 flex items-center gap-1 ${isCourier ? "text-xs" : "text-sm"}`}>
                                       <CreditCard className="w-3 h-3" />
@@ -5345,8 +5360,10 @@ const Summary: React.FC = () => {
                                   </div>
                                 )}
 
-                                {/* Grand Total Collected */}
-                                {Number(order.admin_prepaid_amount || 0) > 0 && (
+                                {/* Grand Total Collected — hidden for prepaid-only entries and cross-method */}
+                                {!(order as any)._is_prepaid && Number(order.admin_prepaid_amount || 0) > 0 &&
+                                  (!order.admin_prepaid_method ||
+                                    normalizePaymentMethod(order.admin_prepaid_method) === normalizePaymentMethod(order.payment_sub_type || order.collected_by || order.payment_method || "")) && (
                                   <div className="flex justify-between items-center pt-2 mt-1 border-t-2 border-emerald-300 bg-emerald-50 -mx-3 px-3 pb-2 rounded-b-lg">
                                     <span className={`font-bold text-emerald-800 ${isCourier ? "text-xs" : "text-sm"}`}>إجمالي المحصل (مندوب + مقدم):</span>
                                     <span className={`font-bold text-emerald-700 ${isCourier ? "text-sm" : "text-base"}`}>
