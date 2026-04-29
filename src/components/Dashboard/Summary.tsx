@@ -1533,9 +1533,13 @@ const Summary: React.FC = () => {
       console.log('flattenOrdersForPaymentSummary called with includeHoldFeesInPayment:', includeHoldFeesInPayment)
       const result: { order: Order; method: string; amount: number }[] = []
       for (const o of orders) {
-        // Skip orders that have hold fees (either added or removed) unless includeHoldFeesInPayment is true
+        // Always skip orders with an ACTIVE hold fee (hold_fee > 0) — their amounts shouldn't
+        // be counted in the payment breakdown until the admin unholds.
+        if (toNumber(o.hold_fee) > 0) {
+          continue
+        }
+        // Legacy toggle: when off, also exclude orders that ever had a hold fee added/removed
         if (!includeHoldFeesInPayment && (o.hold_fee_added_at || o.hold_fee_removed_at)) {
-          console.log('Skipping order with hold fee:', o.order_id, 'hold_fee_added_at:', o.hold_fee_added_at, 'hold_fee_removed_at:', o.hold_fee_removed_at)
           continue
         }
 
@@ -2184,12 +2188,7 @@ const Summary: React.FC = () => {
                             ...metrics.handToHand.orders,
                             ...metrics.canceled.orders,
                             ...metrics.returned.orders
-                          ].filter(order => {
-                            if (order.payment_method && ['paymob', 'valu', 'visa_machine', 'instapay', 'wallet'].includes(order.payment_method.toLowerCase())) {
-                              return true
-                            }
-                            return true
-                          })
+                          ].filter((order: any) => !(toNumber(order.hold_fee) > 0))
                           openOrders(collectedOrders, "إجمالي مُسلَّم فعليًا")
                         }}
                       >
@@ -2208,15 +2207,18 @@ const Summary: React.FC = () => {
                             <span className="text-xs text-emerald-700">المحصل:</span>
                             <span className="text-xs font-bold text-emerald-900">
                               {(() => {
-                                const totalCollected =
-                                  metrics.delivered.courierCollected +
-                                  metrics.partial.courierCollected +
-                                  metrics.receivingPart.courierCollected +
-                                  metrics.handToHand.courierCollected +
-                                  metrics.canceled.courierCollected +
-                                  metrics.returned.courierCollected
-                                // Add admin prepaid deposits — exclude orders with an active hold fee
-                                const totalPrepaid = [
+                                // Sum courier-collected and prepaid across all "succ" orders, excluding any
+                                // order with an active hold fee. Uses getTotalCourierAmount per-order.
+                                const allOrders = [
+                                  ...metrics.delivered.orders,
+                                  ...metrics.partial.orders,
+                                  ...metrics.receivingPart.orders,
+                                  ...metrics.handToHand.orders,
+                                  ...metrics.canceled.orders,
+                                  ...metrics.returned.orders,
+                                ].filter((o: any) => !(toNumber(o.hold_fee) > 0))
+                                const courierTotal = allOrders.reduce((s: number, o: any) => s + getTotalCourierAmount(o), 0)
+                                const prepaidTotal = [
                                   ...metrics.delivered.orders,
                                   ...metrics.partial.orders,
                                   ...metrics.receivingPart.orders,
@@ -2224,8 +2226,8 @@ const Summary: React.FC = () => {
                                   ...metrics.canceled.orders,
                                 ]
                                   .filter((o: any) => !(toNumber(o.hold_fee) > 0))
-                                  .reduce((sum, o: any) => sum + toNumber(o.admin_prepaid_amount), 0)
-                                return (totalCollected + totalPrepaid).toFixed(2)
+                                  .reduce((s: number, o: any) => s + toNumber(o.admin_prepaid_amount), 0)
+                                return (courierTotal + prepaidTotal).toFixed(2)
                               })()} ج.م
                             </span>
                           </div>
@@ -2240,12 +2242,7 @@ const Summary: React.FC = () => {
                                   ...metrics.handToHand.orders,
                                   ...metrics.canceled.orders,
                                   ...metrics.returned.orders
-                                ].filter(order => {
-                                  if (order.payment_method && ['paymob', 'valu', 'visa_machine', 'instapay', 'wallet'].includes(order.payment_method.toLowerCase())) {
-                                    return true
-                                  }
-                                  return true
-                                }).length
+                                ].filter((order: any) => !(toNumber(order.hold_fee) > 0)).length
                                 return collectedOrders
                               })()} طلب
                             </span>
@@ -3926,14 +3923,21 @@ const Summary: React.FC = () => {
                         {metrics.delivered.originalValue.toFixed(0)} ج.م
                       </span>
                     </div>
-                    <div className={`flex justify-between items-center`}>
-                      <span className={`font-bold text-green-700 ${isCourier ? "text-xs" : "text-sm"}`}>
-                        المحصل فعلياً:
-                      </span>
-                      <span className={`font-bold text-green-900 ${isCourier ? "text-sm" : "text-xl"}`}>
-                        {(metrics.delivered.courierCollected + metrics.delivered.orders.reduce((s: number, o: any) => s + toNumber(o.admin_prepaid_amount), 0)).toFixed(0)} ج.م
-                      </span>
-                    </div>
+                    {(() => {
+                      const noHold = metrics.delivered.orders.filter((o: any) => !(toNumber(o.hold_fee) > 0))
+                      const courier = noHold.reduce((s: number, o: any) => s + getTotalCourierAmount(o), 0)
+                      const prepaid = noHold.reduce((s: number, o: any) => s + toNumber(o.admin_prepaid_amount), 0)
+                      return (
+                        <div className={`flex justify-between items-center`}>
+                          <span className={`font-bold text-green-700 ${isCourier ? "text-xs" : "text-sm"}`}>
+                            المحصل فعلياً:
+                          </span>
+                          <span className={`font-bold text-green-900 ${isCourier ? "text-sm" : "text-xl"}`}>
+                            {(courier + prepaid).toFixed(0)} ج.م
+                          </span>
+                        </div>
+                      )
+                    })()}
                   </div>
                   <div className="opacity-0 group-hover:opacity-100 transition-opacity mt-3">
                     <Eye className={`text-green-600 mx-auto ${isCourier ? "w-4 h-4" : "w-5 h-5"}`} />
@@ -3972,14 +3976,21 @@ const Summary: React.FC = () => {
                         {metrics.canceled.originalValue.toFixed(0)} ج.م
                       </span>
                     </div>
-                    <div className={`flex justify-between items-center`}>
-                      <span className={`font-bold text-red-700 ${isCourier ? "text-xs" : "text-sm"}`}>
-                        المحصل (رسوم فقط):
-                      </span>
-                      <span className={`font-bold text-red-900 ${isCourier ? "text-sm" : "text-xl"}`}>
-                        {(metrics.canceled.courierCollected + metrics.canceled.orders.reduce((s: number, o: any) => s + toNumber(o.admin_prepaid_amount), 0)).toFixed(0)} ج.م
-                      </span>
-                    </div>
+                    {(() => {
+                      const noHold = metrics.canceled.orders.filter((o: any) => !(toNumber(o.hold_fee) > 0))
+                      const courier = noHold.reduce((s: number, o: any) => s + getTotalCourierAmount(o), 0)
+                      const prepaid = noHold.reduce((s: number, o: any) => s + toNumber(o.admin_prepaid_amount), 0)
+                      return (
+                        <div className={`flex justify-between items-center`}>
+                          <span className={`font-bold text-red-700 ${isCourier ? "text-xs" : "text-sm"}`}>
+                            المحصل (رسوم فقط):
+                          </span>
+                          <span className={`font-bold text-red-900 ${isCourier ? "text-sm" : "text-xl"}`}>
+                            {(courier + prepaid).toFixed(0)} ج.م
+                          </span>
+                        </div>
+                      )
+                    })()}
                   </div>
                   <div className="opacity-0 group-hover:opacity-100 transition-opacity mt-3">
                     <Eye className={`text-red-600 mx-auto ${isCourier ? "w-4 h-4" : "w-5 h-5"}`} />
@@ -4018,14 +4029,21 @@ const Summary: React.FC = () => {
                         {metrics.partial.originalValue.toFixed(0)} ج.م
                       </span>
                     </div>
-                    <div className={`flex justify-between items-center`}>
-                      <span className={`font-bold text-yellow-700 ${isCourier ? "text-xs" : "text-sm"}`}>
-                        المحصل فعلياً:
-                      </span>
-                      <span className={`font-bold text-yellow-900 ${isCourier ? "text-sm" : "text-xl"}`}>
-                        {(metrics.partial.courierCollected + metrics.partial.orders.reduce((s: number, o: any) => s + toNumber(o.admin_prepaid_amount), 0)).toFixed(0)} ج.م
-                      </span>
-                    </div>
+                    {(() => {
+                      const noHold = metrics.partial.orders.filter((o: any) => !(toNumber(o.hold_fee) > 0))
+                      const courier = noHold.reduce((s: number, o: any) => s + getTotalCourierAmount(o), 0)
+                      const prepaid = noHold.reduce((s: number, o: any) => s + toNumber(o.admin_prepaid_amount), 0)
+                      return (
+                        <div className={`flex justify-between items-center`}>
+                          <span className={`font-bold text-yellow-700 ${isCourier ? "text-xs" : "text-sm"}`}>
+                            المحصل فعلياً:
+                          </span>
+                          <span className={`font-bold text-yellow-900 ${isCourier ? "text-sm" : "text-xl"}`}>
+                            {(courier + prepaid).toFixed(0)} ج.م
+                          </span>
+                        </div>
+                      )
+                    })()}
                   </div>
                   <div className="opacity-0 group-hover:opacity-100 transition-opacity mt-3">
                     <Eye className={`text-yellow-600 mx-auto ${isCourier ? "w-4 h-4" : "w-5 h-5"}`} />
@@ -4064,14 +4082,20 @@ const Summary: React.FC = () => {
                         {metrics.returned.originalValue.toFixed(0)} ج.م
                       </span>
                     </div>
-                    <div className={`flex justify-between items-center`}>
-                      <span className={`font-bold text-orange-700 ${isCourier ? "text-xs" : "text-sm"}`}>
-                        المحصل (رسوم فقط):
-                      </span>
-                      <span className={`font-bold text-orange-900 ${isCourier ? "text-sm" : "text-xl"}`}>
-                        {metrics.returned.courierCollected.toFixed(0)} ج.م
-                      </span>
-                    </div>
+                    {(() => {
+                      const noHold = metrics.returned.orders.filter((o: any) => !(toNumber(o.hold_fee) > 0))
+                      const courier = noHold.reduce((s: number, o: any) => s + getTotalCourierAmount(o), 0)
+                      return (
+                        <div className={`flex justify-between items-center`}>
+                          <span className={`font-bold text-orange-700 ${isCourier ? "text-xs" : "text-sm"}`}>
+                            المحصل (رسوم فقط):
+                          </span>
+                          <span className={`font-bold text-orange-900 ${isCourier ? "text-sm" : "text-xl"}`}>
+                            {courier.toFixed(0)} ج.م
+                          </span>
+                        </div>
+                      )
+                    })()}
                   </div>
                   <div className="opacity-0 group-hover:opacity-100 transition-opacity mt-3">
                     <Eye className={`text-orange-600 mx-auto ${isCourier ? "w-4 h-4" : "w-5 h-5"}`} />
@@ -4110,14 +4134,21 @@ const Summary: React.FC = () => {
                         {metrics.receivingPart.originalValue.toFixed(0)} ج.م
                       </span>
                     </div>
-                    <div className={`flex justify-between items-center`}>
-                      <span className={`font-bold text-indigo-700 ${isCourier ? "text-xs" : "text-sm"}`}>
-                        المحصل فعلياً:
-                      </span>
-                      <span className={`font-bold text-indigo-900 ${isCourier ? "text-sm" : "text-xl"}`}>
-                        {(metrics.receivingPart.courierCollected + metrics.receivingPart.orders.reduce((s: number, o: any) => s + toNumber(o.admin_prepaid_amount), 0)).toFixed(0)} ج.م
-                      </span>
-                    </div>
+                    {(() => {
+                      const noHold = metrics.receivingPart.orders.filter((o: any) => !(toNumber(o.hold_fee) > 0))
+                      const courier = noHold.reduce((s: number, o: any) => s + getTotalCourierAmount(o), 0)
+                      const prepaid = noHold.reduce((s: number, o: any) => s + toNumber(o.admin_prepaid_amount), 0)
+                      return (
+                        <div className={`flex justify-between items-center`}>
+                          <span className={`font-bold text-indigo-700 ${isCourier ? "text-xs" : "text-sm"}`}>
+                            المحصل فعلياً:
+                          </span>
+                          <span className={`font-bold text-indigo-900 ${isCourier ? "text-sm" : "text-xl"}`}>
+                            {(courier + prepaid).toFixed(0)} ج.م
+                          </span>
+                        </div>
+                      )
+                    })()}
                   </div>
                   <div className="opacity-0 group-hover:opacity-100 transition-opacity mt-3">
                     <Eye className={`text-indigo-600 mx-auto ${isCourier ? "w-4 h-4" : "w-5 h-5"}`} />
@@ -4156,14 +4187,21 @@ const Summary: React.FC = () => {
                         {metrics.handToHand.originalValue.toFixed(0)} ج.م
                       </span>
                     </div>
-                    <div className={`flex justify-between items-center`}>
-                      <span className={`font-bold text-purple-700 ${isCourier ? "text-xs" : "text-sm"}`}>
-                        المحصل فعلياً:
-                      </span>
-                      <span className={`font-bold text-purple-900 ${isCourier ? "text-sm" : "text-xl"}`}>
-                        {(metrics.handToHand.courierCollected + metrics.handToHand.orders.reduce((s: number, o: any) => s + toNumber(o.admin_prepaid_amount), 0)).toFixed(0)} ج.م
-                      </span>
-                    </div>
+                    {(() => {
+                      const noHold = metrics.handToHand.orders.filter((o: any) => !(toNumber(o.hold_fee) > 0))
+                      const courier = noHold.reduce((s: number, o: any) => s + getTotalCourierAmount(o), 0)
+                      const prepaid = noHold.reduce((s: number, o: any) => s + toNumber(o.admin_prepaid_amount), 0)
+                      return (
+                        <div className={`flex justify-between items-center`}>
+                          <span className={`font-bold text-purple-700 ${isCourier ? "text-xs" : "text-sm"}`}>
+                            المحصل فعلياً:
+                          </span>
+                          <span className={`font-bold text-purple-900 ${isCourier ? "text-sm" : "text-xl"}`}>
+                            {(courier + prepaid).toFixed(0)} ج.م
+                          </span>
+                        </div>
+                      )
+                    })()}
                   </div>
                   <div className="opacity-0 group-hover:opacity-100 transition-opacity mt-3">
                     <Eye className={`text-purple-600 mx-auto ${isCourier ? "w-4 h-4" : "w-5 h-5"}`} />
@@ -4200,14 +4238,7 @@ const Summary: React.FC = () => {
                       ...metrics.handToHand.orders,
                       ...metrics.canceled.orders,  // رسوم فقط
                       ...metrics.returned.orders     // رسوم فقط
-                    ].filter(order => {
-                      // For online payments (Visa/ValU/etc), consider collected as the paid amount
-                      if (order.payment_method && ['paymob', 'valu', 'visa_machine', 'instapay', 'wallet'].includes(order.payment_method.toLowerCase())) {
-                        return true
-                      }
-                      // Include all orders since we're now including fees only
-                      return true
-                    })
+                    ].filter((order: any) => !(toNumber(order.hold_fee) > 0))
                     openOrders(collectedOrders, "إجمالي مُسلَّم فعليًا")
                   }}
                 >
@@ -4235,16 +4266,18 @@ const Summary: React.FC = () => {
                       </span>
                       <span className={`font-bold text-emerald-900 ${isCourier ? "text-sm" : "text-xl"}`}>
                         {(() => {
-                          // Calculate total collected from all statuses including fees only
-                          const totalCollected =
-                            metrics.delivered.courierCollected +
-                            metrics.partial.courierCollected +
-                            metrics.receivingPart.courierCollected +
-                            metrics.handToHand.courierCollected +
-                            metrics.canceled.courierCollected + // رسوم فقط
-                            metrics.returned.courierCollected    // رسوم فقط
-                          // Add admin prepaid deposits — exclude orders with an active hold fee
-                          const totalPrepaid = [
+                          // Sum courier-collected + prepaid across all "succ" orders, excluding any
+                          // order with an active hold fee.
+                          const allOrders = [
+                            ...metrics.delivered.orders,
+                            ...metrics.partial.orders,
+                            ...metrics.receivingPart.orders,
+                            ...metrics.handToHand.orders,
+                            ...metrics.canceled.orders,
+                            ...metrics.returned.orders,
+                          ].filter((o: any) => !(toNumber(o.hold_fee) > 0))
+                          const courierTotal = allOrders.reduce((s: number, o: any) => s + getTotalCourierAmount(o), 0)
+                          const prepaidTotal = [
                             ...metrics.delivered.orders,
                             ...metrics.partial.orders,
                             ...metrics.receivingPart.orders,
@@ -4252,8 +4285,8 @@ const Summary: React.FC = () => {
                             ...metrics.canceled.orders,
                           ]
                             .filter((o: any) => !(toNumber(o.hold_fee) > 0))
-                            .reduce((sum, o: any) => sum + toNumber(o.admin_prepaid_amount), 0)
-                          return (totalCollected + totalPrepaid).toFixed(0)
+                            .reduce((s: number, o: any) => s + toNumber(o.admin_prepaid_amount), 0)
+                          return (courierTotal + prepaidTotal).toFixed(0)
                         })()} ج.م
                       </span>
                     </div>
@@ -4270,12 +4303,7 @@ const Summary: React.FC = () => {
                             ...metrics.handToHand.orders,
                             ...metrics.canceled.orders,  // رسوم فقط
                             ...metrics.returned.orders    // رسوم فقط
-                          ].filter(order => {
-                            if (order.payment_method && ['paymob', 'valu', 'visa_machine', 'instapay', 'wallet'].includes(order.payment_method.toLowerCase())) {
-                              return true
-                            }
-                            return true // Include all orders since we're now including fees only
-                          }).length
+                          ].filter((order: any) => !(toNumber(order.hold_fee) > 0)).length
                           return collectedOrders
                         })()} طلب
                       </span>
