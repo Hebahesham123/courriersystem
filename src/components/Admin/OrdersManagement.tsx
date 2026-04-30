@@ -336,6 +336,8 @@ const OrdersManagement: React.FC = () => {
   const [selectedOrders, setSelectedOrders] = useState<string[]>([])
   const [selectedCourier, setSelectedCourier] = useState("")
   const [assignLoading, setAssignLoading] = useState(false)
+  // Optional assignment date — when set, assigned_at uses this date instead of "now"
+  const [assignDate, setAssignDate] = useState<string>("") // YYYY-MM-DD
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [archiveLoading, setArchiveLoading] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
@@ -1632,8 +1634,17 @@ const OrdersManagement: React.FC = () => {
         throw new Error("No orders found")
       }
 
-      const nowIso = new Date().toISOString()
-      const today = new Date().getDate() // Get day of month (1-31)
+      // Use the admin-selected assignment date if provided, otherwise use now.
+      // Selected date is interpreted as local midday so the day suffix is correct in any timezone.
+      let assignmentDate: Date
+      if (assignDate) {
+        const [yy, mm, dd] = assignDate.split("-").map(Number)
+        assignmentDate = new Date(yy, (mm || 1) - 1, dd || 1, 12, 0, 0, 0)
+      } else {
+        assignmentDate = new Date()
+      }
+      const nowIso = assignmentDate.toISOString()
+      const today = assignmentDate.getDate() // Get day of month (1-31)
       const newOrderIds: string[] = []
 
       for (const order of currentOrders) {
@@ -1859,6 +1870,7 @@ const OrdersManagement: React.FC = () => {
 
       setSelectedOrders([])
       setSelectedCourier("")
+      setAssignDate("")
       setSuccessMessage(
         `Successfully assigned ${selectedOrders.length} orders / تم تعيين ${selectedOrders.length} طلبات بنجاح`,
       )
@@ -3999,6 +4011,13 @@ const OrdersManagement: React.FC = () => {
                         </option>
                       ))}
                     </select>
+                    <input
+                      type="date"
+                      value={assignDate}
+                      onChange={(e) => setAssignDate(e.target.value)}
+                      title="تاريخ التعيين (اختياري) — اتركه فارغاً ليستخدم اليوم"
+                      className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
                     <button
                       onClick={handleAssignOrders}
                       disabled={assignLoading || !selectedCourier}
