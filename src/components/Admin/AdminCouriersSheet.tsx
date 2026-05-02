@@ -186,7 +186,6 @@ const AdminCouriersSheet: React.FC = () => {
               className="border rounded-lg px-2 py-1 text-sm focus:outline-blue-400 w-full sm:w-auto"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              max={getToday()}
             />
             {manualSort ? (
               <button

@@ -199,52 +199,17 @@ const getItemChangeCounts = (order: Order) => {
   return { newCount, removedCount, hasChanges: newCount > 0 || removedCount > 0 }
 }
 
-// Cutoff: orders created on/after this date use the strict "d-<number>" pattern only.
-// Older orders keep the legacy behavior so already-assigned orders aren't disturbed.
-const NEW_DEPOSIT_RULE_START = new Date('2026-04-29T00:00:00')
-
-// Strict pattern: matches "d-900", "D-1500.50" (case-insensitive). Returns the number or null.
-const extractStrictDDeposit = (note?: string | null): number | null => {
+// Strict pattern: matches "d-900", "D-1500.50" (case-insensitive). The ONLY pattern
+// recognized as a deposit. Anything else in notes is ignored — including "حولت <num>"
+// or bare standalone numbers, regardless of order age.
+const extractNoteDeposit = (note?: string | null): number | null => {
   if (!note) return null
   const m = note.match(/(?:^|[^a-zA-Z0-9])[dD]-(\d+(?:\.\d+)?)/)
   return m ? parseFloat(m[1]) : null
 }
 
-// Legacy extractor used for orders created before the cutoff.
-const extractLegacyNoteDeposit = (note?: string | null): number | null => {
-  if (!note) return null
-  // Numbers inside parentheses are NOT deposits — strip them first
-  const stripped = note.replace(/\([^)]*\)/g, '')
-  // Try "حولت <number>" first (most explicit)
-  const transferred = stripped.match(/حولت\s*(\d+(?:\.\d+)?)/)
-  if (transferred) return parseFloat(transferred[1])
-  // Fall back to any standalone number ≥ 100 (3+ digits)
-  const standalone = stripped.match(/\b(\d{3,}(?:\.\d+)?)\b/)
-  return standalone ? parseFloat(standalone[1]) : null
-}
-
-const isNewRuleOrder = (order: { created_at?: string | null }): boolean => {
-  if (!order.created_at) return false
-  const created = new Date(order.created_at)
-  return !isNaN(created.getTime()) && created >= NEW_DEPOSIT_RULE_START
-}
-
-// Extract a deposit amount from a Shopify note. Behavior depends on order age:
-//  - For orders created on/after 2026-04-29: ONLY "d-<number>" counts as a deposit.
-//  - For older orders: legacy behavior (حولت <num>, or any standalone 3+ digit number).
-const extractNoteDeposit = (
-  note?: string | null,
-  order?: { created_at?: string | null }
-): number | null => {
-  if (!note) return null
-  if (order && isNewRuleOrder(order)) {
-    return extractStrictDDeposit(note)
-  }
-  return extractLegacyNoteDeposit(note)
-}
-
-const getNoteDeposit = (order: { order_note?: string | null; notes?: string | null; created_at?: string | null }): number | null =>
-  extractNoteDeposit(order.order_note, order) ?? extractNoteDeposit(order.notes, order)
+const getNoteDeposit = (order: { order_note?: string | null; notes?: string | null }): number | null =>
+  extractNoteDeposit(order.order_note) ?? extractNoteDeposit(order.notes)
 
 const isOrderItemFulfilled = (i: any) => {
   const statusCandidates = [

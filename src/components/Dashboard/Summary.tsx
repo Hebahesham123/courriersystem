@@ -3127,8 +3127,11 @@ const Summary: React.FC = () => {
                             </div>
                           </div>
 
-                          {/* Financial Information - Compact */}
+                          {/* Financial Information - Compact
+                              Hidden when the order is being viewed inside a payment-method modal
+                              (cross-method prepaid OR same-method merge — both have _onther_amount stamped). */}
                           <div className="space-y-2">
+                            {typeof (order as any)._onther_amount !== "number" && (
                             <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
                               <h5 className="text-sm font-semibold text-gray-900 mb-2 flex items-center gap-1.5">
                                 <DollarSign className="w-3.5 h-3.5 text-gray-600" />
@@ -3346,6 +3349,7 @@ const Summary: React.FC = () => {
                                 )}
                               </div>
                             </div>
+                            )}
 
                             {/* DEBUG: raw DB state - remove after verifying */}
                             <div className="mt-2 p-2 bg-yellow-50 border border-yellow-300 rounded text-[10px] font-mono text-yellow-900 break-all">
