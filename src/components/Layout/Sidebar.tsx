@@ -24,6 +24,7 @@ import {
   Monitor,
   RefreshCw,
   Globe,
+  Calendar,
 } from "lucide-react"
 import { useAuth } from "../../contexts/AuthContext"
 import { useLanguage } from "../../contexts/LanguageContext"
@@ -163,6 +164,13 @@ const Sidebar: React.FC = () => {
       label: "استلام قطعه أو تبديل",
       color: "text-purple-600",
       description: "إدارة طلبات الاستلام والتبديل",
+    },
+    {
+      path: "/admin/calendar",
+      icon: Calendar,
+      label: "تقويم العملاء",
+      color: "text-indigo-400",
+      description: "مواعيد التسليم المؤكدة من واتساب",
     },
   ]
 
