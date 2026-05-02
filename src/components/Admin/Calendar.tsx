@@ -231,11 +231,9 @@ const Calendar: React.FC = () => {
             if ((r as any).order_id) map.set(String((r as any).order_id), text)
             if ((r as any).customer_phone) map.set("phone:" + String((r as any).customer_phone), text)
           }
-          // Detect deposit: prefer admin_prepaid_amount if set, otherwise parse "d-<num>" from notes
-          let dep: number | null = null
-          const adminPrepaid = Number((r as any).admin_prepaid_amount || 0)
-          if (adminPrepaid > 0) dep = adminPrepaid
-          if (dep === null) dep = extractDDeposit((r as any).order_note) ?? extractDDeposit((r as any).notes)
+          // Detect deposit: ONLY from a "d-<number>" pattern in the order notes.
+          // Other numbers / amounts are NOT treated as deposits.
+          const dep = extractDDeposit((r as any).order_note) ?? extractDDeposit((r as any).notes)
           if (dep !== null && dep > 0) {
             if ((r as any).shopify_order_id) depositMap.set(String((r as any).shopify_order_id), dep)
             if ((r as any).order_id) depositMap.set(String((r as any).order_id), dep)
@@ -844,6 +842,19 @@ const Calendar: React.FC = () => {
                     )}
                   </>
                 )
+              })()}
+              {(() => {
+                const dep =
+                  depositByOrderId.get(String(selected.order_id)) ||
+                  (selected.customer_phone ? depositByOrderId.get("phone:" + selected.customer_phone) : 0) ||
+                  0
+                return dep > 0 ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] px-2 py-1 rounded border font-semibold bg-purple-100 text-purple-800 border-purple-400">
+                      💰 مقدم: {dep} ج.م
+                    </span>
+                  </div>
+                ) : null
               })()}
               {selected.status && (
                 <div className="text-xs">
