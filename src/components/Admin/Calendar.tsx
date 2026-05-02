@@ -151,17 +151,27 @@ const cityClasses = (c: "cairo" | "giza" | null): string =>
       ? "bg-amber-100 text-amber-800 border-amber-300"
       : "bg-gray-100 text-gray-700 border-gray-300"
 
+// Extract a "d-<number>" deposit amount from any note text. Returns the number or null.
+const extractDDeposit = (note?: string | null): number | null => {
+  if (!note) return null
+  const m = note.match(/(?:^|[^a-zA-Z0-9])[dD]-(\d+(?:\.\d+)?)/)
+  return m ? parseFloat(m[1]) : null
+}
+
 const Calendar: React.FC = () => {
   const today = new Date()
   const [cursor, setCursor] = useState(new Date(today.getFullYear(), today.getMonth(), 1))
   const [waOrders, setWaOrders] = useState<WhatsAppOrder[]>([])
   // Map of shopify_order_id (or order_id) → address from the main orders table
   const [addressByOrderId, setAddressByOrderId] = useState<Map<string, string>>(new Map())
+  // Map of shopify_order_id (or order_id) → deposit amount detected from note (d-<num>)
+  const [depositByOrderId, setDepositByOrderId] = useState<Map<string, number>>(new Map())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selected, setSelected] = useState<WhatsAppOrder | null>(null)
   const [dayList, setDayList] = useState<{ key: string; label: string; orders: WhatsAppOrder[] } | null>(null)
   const [zoneFilter, setZoneFilter] = useState<"all" | "cairo" | "giza" | "unknown">("all")
+  const [depositFilter, setDepositFilter] = useState<"all" | "with" | "without">("all")
   const [matchedOrder, setMatchedOrder] = useState<any | null>(null)
   const [matching, setMatching] = useState(false)
   const [couriers, setCouriers] = useState<Courier[]>([])
@@ -192,7 +202,7 @@ const Calendar: React.FC = () => {
         // Run two/three lookups in parallel: by shopify_order_id, by order_id (text),
         // and by customer_phone (last-resort fallback for orders that don't have a
         // matching shopify_order_id).
-        const sel = "order_id, shopify_order_id, customer_phone, address, shipping_address, billing_address, shipping_city, billing_city"
+        const sel = "order_id, shopify_order_id, customer_phone, address, shipping_address, billing_address, shipping_city, billing_city, order_note, notes, admin_prepaid_amount"
         const [a, b, c] = await Promise.all([
           ids.length > 0
             ? supabase.from("orders").select(sel).in("shopify_order_id", ids)
@@ -206,6 +216,7 @@ const Calendar: React.FC = () => {
         ])
         const matched = [...(a.data || []), ...(b.data || []), ...(c.data || [])]
         const map = new Map<string, string>()
+        const depositMap = new Map<string, number>()
         for (const r of matched) {
           const a = (r as any).address || (r as any).shipping_address || (r as any).billing_address
           // Combine all available text — address + city fields — so detectCityFromText
@@ -214,13 +225,25 @@ const Calendar: React.FC = () => {
           if (a) parts.push(typeof a === "string" ? a : JSON.stringify(a))
           if ((r as any).shipping_city) parts.push(String((r as any).shipping_city))
           if ((r as any).billing_city) parts.push(String((r as any).billing_city))
-          if (parts.length === 0) continue
-          const text = parts.join(" | ")
-          if ((r as any).shopify_order_id) map.set(String((r as any).shopify_order_id), text)
-          if ((r as any).order_id) map.set(String((r as any).order_id), text)
-          if ((r as any).customer_phone) map.set("phone:" + String((r as any).customer_phone), text)
+          if (parts.length > 0) {
+            const text = parts.join(" | ")
+            if ((r as any).shopify_order_id) map.set(String((r as any).shopify_order_id), text)
+            if ((r as any).order_id) map.set(String((r as any).order_id), text)
+            if ((r as any).customer_phone) map.set("phone:" + String((r as any).customer_phone), text)
+          }
+          // Detect deposit: prefer admin_prepaid_amount if set, otherwise parse "d-<num>" from notes
+          let dep: number | null = null
+          const adminPrepaid = Number((r as any).admin_prepaid_amount || 0)
+          if (adminPrepaid > 0) dep = adminPrepaid
+          if (dep === null) dep = extractDDeposit((r as any).order_note) ?? extractDDeposit((r as any).notes)
+          if (dep !== null && dep > 0) {
+            if ((r as any).shopify_order_id) depositMap.set(String((r as any).shopify_order_id), dep)
+            if ((r as any).order_id) depositMap.set(String((r as any).order_id), dep)
+            if ((r as any).customer_phone) depositMap.set("phone:" + String((r as any).customer_phone), dep)
+          }
         }
         setAddressByOrderId(map)
+        setDepositByOrderId(depositMap)
       }
     } catch (e: any) {
       setError(e?.message || "Failed to fetch WhatsApp orders")
@@ -254,6 +277,13 @@ const Calendar: React.FC = () => {
         if (zoneFilter === "cairo" && city !== "cairo") continue
         if (zoneFilter === "giza" && city !== "giza") continue
       }
+      // Apply deposit filter
+      const dep =
+        depositByOrderId.get(String(o.order_id)) ||
+        (o.customer_phone ? depositByOrderId.get("phone:" + o.customer_phone) : 0) ||
+        0
+      if (depositFilter === "with" && !(dep > 0)) continue
+      if (depositFilter === "without" && dep > 0) continue
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
       if (!map.has(key)) map.set(key, [])
       map.get(key)!.push(o)
@@ -274,7 +304,7 @@ const Calendar: React.FC = () => {
       arr.sort((a, b) => parseTime(a.delivery_time) - parseTime(b.delivery_time))
     }
     return map
-  }, [waOrders, zoneFilter])
+  }, [waOrders, zoneFilter, depositFilter, addressByOrderId, depositByOrderId])
 
   // Build the month grid (6 rows × 7 cols starting on Sunday)
   const grid = useMemo(() => {
@@ -542,6 +572,29 @@ const Calendar: React.FC = () => {
         })}
       </div>
 
+      {/* Deposit filter */}
+      <div className="mb-3 flex items-center gap-2 flex-wrap">
+        <span className="text-xs font-semibold text-gray-700">المقدم:</span>
+        {([
+          { key: "all", label: "الكل", classes: "bg-gray-100 text-gray-800 border-gray-300" },
+          { key: "with", label: "💰 بمقدم", classes: "bg-purple-100 text-purple-800 border-purple-400" },
+          { key: "without", label: "بدون مقدم", classes: "bg-gray-100 text-gray-700 border-gray-300" },
+        ] as const).map((opt) => {
+          const active = depositFilter === opt.key
+          return (
+            <button
+              key={opt.key}
+              onClick={() => setDepositFilter(opt.key)}
+              className={`text-xs px-3 py-1 rounded-full border transition ${
+                active ? opt.classes + " ring-2 ring-offset-1 ring-indigo-400 font-semibold" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+              }`}
+            >
+              {opt.label}
+            </button>
+          )
+        })}
+      </div>
+
       {error && (
         <div className="mb-3 p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg">{error}</div>
       )}
@@ -578,16 +631,28 @@ const Calendar: React.FC = () => {
                 <div className="flex-1 flex flex-col gap-1 overflow-hidden">
                   {dayOrders.slice(0, 3).map((o) => {
                     const city = detectCity(o.delivery_location, addressByOrderId.get(String(o.order_id)) || (o.customer_phone ? addressByOrderId.get("phone:" + o.customer_phone) : null))
+                    const dep =
+                      depositByOrderId.get(String(o.order_id)) ||
+                      (o.customer_phone ? depositByOrderId.get("phone:" + o.customer_phone) : 0) ||
+                      0
+                    // Deposit overrides the city color so it stands out
+                    const klass = dep > 0
+                      ? "bg-purple-100 text-purple-900 border-purple-400 ring-1 ring-purple-300"
+                      : cityClasses(city)
                     return (
                       <button
                         key={o.id}
                         onClick={() => openOrder(o)}
-                        className={`text-right truncate text-[11px] px-1.5 py-1 rounded border hover:brightness-95 ${cityClasses(city)}`}
-                        title={`${o.customer_name || ""} ${o.delivery_time || ""} ${cityLabelAr(city)}`}
+                        className={`text-right truncate text-[11px] px-1.5 py-1 rounded border hover:brightness-95 ${klass}`}
+                        title={`${o.customer_name || ""} ${o.delivery_time || ""} ${cityLabelAr(city)}${dep > 0 ? ` · مقدم ${dep}` : ""}`}
                       >
                         <span className="font-semibold">{o.order_name || o.order_id}</span>
                         {o.delivery_time && <span className="opacity-70"> · {o.delivery_time.split(" - ")[0]}</span>}
-                        {city && <span className="opacity-80"> · {cityLabelAr(city)}</span>}
+                        {dep > 0 ? (
+                          <span className="opacity-90 font-semibold"> · 💰{dep}</span>
+                        ) : (
+                          city && <span className="opacity-80"> · {cityLabelAr(city)}</span>
+                        )}
                       </button>
                     )
                   })}
@@ -634,6 +699,10 @@ const Calendar: React.FC = () => {
             <div className="flex-1 overflow-y-auto p-3 space-y-2">
               {dayList.orders.map((o) => {
                 const city = detectCity(o.delivery_location, addressByOrderId.get(String(o.order_id)) || (o.customer_phone ? addressByOrderId.get("phone:" + o.customer_phone) : null))
+                const dep =
+                  depositByOrderId.get(String(o.order_id)) ||
+                  (o.customer_phone ? depositByOrderId.get("phone:" + o.customer_phone) : 0) ||
+                  0
                 return (
                   <button
                     key={o.id}
@@ -641,13 +710,22 @@ const Calendar: React.FC = () => {
                       setDayList(null)
                       openOrder(o)
                     }}
-                    className="w-full text-right p-3 rounded-lg border border-gray-200 bg-white hover:bg-emerald-50 hover:border-emerald-300 transition-colors flex items-center justify-between gap-3"
+                    className={`w-full text-right p-3 rounded-lg border transition-colors flex items-center justify-between gap-3 ${
+                      dep > 0
+                        ? "bg-purple-50 border-purple-300 hover:bg-purple-100"
+                        : "bg-white border-gray-200 hover:bg-emerald-50 hover:border-emerald-300"
+                    }`}
                   >
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                         <span className="font-semibold text-gray-900 text-sm">
                           {o.order_name || o.order_id}
                         </span>
+                        {dep > 0 && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded border font-semibold bg-purple-100 text-purple-800 border-purple-400">
+                            💰 مقدم {dep}
+                          </span>
+                        )}
                         {city && (
                           <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${cityClasses(city)}`}>
                             {cityLabelAr(city)}
@@ -730,7 +808,9 @@ const Calendar: React.FC = () => {
                 </div>
               )}
               {(() => {
-                const addr = addressByOrderId.get(String(selected.order_id))
+                const addr =
+                  addressByOrderId.get(String(selected.order_id)) ||
+                  (selected.customer_phone ? addressByOrderId.get("phone:" + selected.customer_phone) : null)
                 const city = detectCity(selected.delivery_location, addr)
                 return (
                   <>
