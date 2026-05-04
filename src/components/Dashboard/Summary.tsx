@@ -3415,13 +3415,12 @@ const Summary: React.FC = () => {
                                 // Inside a method-specific modal — the order was flattened by
                                 // flattenOrdersForPaymentSummary into one method+amount entry. Use those
                                 // values directly so the row matches the exact amount paid via this method.
+                                // The admin-prepaid portion is already merged into _onther_amount when
+                                // it shares the method, so always hide adminRow here to avoid duplicates.
                                 const exactMethod = order.payment_sub_type || ""
                                 const exactAmount = (order as any)._onther_amount as number
                                 courierRows = exactMethod ? [{ method: exactMethod, amount: exactAmount }] : []
-                                const modalMethodNorm = normalizePaymentMethod(exactMethod)
-                                if (adminRow && normalizePaymentMethod(adminRow.method) !== modalMethodNorm) {
-                                  adminRow = null
-                                }
+                                adminRow = null
                               } else {
                                 // Regular entry. Hide admin row if it belongs to a different method
                                 // (the admin portion shows in the other method's modal)
@@ -5369,13 +5368,12 @@ const Summary: React.FC = () => {
                                 // Inside a method-specific modal — the order was flattened by
                                 // flattenOrdersForPaymentSummary into one method+amount entry. Use those
                                 // values directly so the row matches the exact amount paid via this method.
+                                // The admin-prepaid portion is already merged into _onther_amount when
+                                // it shares the method, so always hide adminRow here to avoid duplicates.
                                 const exactMethod = order.payment_sub_type || ""
                                 const exactAmount = (order as any)._onther_amount as number
                                 courierRows = exactMethod ? [{ method: exactMethod, amount: exactAmount }] : []
-                                const modalMethodNorm = normalizePaymentMethod(exactMethod)
-                                if (adminRow && normalizePaymentMethod(adminRow.method) !== modalMethodNorm) {
-                                  adminRow = null
-                                }
+                                adminRow = null
                               } else if (adminRow) {
                                 const mainMethodNorm = normalizePaymentMethod(order.payment_sub_type || order.collected_by || order.payment_method || "")
                                 const adminMethodNorm = normalizePaymentMethod(adminRow.method)
