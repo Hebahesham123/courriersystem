@@ -2469,9 +2469,12 @@ const Summary: React.FC = () => {
                                   </div>
                                   <h4 className={`text-xs font-bold ${colors.text} ${colors.textHover} transition-colors`}>{method.label}</h4>
                                 </div>
-                                <div className={`pt-1.5 border-t ${colors.borderDiv}`}>
+                                <div className={`space-y-0.5 pt-1.5 border-t ${colors.borderDiv}`}>
                                   <p className={`text-base font-bold ${colors.amount}`}>
                                     {method.amount.toFixed(2)} ج.م
+                                  </p>
+                                  <p className={`text-[11px] font-semibold ${colors.text}`}>
+                                    {method.count} طلب
                                   </p>
                                 </div>
                               </div>
@@ -3409,9 +3412,13 @@ const Summary: React.FC = () => {
                                 // This entry represents the prepaid deposit only — hide courier rows
                                 courierRows = []
                               } else if (typeof (order as any)._onther_amount === "number") {
-                                // Inside a method-specific modal — show only the row for that method
-                                const modalMethodNorm = normalizePaymentMethod(order.payment_sub_type || "")
-                                courierRows = courierRows.filter(r => normalizePaymentMethod(r.method) === modalMethodNorm)
+                                // Inside a method-specific modal — the order was flattened by
+                                // flattenOrdersForPaymentSummary into one method+amount entry. Use those
+                                // values directly so the row matches the exact amount paid via this method.
+                                const exactMethod = order.payment_sub_type || ""
+                                const exactAmount = (order as any)._onther_amount as number
+                                courierRows = exactMethod ? [{ method: exactMethod, amount: exactAmount }] : []
+                                const modalMethodNorm = normalizePaymentMethod(exactMethod)
                                 if (adminRow && normalizePaymentMethod(adminRow.method) !== modalMethodNorm) {
                                   adminRow = null
                                 }
@@ -3431,11 +3438,16 @@ const Summary: React.FC = () => {
                               const breakdownTotal = (adminRow?.amount || 0) + courierSubTotal
                               const orderTotal = Number(order.total_order_fees || 0)
 
-                              // Fallback: ensure at least one method row shows even when no admin/courier data
+                              // Always show at least one method row using the order's primary method
                               if (!adminRow && courierRows.length === 0) {
                                 const fallbackMethod = order.payment_sub_type || order.collected_by || normalizePaymentMethod(order.payment_method || "")
                                 if (fallbackMethod) {
-                                  courierRows = [{ method: String(fallbackMethod), amount: orderTotal }]
+                                  // Hand-to-hand exchanges actually receive the full total in cash even though
+                                  // getCourierOrderAmount returns 0 for them; reflect that in the breakdown.
+                                  const fallbackAmount = order.status === "hand_to_hand"
+                                    ? Math.max(0, orderTotal - Number(order.admin_prepaid_amount || 0))
+                                    : Number(courierOrderAmount) || 0
+                                  courierRows = [{ method: String(fallbackMethod), amount: fallbackAmount }]
                                 }
                               }
 
@@ -4557,9 +4569,12 @@ const Summary: React.FC = () => {
                               {method.label}
                             </h4>
                           </div>
-                          <div>
+                          <div className="space-y-0.5">
                             <p className={`font-bold ${colors.amount(hasOrders)} ${isCourier ? "text-base" : "text-xl"}`}>
                               {method.amount.toFixed(isCourier ? 0 : 2)} ج.م
+                            </p>
+                            <p className={`font-semibold ${colors.text(hasOrders)} ${isCourier ? "text-[11px]" : "text-xs"}`}>
+                              {method.count} طلب
                             </p>
                           </div>
                         </div>
@@ -4585,9 +4600,12 @@ const Summary: React.FC = () => {
                           فاليو
                         </h4>
                       </div>
-                      <div>
+                      <div className="space-y-0.5">
                         <p className={`font-bold text-indigo-700 ${isCourier ? "text-base" : "text-xl"}`}>
                           {metrics.valuOrders.amount.toFixed(0)} ج.م
+                        </p>
+                        <p className={`font-semibold text-indigo-900 ${isCourier ? "text-[11px]" : "text-xs"}`}>
+                          {metrics.valuOrders.count} طلب
                         </p>
                       </div>
                     </div>
@@ -4605,9 +4623,12 @@ const Summary: React.FC = () => {
                         <CreditCard className={`text-blue-600 ${isCourier ? "w-3 h-3" : "w-5 h-5"}`} />
                         <h4 className={`font-semibold text-blue-900 ${isCourier ? "text-xs" : "text-sm"}`}>Paymob</h4>
                       </div>
-                      <div>
+                      <div className="space-y-0.5">
                         <p className={`font-bold text-blue-700 ${isCourier ? "text-base" : "text-xl"}`}>
                           {metrics.paymobOrders.amount.toFixed(0)} ج.م
+                        </p>
+                        <p className={`font-semibold text-blue-900 ${isCourier ? "text-[11px]" : "text-xs"}`}>
+                          {metrics.paymobOrders.count} طلب
                         </p>
                       </div>
                     </div>
@@ -4625,9 +4646,12 @@ const Summary: React.FC = () => {
                       <HelpCircle className="text-gray-400 w-6 h-6" />
                       <h4 className="font-semibold text-gray-500 text-base">غير مصنف</h4>
                     </div>
-                    <div>
+                    <div className="space-y-0.5">
                       <p className="font-bold text-gray-400 text-2xl">
                         {metrics.otherOrders.amount.toFixed(0)} ج.م
+                      </p>
+                      <p className="font-semibold text-gray-500 text-xs">
+                        {metrics.otherOrders.count} طلب
                       </p>
                     </div>
                   </div>
@@ -5342,9 +5366,13 @@ const Summary: React.FC = () => {
                               if ((order as any)._is_prepaid) {
                                 courierRows = []
                               } else if (typeof (order as any)._onther_amount === "number") {
-                                // Inside a method-specific modal — show only the row for that method
-                                const modalMethodNorm = normalizePaymentMethod(order.payment_sub_type || "")
-                                courierRows = courierRows.filter(r => normalizePaymentMethod(r.method) === modalMethodNorm)
+                                // Inside a method-specific modal — the order was flattened by
+                                // flattenOrdersForPaymentSummary into one method+amount entry. Use those
+                                // values directly so the row matches the exact amount paid via this method.
+                                const exactMethod = order.payment_sub_type || ""
+                                const exactAmount = (order as any)._onther_amount as number
+                                courierRows = exactMethod ? [{ method: exactMethod, amount: exactAmount }] : []
+                                const modalMethodNorm = normalizePaymentMethod(exactMethod)
                                 if (adminRow && normalizePaymentMethod(adminRow.method) !== modalMethodNorm) {
                                   adminRow = null
                                 }
@@ -5356,11 +5384,16 @@ const Summary: React.FC = () => {
                                 }
                               }
                               const orderTotal = Number(order.total_order_fees || 0)
-                              // Fallback: ensure at least one method row shows even when no admin/courier data
+                              // Always show at least one method row using the order's primary method
                               if (!adminRow && courierRows.length === 0) {
                                 const fallbackMethod = order.payment_sub_type || order.collected_by || normalizePaymentMethod(order.payment_method || "")
                                 if (fallbackMethod) {
-                                  courierRows = [{ method: String(fallbackMethod), amount: orderTotal }]
+                                  // Hand-to-hand exchanges actually receive the full total in cash even though
+                                  // getCourierOrderAmount returns 0 for them; reflect that in the breakdown.
+                                  const fallbackAmount = order.status === "hand_to_hand"
+                                    ? Math.max(0, orderTotal - Number(order.admin_prepaid_amount || 0))
+                                    : Number(courierOrderAmount) || 0
+                                  courierRows = [{ method: String(fallbackMethod), amount: fallbackAmount }]
                                 }
                               }
                               return (
