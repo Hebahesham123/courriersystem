@@ -3427,12 +3427,18 @@ const Summary: React.FC = () => {
                                 }
                               }
 
-                              if (!adminRow && courierRows.length === 0) return null
                               const courierSubTotal = courierRows.reduce((s, r) => s + r.amount, 0)
                               const breakdownTotal = (adminRow?.amount || 0) + courierSubTotal
+                              const orderTotal = Number(order.total_order_fees || 0)
 
                               return (
                                 <div className="mt-2 pt-2 border-t border-gray-200 space-y-2">
+                                  <div className="flex justify-between items-center py-2.5 px-3 rounded-xl border-2 border-gray-300 bg-gray-50 shadow-sm">
+                                    <span className="text-sm font-extrabold text-gray-800">إجمالي الطلب</span>
+                                    <span className="text-base font-extrabold text-gray-900">
+                                      {orderTotal.toFixed(2)} {translate("EGP")}
+                                    </span>
+                                  </div>
                                   {adminRow && (() => {
                                     const s = methodStyles(adminRow.method)
                                     return (
@@ -5341,9 +5347,15 @@ const Summary: React.FC = () => {
                                   adminRow = null
                                 }
                               }
-                              if (!adminRow && courierRows.length === 0) return null
+                              const orderTotal = Number(order.total_order_fees || 0)
                               return (
                                 <div className={`mt-3 pt-3 border-t border-gray-200 space-y-2`}>
+                                  <div className="flex justify-between items-center py-2.5 px-3 rounded-xl border-2 border-gray-300 bg-gray-50 shadow-sm">
+                                    <span className={`font-extrabold text-gray-800 ${isCourier ? "text-sm" : "text-sm"}`}>إجمالي الطلب</span>
+                                    <span className={`font-extrabold text-gray-900 ${isCourier ? "text-base" : "text-base"}`}>
+                                      {orderTotal.toFixed(2)} {translate("EGP")}
+                                    </span>
+                                  </div>
                                   {adminRow && (() => {
                                     const s = methodStyles(adminRow.method)
                                     return (
