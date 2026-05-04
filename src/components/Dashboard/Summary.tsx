@@ -3431,6 +3431,14 @@ const Summary: React.FC = () => {
                               const breakdownTotal = (adminRow?.amount || 0) + courierSubTotal
                               const orderTotal = Number(order.total_order_fees || 0)
 
+                              // Fallback: ensure at least one method row shows even when no admin/courier data
+                              if (!adminRow && courierRows.length === 0) {
+                                const fallbackMethod = order.payment_sub_type || order.collected_by || normalizePaymentMethod(order.payment_method || "")
+                                if (fallbackMethod) {
+                                  courierRows = [{ method: String(fallbackMethod), amount: orderTotal }]
+                                }
+                              }
+
                               return (
                                 <div className="mt-2 pt-2 border-t border-gray-200 space-y-2">
                                   <div className="flex justify-between items-center py-2.5 px-3 rounded-xl border-2 border-gray-300 bg-gray-50 shadow-sm">
@@ -5348,6 +5356,13 @@ const Summary: React.FC = () => {
                                 }
                               }
                               const orderTotal = Number(order.total_order_fees || 0)
+                              // Fallback: ensure at least one method row shows even when no admin/courier data
+                              if (!adminRow && courierRows.length === 0) {
+                                const fallbackMethod = order.payment_sub_type || order.collected_by || normalizePaymentMethod(order.payment_method || "")
+                                if (fallbackMethod) {
+                                  courierRows = [{ method: String(fallbackMethod), amount: orderTotal }]
+                                }
+                              }
                               return (
                                 <div className={`mt-3 pt-3 border-t border-gray-200 space-y-2`}>
                                   <div className="flex justify-between items-center py-2.5 px-3 rounded-xl border-2 border-gray-300 bg-gray-50 shadow-sm">
