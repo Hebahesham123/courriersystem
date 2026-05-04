@@ -2469,9 +2469,8 @@ const Summary: React.FC = () => {
                                   </div>
                                   <h4 className={`text-xs font-bold ${colors.text} ${colors.textHover} transition-colors`}>{method.label}</h4>
                                 </div>
-                                <div className={`space-y-0.5 pt-1.5 border-t ${colors.borderDiv}`}>
-                                  <p className={`text-base font-bold ${colors.text}`}>{method.count}</p>
-                                  <p className={`text-xs font-semibold ${colors.amount}`}>
+                                <div className={`pt-1.5 border-t ${colors.borderDiv}`}>
+                                  <p className={`text-base font-bold ${colors.amount}`}>
                                     {method.amount.toFixed(2)} ج.م
                                   </p>
                                 </div>
@@ -3127,11 +3126,8 @@ const Summary: React.FC = () => {
                             </div>
                           </div>
 
-                          {/* Financial Information - Compact
-                              Hidden when the order is being viewed inside a payment-method modal
-                              (cross-method prepaid OR same-method merge — both have _onther_amount stamped). */}
                           <div className="space-y-2">
-                            {typeof (order as any)._onther_amount !== "number" && (
+                            {false && typeof (order as any)._onther_amount !== "number" && (
                             <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
                               <h5 className="text-sm font-semibold text-gray-900 mb-2 flex items-center gap-1.5">
                                 <DollarSign className="w-3.5 h-3.5 text-gray-600" />
@@ -3351,15 +3347,6 @@ const Summary: React.FC = () => {
                             </div>
                             )}
 
-                            {/* DEBUG: raw DB state - remove after verifying */}
-                            <div className="mt-2 p-2 bg-yellow-50 border border-yellow-300 rounded text-[10px] font-mono text-yellow-900 break-all">
-                              <strong>DEBUG:</strong> payment_sub_type=<code className="bg-yellow-100 px-1">{String(order.payment_sub_type ?? "null")}</code>
-                              {" · "}
-                              onther_payments=<code className="bg-yellow-100 px-1">{order.onther_payments ? JSON.stringify(order.onther_payments) : "null"}</code>
-                              {" · "}
-                              partial_paid_amount=<code className="bg-yellow-100 px-1">{String(order.partial_paid_amount ?? "null")}</code>
-                            </div>
-
                             {/* Payment Breakdown - detailed, per-method */}
                             {(() => {
                               const methodLabels: Record<string, string> = {
@@ -3375,6 +3362,21 @@ const Summary: React.FC = () => {
                                 vodafone_cash: "فودافون كاش",
                                 orange_cash: "أورانج كاش",
                                 we_pay: "وي باي",
+                              }
+                              const methodStyles = (m: string) => {
+                                const key = normalizePaymentMethod(m)
+                                const map: Record<string, { bg: string; border: string; label: string; amount: string }> = {
+                                  instapay:    { bg: "bg-cyan-50",    border: "border-cyan-300",    label: "text-cyan-800",    amount: "text-cyan-700" },
+                                  cash:        { bg: "bg-emerald-50", border: "border-emerald-300", label: "text-emerald-800", amount: "text-emerald-700" },
+                                  on_hand:     { bg: "bg-emerald-50", border: "border-emerald-300", label: "text-emerald-800", amount: "text-emerald-700" },
+                                  paymob:      { bg: "bg-blue-50",    border: "border-blue-300",    label: "text-blue-800",    amount: "text-blue-700" },
+                                  valu:        { bg: "bg-indigo-50",  border: "border-indigo-300",  label: "text-indigo-800",  amount: "text-indigo-700" },
+                                  card:        { bg: "bg-violet-50",  border: "border-violet-300",  label: "text-violet-800",  amount: "text-violet-700" },
+                                  wallet:      { bg: "bg-teal-50",    border: "border-teal-300",    label: "text-teal-800",    amount: "text-teal-700" },
+                                  visa_machine:{ bg: "bg-sky-50",     border: "border-sky-300",     label: "text-sky-800",     amount: "text-sky-700" },
+                                  fawry:       { bg: "bg-amber-50",   border: "border-amber-300",   label: "text-amber-800",   amount: "text-amber-700" },
+                                }
+                                return map[key] || { bg: "bg-gray-50", border: "border-gray-300", label: "text-gray-800", amount: "text-gray-900" }
                               }
 
                               // Admin prepaid portion
@@ -3406,6 +3408,13 @@ const Summary: React.FC = () => {
                               if ((order as any)._is_prepaid) {
                                 // This entry represents the prepaid deposit only — hide courier rows
                                 courierRows = []
+                              } else if (typeof (order as any)._onther_amount === "number") {
+                                // Inside a method-specific modal — show only the row for that method
+                                const modalMethodNorm = normalizePaymentMethod(order.payment_sub_type || "")
+                                courierRows = courierRows.filter(r => normalizePaymentMethod(r.method) === modalMethodNorm)
+                                if (adminRow && normalizePaymentMethod(adminRow.method) !== modalMethodNorm) {
+                                  adminRow = null
+                                }
                               } else {
                                 // Regular entry. Hide admin row if it belongs to a different method
                                 // (the admin portion shows in the other method's modal)
@@ -3423,172 +3432,40 @@ const Summary: React.FC = () => {
                               const breakdownTotal = (adminRow?.amount || 0) + courierSubTotal
 
                               return (
-                                <div className="mt-2 pt-2 border-t border-gray-200">
-                                  <h6 className="text-xs font-bold text-gray-700 mb-2 uppercase flex items-center gap-1.5">
-                                    <CreditCard className="w-3.5 h-3.5 text-gray-600" />
-                                    تفاصيل التحصيل حسب الطريقة
-                                  </h6>
-                                  <div className="space-y-1.5">
-                                    {/* Admin prepaid */}
-                                    {adminRow && (
-                                      <div className="flex justify-between items-center py-1.5 px-2 rounded-lg border bg-emerald-50 border-emerald-200">
-                                        <div className="flex items-center gap-2 min-w-0">
-                                          <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold bg-emerald-200 text-emerald-800">
-                                            إدارة
-                                          </span>
-                                          <span className="text-xs text-gray-700 truncate">مدفوع مسبقاً (الإدارة)</span>
-                                          <span className="text-[10px] px-1.5 py-0.5 bg-white border border-gray-300 rounded text-gray-800 font-medium">
-                                            {methodLabels[adminRow.method] || adminRow.method}
-                                          </span>
-                                        </div>
-                                        <div className="flex items-center gap-1.5 flex-shrink-0">
-                                          <span className="text-xs font-bold text-emerald-700">
-                                            {adminRow.amount.toFixed(2)} {translate("EGP")}
-                                          </span>
-                                          <button
-                                            onClick={() => copyToClipboard(adminRow.amount.toFixed(2), 'Admin Prepaid')}
-                                            className="p-0.5 text-gray-400 hover:text-gray-600 hover:bg-white/50 rounded transition-colors"
-                                          >
-                                            <Copy className="w-3 h-3" />
-                                          </button>
-                                        </div>
+                                <div className="mt-2 pt-2 border-t border-gray-200 space-y-2">
+                                  {adminRow && (() => {
+                                    const s = methodStyles(adminRow.method)
+                                    return (
+                                      <div className={`flex justify-between items-center py-2.5 px-3 rounded-xl border-2 ${s.border} ${s.bg} shadow-sm`}>
+                                        <span className={`text-sm font-extrabold ${s.label}`}>
+                                          {methodLabels[adminRow.method] || adminRow.method}
+                                        </span>
+                                        <span className={`text-base font-extrabold ${s.amount}`}>
+                                          {adminRow.amount.toFixed(2)} {translate("EGP")}
+                                        </span>
                                       </div>
-                                    )}
-
-                                    {/* Courier rows - grouped when split */}
-                                    {courierRows.length > 0 && (
-                                      <div className={courierIsSplit ? "bg-indigo-50/60 border-2 border-dashed border-indigo-300 rounded-lg p-1.5 space-y-1" : ""}>
-                                        {courierIsSplit && (
-                                          <div className="flex items-center justify-between px-1.5 py-0.5">
-                                            <div className="flex items-center gap-1.5">
-                                              <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-indigo-200 text-indigo-900">
-                                                🔀 دفع مقسم من المندوب
-                                              </span>
-                                              <span className="text-[10px] text-indigo-700 font-medium">
-                                                ({courierRows.length} طرق)
-                                              </span>
-                                            </div>
-                                          </div>
-                                        )}
-                                        {courierRows.map((r, idx) => (
-                                          <div
-                                            key={idx}
-                                            className="flex justify-between items-center py-1.5 px-2 rounded-lg border bg-blue-50 border-blue-200"
-                                          >
-                                            <div className="flex items-center gap-2 min-w-0">
-                                              <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold bg-blue-200 text-blue-800">
-                                                مندوب
-                                              </span>
-                                              <span className="text-xs text-gray-700 truncate">
-                                                {courierIsSplit ? `الطريقة ${idx + 1}` : "حصّله المندوب"}
-                                              </span>
-                                              <span className="text-[10px] px-1.5 py-0.5 bg-white border border-gray-300 rounded text-gray-800 font-medium">
-                                                {methodLabels[r.method] || r.method}
-                                              </span>
-                                            </div>
-                                            <div className="flex items-center gap-1.5 flex-shrink-0">
-                                              <span className="text-xs font-bold text-blue-700">
-                                                {r.amount.toFixed(2)} {translate("EGP")}
-                                              </span>
-                                              <button
-                                                onClick={() => copyToClipboard(r.amount.toFixed(2), `Courier ${idx + 1}`)}
-                                                className="p-0.5 text-gray-400 hover:text-gray-600 hover:bg-white/50 rounded transition-colors"
-                                              >
-                                                <Copy className="w-3 h-3" />
-                                              </button>
-                                            </div>
-                                          </div>
-                                        ))}
-                                        {courierIsSplit && courierRows.length > 1 && (
-                                          <div className="flex justify-between items-center px-2 pt-1 border-t border-indigo-200">
-                                            <span className="text-[11px] font-bold text-indigo-800">مجموع المندوب:</span>
-                                            <span className="text-xs font-bold text-indigo-700">
-                                              {courierSubTotal.toFixed(2)} {translate("EGP")}
-                                            </span>
-                                          </div>
-                                        )}
+                                    )
+                                  })()}
+                                  {courierRows.map((r, idx) => {
+                                    const s = methodStyles(r.method)
+                                    return (
+                                      <div
+                                        key={idx}
+                                        className={`flex justify-between items-center py-2.5 px-3 rounded-xl border-2 ${s.border} ${s.bg} shadow-sm`}
+                                      >
+                                        <span className={`text-sm font-extrabold ${s.label}`}>
+                                          {methodLabels[r.method] || r.method}
+                                        </span>
+                                        <span className={`text-base font-extrabold ${s.amount}`}>
+                                          {r.amount.toFixed(2)} {translate("EGP")}
+                                        </span>
                                       </div>
-                                    )}
-
-                                    <div className="flex justify-between items-center pt-1.5 mt-1 border-t border-gray-300 px-2">
-                                      <span className="text-xs font-bold text-gray-800">المجموع الكلي:</span>
-                                      <span className="text-sm font-bold text-gray-900">
-                                        {breakdownTotal.toFixed(2)} {translate("EGP")}
-                                      </span>
-                                    </div>
-                                  </div>
+                                    )
+                                  })}
                                 </div>
                               )
                             })()}
 
-                            {/* Payment Information - Compact */}
-                            <div className="mt-2 pt-2 border-t border-gray-200">
-                              <h6 className="text-xs font-medium text-gray-500 mb-1.5 uppercase">معلومات الدفع</h6>
-                              <div className="space-y-1">
-                                {/* Show payment_sub_type if it exists */}
-                                {order.payment_sub_type && (
-                                  <div className="flex items-center justify-between py-1">
-                                    <div className="flex items-center gap-1.5">
-                                      <CreditCard className="w-3 h-3 text-gray-400" />
-                                      <span className="text-xs text-gray-600">{translate("paymentSubTypeLabel")}:</span>
-                                    </div>
-                                    <div className="flex items-center gap-1.5">
-                                      <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-xs font-medium">
-                                        {getDisplayPaymentMethod(order, translate)}
-                                      </span>
-                                      <button
-                                        onClick={() => copyToClipboard(getDisplayPaymentMethod(order, translate), 'Payment')}
-                                        className="p-0.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
-                                      >
-                                        <Copy className="w-3 h-3" />
-                                      </button>
-                                    </div>
-                                  </div>
-                                )}
-
-                                {/* Show collected_by if it exists and no payment_sub_type */}
-                                {order.collected_by && !order.payment_sub_type && (
-                                  <div className="flex items-center justify-between py-1">
-                                    <div className="flex items-center gap-1.5">
-                                      <User className="w-3 h-3 text-gray-400" />
-                                      <span className="text-xs text-gray-600">{translate("collectedBy")}:</span>
-                                    </div>
-                                    <div className="flex items-center gap-1.5">
-                                      <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs font-medium">
-                                        {translate(order.collected_by)}
-                                      </span>
-                                      <button
-                                        onClick={() => copyToClipboard(order.collected_by ? translate(order.collected_by) : '', 'Collected By')}
-                                        className="p-0.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
-                                      >
-                                        <Copy className="w-3 h-3" />
-                                      </button>
-                                    </div>
-                                  </div>
-                                )}
-
-                                {/* Show payment_method only if no payment_sub_type and no collected_by */}
-                                {!order.payment_sub_type && !order.collected_by && (
-                                  <div className="flex items-center justify-between py-1">
-                                    <div className="flex items-center gap-1.5">
-                                      <CreditCard className="w-3 h-3 text-gray-400" />
-                                      <span className="text-xs text-gray-600">{translate("paymentMethod")}:</span>
-                                    </div>
-                                    <div className="flex items-center gap-1.5">
-                                      <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs font-medium">
-                                        {translate(normalizePaymentMethod(order.payment_method))}
-                                      </span>
-                                      <button
-                                        onClick={() => copyToClipboard(translate(normalizePaymentMethod(order.payment_method)), 'Payment')}
-                                        className="p-0.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
-                                      >
-                                        <Copy className="w-3 h-3" />
-                                      </button>
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
                           </div>
                         </div>
 
@@ -4666,11 +4543,8 @@ const Summary: React.FC = () => {
                               {method.label}
                             </h4>
                           </div>
-                          <div className="space-y-0.5">
-                            <p className={`font-bold ${colors.text(hasOrders)} ${isCourier ? "text-base" : "text-xl"}`}>
-                              {method.count}
-                            </p>
-                            <p className={`font-semibold ${colors.amount(hasOrders)} ${isCourier ? "text-xs" : "text-sm"}`}>
+                          <div>
+                            <p className={`font-bold ${colors.amount(hasOrders)} ${isCourier ? "text-base" : "text-xl"}`}>
                               {method.amount.toFixed(isCourier ? 0 : 2)} ج.م
                             </p>
                           </div>
@@ -4697,11 +4571,8 @@ const Summary: React.FC = () => {
                           فاليو
                         </h4>
                       </div>
-                      <div className="space-y-0.5">
-                        <p className={`font-bold text-indigo-900 ${isCourier ? "text-base" : "text-xl"}`}>
-                          {metrics.valuOrders.count}
-                        </p>
-                        <p className={`font-semibold text-indigo-700 ${isCourier ? "text-xs" : "text-sm"}`}>
+                      <div>
+                        <p className={`font-bold text-indigo-700 ${isCourier ? "text-base" : "text-xl"}`}>
                           {metrics.valuOrders.amount.toFixed(0)} ج.م
                         </p>
                       </div>
@@ -4720,11 +4591,8 @@ const Summary: React.FC = () => {
                         <CreditCard className={`text-blue-600 ${isCourier ? "w-3 h-3" : "w-5 h-5"}`} />
                         <h4 className={`font-semibold text-blue-900 ${isCourier ? "text-xs" : "text-sm"}`}>Paymob</h4>
                       </div>
-                      <div className="space-y-0.5">
-                        <p className={`font-bold text-blue-900 ${isCourier ? "text-base" : "text-xl"}`}>
-                          {metrics.paymobOrders.count}
-                        </p>
-                        <p className={`font-semibold text-blue-700 ${isCourier ? "text-xs" : "text-sm"}`}>
+                      <div>
+                        <p className={`font-bold text-blue-700 ${isCourier ? "text-base" : "text-xl"}`}>
                           {metrics.paymobOrders.amount.toFixed(0)} ج.م
                         </p>
                       </div>
@@ -4743,11 +4611,8 @@ const Summary: React.FC = () => {
                       <HelpCircle className="text-gray-400 w-6 h-6" />
                       <h4 className="font-semibold text-gray-500 text-base">غير مصنف</h4>
                     </div>
-                    <div className="space-y-1">
-                      <p className="font-bold text-gray-500 text-2xl">
-                        {metrics.otherOrders.count}
-                      </p>
-                      <p className="font-semibold text-gray-400 text-lg">
+                    <div>
+                      <p className="font-bold text-gray-400 text-2xl">
                         {metrics.otherOrders.amount.toFixed(0)} ج.م
                       </p>
                     </div>
@@ -4942,7 +4807,6 @@ const Summary: React.FC = () => {
                     const courierOrderAmount = getCourierOrderAmount(order);
                     const deliveryFee = Number(order.delivery_fee || 0);
                     const totalCourierAmount = getTotalCourierAmount(order);
-                    const paymentMethodLabel = translate(getDisplayPaymentMethod(order));
                     const holdFee = Number(order.hold_fee || 0);
                     const rowKey = order.id;
                     return (
@@ -5201,6 +5065,7 @@ const Summary: React.FC = () => {
 
                           {/* Financial Information */}
                           <div className={isCourier ? "space-y-3" : "space-y-4"}>
+                            {false && (
                             <div className={`bg-white rounded-lg border border-gray-200 ${isCourier ? "p-3" : "p-4"}`}>
                               <h5
                                 className={`font-semibold text-gray-800 mb-3 flex items-center gap-2 ${isCourier ? "text-sm" : "text-base"}`}
@@ -5405,6 +5270,7 @@ const Summary: React.FC = () => {
                                 )}
                               </div>
                             </div>
+                            )}
 
                             {/* Payment Breakdown - detailed, per-method */}
                             {(() => {
@@ -5421,6 +5287,21 @@ const Summary: React.FC = () => {
                                 vodafone_cash: "فودافون كاش",
                                 orange_cash: "أورانج كاش",
                                 we_pay: "وي باي",
+                              }
+                              const methodStyles = (m: string) => {
+                                const key = normalizePaymentMethod(m)
+                                const map: Record<string, { bg: string; border: string; label: string; amount: string }> = {
+                                  instapay:    { bg: "bg-cyan-50",    border: "border-cyan-300",    label: "text-cyan-800",    amount: "text-cyan-700" },
+                                  cash:        { bg: "bg-emerald-50", border: "border-emerald-300", label: "text-emerald-800", amount: "text-emerald-700" },
+                                  on_hand:     { bg: "bg-emerald-50", border: "border-emerald-300", label: "text-emerald-800", amount: "text-emerald-700" },
+                                  paymob:      { bg: "bg-blue-50",    border: "border-blue-300",    label: "text-blue-800",    amount: "text-blue-700" },
+                                  valu:        { bg: "bg-indigo-50",  border: "border-indigo-300",  label: "text-indigo-800",  amount: "text-indigo-700" },
+                                  card:        { bg: "bg-violet-50",  border: "border-violet-300",  label: "text-violet-800",  amount: "text-violet-700" },
+                                  wallet:      { bg: "bg-teal-50",    border: "border-teal-300",    label: "text-teal-800",    amount: "text-teal-700" },
+                                  visa_machine:{ bg: "bg-sky-50",     border: "border-sky-300",     label: "text-sky-800",     amount: "text-sky-700" },
+                                  fawry:       { bg: "bg-amber-50",   border: "border-amber-300",   label: "text-amber-800",   amount: "text-amber-700" },
+                                }
+                                return map[key] || { bg: "bg-gray-50", border: "border-gray-300", label: "text-gray-800", amount: "text-gray-900" }
                               }
                               const adminAmt = Number(order.admin_prepaid_amount || 0)
                               let adminRow = adminAmt > 0
@@ -5446,6 +5327,13 @@ const Summary: React.FC = () => {
                               // Method-specific filtering for the modal context
                               if ((order as any)._is_prepaid) {
                                 courierRows = []
+                              } else if (typeof (order as any)._onther_amount === "number") {
+                                // Inside a method-specific modal — show only the row for that method
+                                const modalMethodNorm = normalizePaymentMethod(order.payment_sub_type || "")
+                                courierRows = courierRows.filter(r => normalizePaymentMethod(r.method) === modalMethodNorm)
+                                if (adminRow && normalizePaymentMethod(adminRow.method) !== modalMethodNorm) {
+                                  adminRow = null
+                                }
                               } else if (adminRow) {
                                 const mainMethodNorm = normalizePaymentMethod(order.payment_sub_type || order.collected_by || order.payment_method || "")
                                 const adminMethodNorm = normalizePaymentMethod(adminRow.method)
@@ -5454,110 +5342,41 @@ const Summary: React.FC = () => {
                                 }
                               }
                               if (!adminRow && courierRows.length === 0) return null
-                              const courierSubTotal = courierRows.reduce((s, r) => s + r.amount, 0)
-                              const breakdownTotal = (adminRow?.amount || 0) + courierSubTotal
                               return (
-                                <div className={`mt-3 pt-3 border-t border-gray-200`}>
-                                  <h6 className={`font-bold text-gray-700 mb-2 uppercase flex items-center gap-1.5 ${isCourier ? "text-xs" : "text-xs"}`}>
-                                    <CreditCard className="w-3.5 h-3.5 text-gray-600" />
-                                    تفاصيل التحصيل حسب الطريقة
-                                  </h6>
-                                  <div className="space-y-1.5">
-                                    {adminRow && (
-                                      <div className="flex justify-between items-center py-1.5 px-2 rounded-lg border bg-emerald-50 border-emerald-200">
-                                        <div className="flex items-center gap-2 min-w-0">
-                                          <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold bg-emerald-200 text-emerald-800">
-                                            إدارة
-                                          </span>
-                                          <span className={`text-gray-700 truncate ${isCourier ? "text-xs" : "text-xs"}`}>مدفوع مسبقاً (الإدارة)</span>
-                                          <span className="text-[10px] px-1.5 py-0.5 bg-white border border-gray-300 rounded text-gray-800 font-medium">
-                                            {methodLabels[adminRow.method] || adminRow.method}
-                                          </span>
-                                        </div>
-                                        <span className={`font-bold text-emerald-700 ${isCourier ? "text-xs" : "text-xs"}`}>
+                                <div className={`mt-3 pt-3 border-t border-gray-200 space-y-2`}>
+                                  {adminRow && (() => {
+                                    const s = methodStyles(adminRow.method)
+                                    return (
+                                      <div className={`flex justify-between items-center py-2.5 px-3 rounded-xl border-2 ${s.border} ${s.bg} shadow-sm`}>
+                                        <span className={`font-extrabold ${s.label} ${isCourier ? "text-sm" : "text-sm"}`}>
+                                          {methodLabels[adminRow.method] || adminRow.method}
+                                        </span>
+                                        <span className={`font-extrabold ${s.amount} ${isCourier ? "text-base" : "text-base"}`}>
                                           {adminRow.amount.toFixed(2)} {translate("EGP")}
                                         </span>
                                       </div>
-                                    )}
-                                    {courierRows.length > 0 && (
-                                      <div className={courierIsSplit ? "bg-indigo-50/60 border-2 border-dashed border-indigo-300 rounded-lg p-1.5 space-y-1" : ""}>
-                                        {courierIsSplit && (
-                                          <div className="flex items-center justify-between px-1.5 py-0.5">
-                                            <div className="flex items-center gap-1.5">
-                                              <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-indigo-200 text-indigo-900">
-                                                🔀 دفع مقسم من المندوب
-                                              </span>
-                                              <span className="text-[10px] text-indigo-700 font-medium">
-                                                ({courierRows.length} طرق)
-                                              </span>
-                                            </div>
-                                          </div>
-                                        )}
-                                        {courierRows.map((r, idx) => (
-                                          <div
-                                            key={idx}
-                                            className="flex justify-between items-center py-1.5 px-2 rounded-lg border bg-blue-50 border-blue-200"
-                                          >
-                                            <div className="flex items-center gap-2 min-w-0">
-                                              <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold bg-blue-200 text-blue-800">
-                                                مندوب
-                                              </span>
-                                              <span className={`text-gray-700 truncate ${isCourier ? "text-xs" : "text-xs"}`}>
-                                                {courierIsSplit ? `الطريقة ${idx + 1}` : "حصّله المندوب"}
-                                              </span>
-                                              <span className="text-[10px] px-1.5 py-0.5 bg-white border border-gray-300 rounded text-gray-800 font-medium">
-                                                {methodLabels[r.method] || r.method}
-                                              </span>
-                                            </div>
-                                            <span className={`font-bold text-blue-700 ${isCourier ? "text-xs" : "text-xs"}`}>
-                                              {r.amount.toFixed(2)} {translate("EGP")}
-                                            </span>
-                                          </div>
-                                        ))}
-                                        {courierIsSplit && courierRows.length > 1 && (
-                                          <div className="flex justify-between items-center px-2 pt-1 border-t border-indigo-200">
-                                            <span className="text-[11px] font-bold text-indigo-800">مجموع المندوب:</span>
-                                            <span className="text-xs font-bold text-indigo-700">
-                                              {courierSubTotal.toFixed(2)} {translate("EGP")}
-                                            </span>
-                                          </div>
-                                        )}
+                                    )
+                                  })()}
+                                  {courierRows.map((r, idx) => {
+                                    const s = methodStyles(r.method)
+                                    return (
+                                      <div
+                                        key={idx}
+                                        className={`flex justify-between items-center py-2.5 px-3 rounded-xl border-2 ${s.border} ${s.bg} shadow-sm`}
+                                      >
+                                        <span className={`font-extrabold ${s.label} ${isCourier ? "text-sm" : "text-sm"}`}>
+                                          {methodLabels[r.method] || r.method}
+                                        </span>
+                                        <span className={`font-extrabold ${s.amount} ${isCourier ? "text-base" : "text-base"}`}>
+                                          {r.amount.toFixed(2)} {translate("EGP")}
+                                        </span>
                                       </div>
-                                    )}
-                                    <div className="flex justify-between items-center pt-1.5 mt-1 border-t border-gray-300 px-2">
-                                      <span className={`font-bold text-gray-800 ${isCourier ? "text-xs" : "text-xs"}`}>المجموع الكلي:</span>
-                                      <span className={`font-bold text-gray-900 ${isCourier ? "text-xs" : "text-sm"}`}>
-                                        {breakdownTotal.toFixed(2)} {translate("EGP")}
-                                      </span>
-                                    </div>
-                                  </div>
+                                    )
+                                  })}
                                 </div>
                               )
                             })()}
 
-                            {/* Payment Information */}
-                            <div className={`mt-3 pt-3 border-t border-gray-200`}>
-                              <h6 className={`text-gray-500 mb-2 uppercase ${isCourier ? "text-xs" : "text-xs"} font-medium`}>معلومات الدفع</h6>
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                  <CreditCard className={`text-gray-400 ${isCourier ? "w-3.5 h-3.5" : "w-4 h-4"}`} />
-                                  <span className={`text-gray-600 ${isCourier ? "text-xs" : "text-sm"}`}>
-                                    {isCourier ? "الدفع" : translate("paymentMethod")}:
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <span className={`px-2 py-1 bg-purple-100 text-purple-700 rounded font-medium ${isCourier ? "text-xs" : "text-sm"}`}>
-                                    {paymentMethodLabel}
-                                  </span>
-                                  <button
-                                    onClick={() => copyToClipboard(paymentMethodLabel, 'Payment')}
-                                    className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
-                                  >
-                                    <Copy className={`${isCourier ? "w-3 h-3" : "w-3.5 h-3.5"}`} />
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
                           </div>
                         </div>
 
