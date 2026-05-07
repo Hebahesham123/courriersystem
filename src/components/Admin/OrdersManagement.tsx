@@ -1735,6 +1735,13 @@ const OrdersManagement: React.FC = () => {
             payment_status: baseOrderData?.payment_status || order.payment_status,
             financial_status: baseOrderData?.financial_status || order.financial_status,
             payment_gateway_names: order.payment_gateway_names,
+
+            // Preserve any admin-recorded deposit / prepaid info — the deposit was paid
+            // on the original order and must follow the order across reassignments.
+            admin_prepaid_amount: (order as any).admin_prepaid_amount ?? null,
+            admin_prepaid_method: (order as any).admin_prepaid_method ?? null,
+            admin_prepaid_at: (order as any).admin_prepaid_at ?? null,
+            admin_prepaid_by: (order as any).admin_prepaid_by ?? null,
             
             // Order items and metadata (from base order)
             line_items: order.line_items,
