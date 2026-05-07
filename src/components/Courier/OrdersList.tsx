@@ -39,6 +39,7 @@ import {
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
 import { useAuth } from "../../contexts/AuthContext"
+import { logActivity, diffFields } from "../../lib/activityLogger"
 import { useModalScrollPreserve } from "../../lib/useModalScrollPreserve"
 
 
@@ -2445,6 +2446,9 @@ const OrdersList: React.FC = () => {
         finalUpdatePayload.onther_payments = null
       }
 
+      // Stamp the editing user so the audit trigger can resolve who made the change.
+      finalUpdatePayload.last_modified_by = user?.id ?? null
+
       console.log("💾 Final database update:", {
         order_id: selectedOrder.order_id,
         final_status: finalStatus,
@@ -2467,6 +2471,18 @@ const OrdersList: React.FC = () => {
         setSaving(false)
         setUpdatingOrderId(null)
         return
+      }
+
+      const changes = diffFields(originalOrder as any, finalUpdatePayload as any)
+      if (changes.length > 0) {
+        logActivity({
+          action: "update_order",
+          entityType: "order",
+          entityId: selectedOrder.id,
+          entityLabel: (selectedOrder as any).order_id || (selectedOrder as any).customer_name || null,
+          details: { changes },
+          actor: user ? { id: user.id, name: user.name, email: user.email, role: user.role } : null,
+        })
       }
 
       // Remove dashes by removing from tracking sets

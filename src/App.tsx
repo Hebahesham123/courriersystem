@@ -27,6 +27,7 @@ import Tracking from "./components/Admin/Tracking"
 import Trach from "./components/Admin/Trach"
 import ReceivePieceOrExchange from "./components/Admin/ReceivePieceOrExchange"
 import Calendar from "./components/Admin/Calendar"
+import ActivityLogs from "./components/Admin/ActivityLogs"
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles?: string[] }> = ({
   children,
@@ -227,6 +228,16 @@ const AppRoutes: React.FC = () => {
               <ProtectedRoute allowedRoles={["admin"]}>
                 <AppLayout>
                   <Calendar />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/logs"
+            element={
+              <ProtectedRoute allowedRoles={["admin"]}>
+                <AppLayout>
+                  <ActivityLogs />
                 </AppLayout>
               </ProtectedRoute>
             }

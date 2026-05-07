@@ -1538,10 +1538,9 @@ const Summary: React.FC = () => {
         if (toNumber(o.hold_fee) > 0) {
           continue
         }
-        // Legacy toggle: when off, also exclude orders that ever had a hold fee added/removed
-        if (!includeHoldFeesInPayment && (o.hold_fee_added_at || o.hold_fee_removed_at)) {
-          continue
-        }
+        // Note: previously we also skipped orders that had a hold fee at any point in the past
+        // when the "include hold fees" toggle was off. That hid legitimately-paid orders whose
+        // hold fee had already been removed, so the historical-only exclusion is gone.
 
         if (o.payment_sub_type === 'onther' && o.onther_payments) {
           let arr: { method: string; amount: string }[] = []
@@ -1549,11 +1548,19 @@ const Summary: React.FC = () => {
             arr = typeof o.onther_payments === 'string' ? JSON.parse(o.onther_payments) : o.onther_payments
           } catch { arr = [] }
           if (Array.isArray(arr)) {
+            const splitPrepaidAmt = toNumber((o as any).admin_prepaid_amount)
+            const splitPrepaidMethodNorm = (o as any).admin_prepaid_method
+              ? normalizePaymentMethod((o as any).admin_prepaid_method)
+              : null
             for (const item of arr) {
               const normalizedSubMethod = normalizePaymentMethod(item.method)
-              const amt = parseFloat(item.amount) || 0
+              let amt = parseFloat(item.amount) || 0
+              // Merge admin prepaid into the matching sub-payment so a split order shows
+              // a single combined row per method instead of two duplicate entries.
+              if (splitPrepaidAmt > 0 && splitPrepaidMethodNorm === normalizedSubMethod) {
+                amt += splitPrepaidAmt
+              }
               if (amt > 0) {
-                // Each sub-payment is a separate entry, with _onther_amount for modal display
                 result.push({ order: { ...o, payment_sub_type: normalizedSubMethod, _onther_amount: amt }, method: normalizedSubMethod, amount: amt })
               }
 
@@ -1581,21 +1588,23 @@ const Summary: React.FC = () => {
           }
           
           // For Paymob/Valu orders that are delivered and were paid from Shopify:
-          // Include them even if amount is 0 (they were already paid online)
-          // Check payment_method, collected_by, and normalized method
+          // Include them even if amount is 0 (they were already paid online).
+          // IMPORTANT: only apply this override when the user hasn't explicitly chosen a
+          // different payment_sub_type. If payment_sub_type is set (e.g. 'instapay'),
+          // the order was reclassified by an admin/courier and should stay in that bucket
+          // even if the legacy payment_method/collected_by still says 'paymob'/'valu'.
           const paymentMethodLower = (o.payment_method || '').toLowerCase()
           const collectedByLower = (o.collected_by || '').toLowerCase()
-          const isPaymob = normalized === 'paymob' || 
-                          paymentMethodLower.includes('paymob') || 
-                          collectedByLower === 'paymob'
-          const isValu = normalized === 'valu' || 
-                        paymentMethodLower.includes('valu') || 
-                        collectedByLower === 'valu'
+          const explicitSubType = !!(o.payment_sub_type && o.payment_sub_type !== 'onther')
+          const isPaymob = normalized === 'paymob' ||
+                          (!explicitSubType && (paymentMethodLower.includes('paymob') || collectedByLower === 'paymob'))
+          const isValu = normalized === 'valu' ||
+                        (!explicitSubType && (paymentMethodLower.includes('valu') || collectedByLower === 'valu'))
           const isPaymobValu = isPaymob || isValu
-          
+
           // If order is delivered and is Paymob/Valu, include it even with 0 amount
           const isPaymobValuDelivered = isPaymobValu && o.status === 'delivered'
-          
+
           // Include cash on hand orders even if amount is 0 or negative (they represent collected cash)
           // Include Paymob/Valu delivered orders even if amount is 0 (they were paid online)
           if (amt > 0 || normalized === 'on_hand' || isPaymobValuDelivered) {
@@ -1626,15 +1635,15 @@ const Summary: React.FC = () => {
             : (o.collected_by || o.payment_method)
           const xMainNormalized = normalizePaymentMethod(xMainSource)
           const isSameMethodMerge = o.payment_sub_type !== 'onther' && xPrepaidMethod === xMainNormalized
-          // Check if the prepaid is already represented in onther_payments
+          // Check if the prepaid is already represented in onther_payments — match by method
+          // only so a method-merge in the split path above isn't duplicated here.
           let alreadyInOnther = false
           if (o.payment_sub_type === 'onther' && o.onther_payments) {
             try {
               const arr = typeof o.onther_payments === 'string' ? JSON.parse(o.onther_payments) : o.onther_payments
               if (Array.isArray(arr)) {
                 alreadyInOnther = arr.some((it: any) =>
-                  normalizePaymentMethod(it.method) === xPrepaidMethod &&
-                  Math.abs((parseFloat(it.amount) || 0) - xPrepaidAmt) < 0.01
+                  normalizePaymentMethod(it.method) === xPrepaidMethod
                 )
               }
             } catch {}
@@ -3421,35 +3430,37 @@ const Summary: React.FC = () => {
                                 const exactAmount = (order as any)._onther_amount as number
                                 courierRows = exactMethod ? [{ method: exactMethod, amount: exactAmount }] : []
                                 adminRow = null
-                              } else {
-                                // Regular entry. Hide admin row if it belongs to a different method
-                                // (the admin portion shows in the other method's modal)
-                                if (adminRow) {
-                                  const mainMethodNorm = normalizePaymentMethod(order.payment_sub_type || order.collected_by || order.payment_method || "")
-                                  const adminMethodNorm = normalizePaymentMethod(adminRow.method)
-                                  if (adminMethodNorm !== mainMethodNorm) {
-                                    adminRow = null
-                                  }
-                                }
                               }
+                              // In non-method-modal contexts (status modals, all-orders),
+                              // _onther_amount isn't set, so the admin prepaid stays visible
+                              // even when its method differs from the order's main payment method.
 
                               const courierSubTotal = courierRows.reduce((s, r) => s + r.amount, 0)
                               const breakdownTotal = (adminRow?.amount || 0) + courierSubTotal
                               const orderTotal = Number(order.total_order_fees || 0)
 
-                              // Always show at least one method row using the order's primary method
+                              // Always show at least one method row using the order's primary method.
+                              // Resolution order: admin_prepaid_method (the deposit channel, if recorded)
+                              // → payment_sub_type → collected_by → payment_method.
                               if (!adminRow && courierRows.length === 0) {
-                                const fallbackMethod = order.payment_sub_type || order.collected_by || normalizePaymentMethod(order.payment_method || "")
+                                const fallbackMethod = (order as any).admin_prepaid_method
+                                  || (order.payment_sub_type && order.payment_sub_type !== 'onther' ? order.payment_sub_type : null)
+                                  || order.collected_by
+                                  || normalizePaymentMethod(order.payment_method || "")
                                 if (fallbackMethod) {
                                   // Hand-to-hand exchanges actually receive the full total in cash even though
                                   // getCourierOrderAmount returns 0 for them; reflect that in the breakdown.
+                                  // Canceled orders may still have collected delivery/fees — use totalCourierAmount.
                                   const fallbackAmount = order.status === "hand_to_hand"
                                     ? Math.max(0, orderTotal - Number(order.admin_prepaid_amount || 0))
+                                    : order.status === "canceled"
+                                    ? Math.max(0, Number(totalCourierAmount) || 0)
                                     : Number(courierOrderAmount) || 0
                                   courierRows = [{ method: String(fallbackMethod), amount: fallbackAmount }]
                                 }
                               }
 
+                              const isCanceled = order.status === "canceled"
                               return (
                                 <div className="mt-2 pt-2 border-t border-gray-200 space-y-2">
                                   <div className="flex justify-between items-center py-2.5 px-3 rounded-xl border-2 border-gray-300 bg-gray-50 shadow-sm">
@@ -3460,10 +3471,13 @@ const Summary: React.FC = () => {
                                   </div>
                                   {adminRow && (() => {
                                     const s = methodStyles(adminRow.method)
+                                    const label = isCanceled
+                                      ? `وديعة محفوظة (${methodLabels[adminRow.method] || adminRow.method})`
+                                      : (methodLabels[adminRow.method] || adminRow.method)
                                     return (
                                       <div className={`flex justify-between items-center py-2.5 px-3 rounded-xl border-2 ${s.border} ${s.bg} shadow-sm`}>
                                         <span className={`text-sm font-extrabold ${s.label}`}>
-                                          {methodLabels[adminRow.method] || adminRow.method}
+                                          {label}
                                         </span>
                                         <span className={`text-base font-extrabold ${s.amount}`}>
                                           {adminRow.amount.toFixed(2)} {translate("EGP")}
@@ -5374,26 +5388,30 @@ const Summary: React.FC = () => {
                                 const exactAmount = (order as any)._onther_amount as number
                                 courierRows = exactMethod ? [{ method: exactMethod, amount: exactAmount }] : []
                                 adminRow = null
-                              } else if (adminRow) {
-                                const mainMethodNorm = normalizePaymentMethod(order.payment_sub_type || order.collected_by || order.payment_method || "")
-                                const adminMethodNorm = normalizePaymentMethod(adminRow.method)
-                                if (adminMethodNorm !== mainMethodNorm) {
-                                  adminRow = null
-                                }
                               }
+                              // In non-method-modal contexts (status modals, all-orders),
+                              // _onther_amount isn't set, so the admin prepaid stays visible
+                              // even when its method differs from the order's main payment method.
                               const orderTotal = Number(order.total_order_fees || 0)
-                              // Always show at least one method row using the order's primary method
+                              // Always show at least one method row using the order's primary method.
                               if (!adminRow && courierRows.length === 0) {
-                                const fallbackMethod = order.payment_sub_type || order.collected_by || normalizePaymentMethod(order.payment_method || "")
+                                const fallbackMethod = (order as any).admin_prepaid_method
+                                  || (order.payment_sub_type && order.payment_sub_type !== 'onther' ? order.payment_sub_type : null)
+                                  || order.collected_by
+                                  || normalizePaymentMethod(order.payment_method || "")
                                 if (fallbackMethod) {
                                   // Hand-to-hand exchanges actually receive the full total in cash even though
                                   // getCourierOrderAmount returns 0 for them; reflect that in the breakdown.
+                                  // Canceled orders may still have collected delivery/fees — use totalCourierAmount.
                                   const fallbackAmount = order.status === "hand_to_hand"
                                     ? Math.max(0, orderTotal - Number(order.admin_prepaid_amount || 0))
+                                    : order.status === "canceled"
+                                    ? Math.max(0, Number(totalCourierAmount) || 0)
                                     : Number(courierOrderAmount) || 0
                                   courierRows = [{ method: String(fallbackMethod), amount: fallbackAmount }]
                                 }
                               }
+                              const isCanceled = order.status === "canceled"
                               return (
                                 <div className={`mt-3 pt-3 border-t border-gray-200 space-y-2`}>
                                   <div className="flex justify-between items-center py-2.5 px-3 rounded-xl border-2 border-gray-300 bg-gray-50 shadow-sm">
@@ -5404,10 +5422,13 @@ const Summary: React.FC = () => {
                                   </div>
                                   {adminRow && (() => {
                                     const s = methodStyles(adminRow.method)
+                                    const label = isCanceled
+                                      ? `وديعة محفوظة (${methodLabels[adminRow.method] || adminRow.method})`
+                                      : (methodLabels[adminRow.method] || adminRow.method)
                                     return (
                                       <div className={`flex justify-between items-center py-2.5 px-3 rounded-xl border-2 ${s.border} ${s.bg} shadow-sm`}>
                                         <span className={`font-extrabold ${s.label} ${isCourier ? "text-sm" : "text-sm"}`}>
-                                          {methodLabels[adminRow.method] || adminRow.method}
+                                          {label}
                                         </span>
                                         <span className={`font-extrabold ${s.amount} ${isCourier ? "text-base" : "text-base"}`}>
                                           {adminRow.amount.toFixed(2)} {translate("EGP")}

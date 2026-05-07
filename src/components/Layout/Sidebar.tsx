@@ -21,6 +21,7 @@ import {
   Shield,
   DollarSign,
   ClipboardList,
+  History,
   Monitor,
   RefreshCw,
   Globe,
@@ -171,6 +172,13 @@ const Sidebar: React.FC = () => {
       label: "تقويم العملاء",
       color: "text-indigo-400",
       description: "مواعيد التسليم المؤكدة من واتساب",
+    },
+    {
+      path: "/admin/logs",
+      icon: History,
+      label: t("logs") || "Logs",
+      color: "text-rose-400",
+      description: "سجل التعديلات لكل المستخدمين",
     },
   ]
 

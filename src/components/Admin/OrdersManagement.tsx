@@ -46,6 +46,7 @@ import {
 import { supabase } from "../../lib/supabase"
 import { useLanguage } from "../../contexts/LanguageContext"
 import { useAuth } from "../../contexts/AuthContext"
+import { logActivity, diffFields } from "../../lib/activityLogger"
 import OrderDetailModal from "./OrderDetailModal"
 import SplitPaymentModal from "./SplitPaymentModal"
 import BulkSplitPaymentModal from "./BulkSplitPaymentModal"
@@ -1348,12 +1349,13 @@ const OrdersManagement: React.FC = () => {
 
     setSavingOrderId(orderId)
     const originalOrder = orders.find((o) => o.id === orderId)
-    
+
     try {
       // Create update payload with ONLY the changed fields
       const updateData: any = {
         ...changes,
         updated_at: new Date().toISOString(),
+        last_modified_by: user?.id ?? null,
       }
 
       // Logic for original courier
@@ -1431,6 +1433,18 @@ const OrdersManagement: React.FC = () => {
         throw error
       }
 
+      const changes = diffFields(originalOrder as any, updateData as any)
+      if (changes.length > 0) {
+        logActivity({
+          action: "update_order",
+          entityType: "order",
+          entityId: orderId,
+          entityLabel: originalOrder?.order_id || originalOrder?.customer_name || null,
+          details: { changes },
+          actor: user ? { id: user.id, name: user.name, email: user.email, role: user.role } : null,
+        })
+      }
+
       setSuccessMessage("Changes saved successfully / تم حفظ التغييرات بنجاح")
       setOrderEdits((prev) => {
         const copy = { ...prev }
@@ -1474,21 +1488,30 @@ const OrdersManagement: React.FC = () => {
   const handleClearDeposit = async (orderId: string) => {
     if (!window.confirm("مسح الدفع المسبق من هذا الطلب؟")) return
     try {
-      const { data: { user } } = await supabase.auth.getUser()
+      const { data: { user: authUser } } = await supabase.auth.getUser()
       const clearedAt = new Date().toISOString()
       const { error } = await supabase.from("orders").update({
         admin_prepaid_amount: null,
         admin_prepaid_method: null,
         admin_prepaid_at: clearedAt,
-        admin_prepaid_by: user?.id ?? null,
+        admin_prepaid_by: authUser?.id ?? null,
+        last_modified_by: user?.id ?? authUser?.id ?? null,
       }).eq("id", orderId)
       if (error) throw error
+      logActivity({
+        action: "clear_admin_prepaid",
+        entityType: "order",
+        entityId: orderId,
+        entityLabel: null,
+        details: { admin_prepaid_amount: null, admin_prepaid_method: null },
+        actor: user ? { id: user.id, name: user.name, email: user.email, role: user.role } : null,
+      })
       setOrders((prev) => prev.map((o) => o.id === orderId
-        ? { ...o, admin_prepaid_amount: null, admin_prepaid_method: null, admin_prepaid_at: clearedAt, admin_prepaid_by: user?.id ?? null }
+        ? { ...o, admin_prepaid_amount: null, admin_prepaid_method: null, admin_prepaid_at: clearedAt, admin_prepaid_by: authUser?.id ?? null }
         : o
       ))
       setSelectedOrderForDetail((prev) => prev?.id === orderId
-        ? { ...prev, admin_prepaid_amount: null, admin_prepaid_method: null, admin_prepaid_at: clearedAt, admin_prepaid_by: user?.id ?? null }
+        ? { ...prev, admin_prepaid_amount: null, admin_prepaid_method: null, admin_prepaid_at: clearedAt, admin_prepaid_by: authUser?.id ?? null }
         : prev
       )
     } catch (e: any) {
@@ -1815,6 +1838,7 @@ const OrdersManagement: React.FC = () => {
             status: "assigned",
             updated_at: nowIso,
             assigned_at: nowIso,
+            last_modified_by: user?.id ?? null,
           }
 
           if (!order.original_courier_id && order.assigned_courier_id) {
@@ -1827,6 +1851,14 @@ const OrdersManagement: React.FC = () => {
 
           if (error) throw error
           newOrderIds.push(order.id)
+          logActivity({
+            action: "assign_courier",
+            entityType: "order",
+            entityId: order.id,
+            entityLabel: (order as any).order_id || null,
+            details: { courier_id: selectedCourier, status: "assigned" },
+            actor: user ? { id: user.id, name: user.name, email: user.email, role: user.role } : null,
+          })
         }
       }
 
@@ -1868,6 +1900,7 @@ const OrdersManagement: React.FC = () => {
           archived: true,
           archived_at: new Date().toISOString(),
           assigned_courier_id: null,
+          last_modified_by: user?.id ?? null,
         }
 
         if (!order.original_courier_id && order.assigned_courier_id) {
@@ -1877,6 +1910,14 @@ const OrdersManagement: React.FC = () => {
         const { error } = await supabase.from("orders").update(updateData).eq("id", order.id)
 
         if (error) throw error
+        logActivity({
+          action: "archive_order",
+          entityType: "order",
+          entityId: order.id,
+          entityLabel: null,
+          details: { archived: true },
+          actor: user ? { id: user.id, name: user.name, email: user.email, role: user.role } : null,
+        })
       }
 
       // Update local state instead of refetching all orders
