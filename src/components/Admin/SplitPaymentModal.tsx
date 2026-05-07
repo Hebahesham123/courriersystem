@@ -21,6 +21,7 @@ const PAYMENT_METHODS = [
   { value: "instapay", label: "Instapay" },
   { value: "valu", label: "Valu" },
   { value: "card", label: "Card / بطاقة" },
+  { value: "wallet", label: "Wallet / محفظة" },
 ]
 
 const SplitPaymentModal: React.FC<SplitPaymentModalProps> = ({

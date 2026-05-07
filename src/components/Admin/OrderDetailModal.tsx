@@ -108,6 +108,9 @@ interface OrderHistoryEntry {
   original_courier_name?: string | null
   updated_at: string
   created_at: string
+  changed_by_name?: string | null
+  changed_by_email?: string | null
+  changed_by_role?: string | null
 }
 
 const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onUpdate }) => {
@@ -408,17 +411,52 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
 
       if (historyError) throw historyError
 
+      const orderUuids = (data || []).map((e: any) => e.id)
+      // Pull activity_logs for any of these order versions so we can attach
+      // the user who made each change to the timeline entry.
+      let logs: any[] = []
+      if (orderUuids.length > 0) {
+        const { data: logRows } = await supabase
+          .from("activity_logs")
+          .select("entity_id, user_name, user_email, user_role, action, created_at")
+          .in("entity_id", orderUuids)
+          .order("created_at", { ascending: true })
+        logs = logRows || []
+      }
+      // Find the closest log (by timestamp, same entity_id) to the entry's updated_at
+      const findClosestLog = (entityId: string, ts: string) => {
+        const target = new Date(ts).getTime()
+        let best: any = null
+        let bestDelta = Infinity
+        for (const l of logs) {
+          if (l.entity_id !== entityId) continue
+          const delta = Math.abs(new Date(l.created_at).getTime() - target)
+          if (delta < bestDelta) {
+            best = l
+            bestDelta = delta
+          }
+        }
+        // Only consider it a match if within 60 seconds
+        return best && bestDelta < 60_000 ? best : null
+      }
+
       // Map the data to include courier names for both assigned and original
-      const historyWithCouriers = (data || []).map((entry: any) => ({
-        id: entry.id,
-        status: entry.status,
-        assigned_courier_id: entry.assigned_courier_id,
-        original_courier_id: entry.original_courier_id,
-        assigned_courier_name: entry.assigned_courier?.name || null,
-        original_courier_name: entry.original_courier?.name || null,
-        updated_at: entry.updated_at,
-        created_at: entry.created_at,
-      }))
+      const historyWithCouriers = (data || []).map((entry: any) => {
+        const log = findClosestLog(entry.id, entry.updated_at)
+        return {
+          id: entry.id,
+          status: entry.status,
+          assigned_courier_id: entry.assigned_courier_id,
+          original_courier_id: entry.original_courier_id,
+          assigned_courier_name: entry.assigned_courier?.name || null,
+          original_courier_name: entry.original_courier?.name || null,
+          updated_at: entry.updated_at,
+          created_at: entry.created_at,
+          changed_by_name: log?.user_name || null,
+          changed_by_email: log?.user_email || null,
+          changed_by_role: log?.user_role || null,
+        }
+      })
 
       setOrderHistory(historyWithCouriers)
     } catch (err: any) {
@@ -2309,7 +2347,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                           <div className="pb-3">
                             <div className="flex items-start justify-between gap-2">
                               <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-1">
+                                <div className="flex items-center gap-2 mb-1 flex-wrap">
                                   <Clock className="w-3 h-3 text-gray-400" />
                                   <span className="text-xs text-gray-500">
                                     {date.toLocaleDateString('en-US', {
@@ -2320,6 +2358,14 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                                       minute: '2-digit'
                                     })}
                                   </span>
+                                  {entry.changed_by_name && (
+                                    <span className="text-xs px-2 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200 font-semibold">
+                                      👤 {entry.changed_by_name}
+                                      {entry.changed_by_role && (
+                                        <span className="ms-1 opacity-70">({entry.changed_by_role})</span>
+                                      )}
+                                    </span>
+                                  )}
                                 </div>
                                 
                                 {/* Order Created - Show on first entry */}
