@@ -454,6 +454,11 @@ const Calendar: React.FC = () => {
           archived: full.archived || false,
           receive_piece_or_exchange: full.receive_piece_or_exchange,
           original_courier_id: full.original_courier_id || full.assigned_courier_id || chosenCourier,
+          // Preserve admin-recorded deposit / prepaid info — only an admin may clear it.
+          admin_prepaid_amount: full.admin_prepaid_amount ?? null,
+          admin_prepaid_method: full.admin_prepaid_method ?? null,
+          admin_prepaid_at: full.admin_prepaid_at ?? null,
+          admin_prepaid_by: full.admin_prepaid_by ?? null,
         }
         const { data: newOrder, error: insertErr } = await supabase
           .from("orders")

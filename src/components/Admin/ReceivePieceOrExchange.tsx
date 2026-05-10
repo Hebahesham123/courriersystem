@@ -69,7 +69,6 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
   const [assignSelectedLoading, setAssignSelectedLoading] = useState(false)
   const [listSearchQuery, setListSearchQuery] = useState("")
   const [bulkRemoveLoading, setBulkRemoveLoading] = useState(false)
-  const [dateTypeFilter, setDateTypeFilter] = useState<"all" | "with_date" | "without_date">("all")
   const [dateRange, setDateRange] = useState<{ from: string; to: string }>(() => {
     // Default to no date filter - show all orders
     // Admin can filter by date range if needed
@@ -108,6 +107,8 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
           users!orders_assigned_courier_id_fkey(name)
         `)
         .in("receive_piece_or_exchange", ["receive_piece", "exchange"])
+        // Exclude اصلي (original/base) orders — only courier-assigned date-suffixed copies belong here.
+        .not("base_order_id", "is", null)
 
       // Apply date filter if at least one date is specified
       // CRITICAL: Filter by updated_at (when the order was last modified, including when it was set to "تبديل" or "استلام قطعه")
@@ -223,6 +224,8 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
         `)
         .or(`order_id.ilike.%${query}%,customer_name.ilike.%${query}%,mobile_number.ilike.%${query}%`)
         .is("receive_piece_or_exchange", null) // Only show orders not already in these categories
+        // Exclude اصلي (original/base) orders — admin must assign to a courier first.
+        .not("base_order_id", "is", null)
         .limit(20)
         .order("created_at", { ascending: false })
 
@@ -781,29 +784,16 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
     }
   }
 
-  // Filter orders by list search query and date-type filter
+  // Filter orders by list search query.
   const applyFilters = (list: Order[]) => {
-    let result = list
-
-    // Date-type filter
-    if (dateTypeFilter === "with_date") {
-      result = result.filter((o) => o.base_order_id != null)
-    } else if (dateTypeFilter === "without_date") {
-      result = result.filter((o) => o.base_order_id == null)
-    }
-
-    // Search filter
     const q = listSearchQuery.trim().toLowerCase()
-    if (q) {
-      result = result.filter(
-        (o) =>
-          o.order_id?.toLowerCase().includes(q) ||
-          o.customer_name?.toLowerCase().includes(q) ||
-          o.mobile_number?.toLowerCase().includes(q)
-      )
-    }
-
-    return result
+    if (!q) return list
+    return list.filter(
+      (o) =>
+        o.order_id?.toLowerCase().includes(q) ||
+        o.customer_name?.toLowerCase().includes(q) ||
+        o.mobile_number?.toLowerCase().includes(q)
+    )
   }
 
   const receivePieceOrders = applyFilters(orders.filter((o) => o.receive_piece_or_exchange === "receive_piece"))
@@ -1021,26 +1011,6 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
             )}
           </div>
 
-          {/* Date-Type Filter Toggle */}
-          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
-            {(["all", "without_date", "with_date"] as const).map((type) => {
-              const labels = { all: "الكل", without_date: "بدون تاريخ", with_date: "مع تاريخ" }
-              const isActive = dateTypeFilter === type
-              return (
-                <button
-                  key={type}
-                  onClick={() => setDateTypeFilter(type)}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
-                    isActive
-                      ? "bg-white text-gray-900 shadow-sm"
-                      : "text-gray-500 hover:text-gray-700"
-                  }`}
-                >
-                  {labels[type]}
-                </button>
-              )
-            })}
-          </div>
         </div>
 
         {/* Selected Orders Actions */}
@@ -1255,7 +1225,7 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
           <div className="space-y-3">
             {receivePieceOrders.length === 0 ? (
               <p className="text-blue-600 text-center py-8">
-                {listSearchQuery || dateTypeFilter !== "all"
+                {listSearchQuery
                   ? "لا توجد نتائج تطابق الفلتر الحالي"
                   : "لا توجد طلبات"}
               </p>
@@ -1332,7 +1302,7 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
           <div className="space-y-3">
             {exchangeOrders.length === 0 ? (
               <p className="text-orange-600 text-center py-8">
-                {listSearchQuery || dateTypeFilter !== "all"
+                {listSearchQuery
                   ? "لا توجد نتائج تطابق الفلتر الحالي"
                   : "لا توجد طلبات"}
               </p>
