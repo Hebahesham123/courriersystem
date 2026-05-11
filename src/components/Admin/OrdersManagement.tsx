@@ -1471,12 +1471,132 @@ const OrdersManagement: React.FC = () => {
   const handleMarkSelectedAsType = async (type: "receive_piece" | "exchange") => {
     setShowReceivePieceTypeModal(false)
     try {
-      const { error: updateError } = await supabase
-        .from("orders")
-        .update({ receive_piece_or_exchange: type })
-        .in("id", selectedOrders)
+      const nowIso = new Date().toISOString()
+      const dateSuffix = String(new Date().getDate()).padStart(2, "0")
 
-      if (updateError) throw updateError
+      // Process each selected order. For Shopify originals (base_order_id is null,
+      // shopify_order_id is set) we create today's date-suffixed copy and put the
+      // flag on the copy — the original stays untouched. Anything else gets the
+      // flag set directly (existing behaviour).
+      for (const id of selectedOrders) {
+        const { data: full, error: fetchErr } = await supabase
+          .from("orders")
+          .select("*")
+          .eq("id", id)
+          .single()
+        if (fetchErr || !full) continue
+
+        const isShopifyOriginal = full.shopify_order_id != null && full.base_order_id == null
+        if (!isShopifyOriginal) {
+          await supabase
+            .from("orders")
+            .update({ receive_piece_or_exchange: type })
+            .eq("id", id)
+          continue
+        }
+
+        // Reuse today's copy if one already exists; otherwise create it.
+        const newOrderId = `${full.order_id}-${dateSuffix}`
+        const { data: existingCopy } = await supabase
+          .from("orders")
+          .select("id")
+          .eq("order_id", newOrderId)
+          .eq("base_order_id", full.id)
+          .maybeSingle()
+
+        if (existingCopy) {
+          await supabase
+            .from("orders")
+            .update({ receive_piece_or_exchange: type, updated_at: nowIso })
+            .eq("id", existingCopy.id)
+          continue
+        }
+
+        const newOrderData: any = {
+          order_id: newOrderId,
+          base_order_id: full.id,
+          shopify_order_id: null,
+          customer_name: full.customer_name,
+          customer_email: full.customer_email,
+          customer_phone: full.customer_phone,
+          customer_id: full.customer_id,
+          mobile_number: full.mobile_number,
+          address: full.address,
+          billing_address: full.billing_address,
+          shipping_address: full.shipping_address,
+          billing_city: full.billing_city,
+          shipping_city: full.shipping_city,
+          billing_country: full.billing_country,
+          shipping_country: full.shipping_country,
+          billing_zip: full.billing_zip,
+          shipping_zip: full.shipping_zip,
+          total_order_fees: full.total_order_fees,
+          subtotal_price: full.subtotal_price,
+          total_tax: full.total_tax,
+          total_discounts: full.total_discounts,
+          total_shipping_price: full.total_shipping_price,
+          currency: full.currency,
+          payment_method: full.payment_method,
+          payment_status: full.payment_status,
+          financial_status: full.financial_status,
+          payment_gateway_names: full.payment_gateway_names,
+          line_items: full.line_items,
+          product_images: full.product_images,
+          order_tags: full.order_tags,
+          order_note: full.order_note,
+          customer_note: full.customer_note,
+          notes: full.notes,
+          shipping_method: full.shipping_method,
+          tracking_number: full.tracking_number,
+          tracking_url: full.tracking_url,
+          fulfillment_status: full.fulfillment_status,
+          shopify_created_at: full.shopify_created_at,
+          shopify_updated_at: full.shopify_updated_at,
+          shopify_cancelled_at: full.shopify_cancelled_at,
+          shopify_closed_at: full.shopify_closed_at,
+          status: "pending",
+          assigned_courier_id: null,
+          assigned_at: null,
+          created_at: nowIso,
+          updated_at: nowIso,
+          delivery_fee: null,
+          partial_paid_amount: null,
+          collected_by: null,
+          payment_sub_type: null,
+          internal_comment: null,
+          archived: full.archived || false,
+          receive_piece_or_exchange: type,
+          // Preserve admin-recorded deposit — only admin may clear it.
+          admin_prepaid_amount: full.admin_prepaid_amount ?? null,
+          admin_prepaid_method: full.admin_prepaid_method ?? null,
+          admin_prepaid_at: full.admin_prepaid_at ?? null,
+          admin_prepaid_by: full.admin_prepaid_by ?? null,
+          original_courier_id: full.original_courier_id || full.assigned_courier_id || null,
+        }
+
+        const { data: newOrder, error: insertErr } = await supabase
+          .from("orders")
+          .insert(newOrderData)
+          .select()
+          .single()
+        if (insertErr) {
+          console.error("Error creating date-suffixed copy:", insertErr)
+          continue
+        }
+
+        const { data: items } = await supabase
+          .from("order_items")
+          .select("*")
+          .eq("order_id", full.id)
+        if (items && items.length > 0 && newOrder) {
+          const newItems = items.map((it: any) => {
+            const copy: any = { ...it, order_id: newOrder.id, created_at: nowIso, updated_at: nowIso }
+            delete copy.id
+            return copy
+          })
+          await supabase.from("order_items").insert(newItems)
+        }
+      }
 
       setSelectedOrders([])
       setShowReceivePieceOrExchange(true)
