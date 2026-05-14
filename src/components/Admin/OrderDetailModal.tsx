@@ -763,14 +763,21 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
           assigned_at: nowIso,
           updated_at: nowIso,
           created_at: nowIso,
-          
+
           // CRITICAL: Reset ALL courier-editable fields to null (new courier starts completely fresh)
           delivery_fee: null,
           partial_paid_amount: null,
           collected_by: null,
           payment_sub_type: null,
           internal_comment: null,
-          
+
+          // Preserve admin-recorded deposit / prepaid info — the deposit was paid
+          // on the original order and must follow the order across reassignments.
+          admin_prepaid_amount: (fullOrder as any).admin_prepaid_amount ?? null,
+          admin_prepaid_method: (fullOrder as any).admin_prepaid_method ?? null,
+          admin_prepaid_at: (fullOrder as any).admin_prepaid_at ?? null,
+          admin_prepaid_by: (fullOrder as any).admin_prepaid_by ?? null,
+
           // Other fields
           archived: fullOrder.archived || false,
           receive_piece_or_exchange: fullOrder.receive_piece_or_exchange,
