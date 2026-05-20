@@ -88,7 +88,9 @@ Deno.serve(async (req: Request) => {
       } else if (statusLower.includes('paid') && !isPartiallyPaid) {
         paymentStatus = 'paid'
       } else if (isPartiallyPaid) {
-        paymentStatus = 'partially_paid'
+        // Partial payments in Shopify must NOT be marked as paid here.
+        // Leave empty so the admin dropdown shows "غير محدد" (unspecified) and admin can set it manually.
+        paymentStatus = ''
       } else if (statusLower.includes('pending') || statusLower.includes('authorized')) {
         paymentStatus = 'pending'
       }
@@ -412,7 +414,18 @@ Deno.serve(async (req: Request) => {
         : [],
       order_note: shopifyOrder.note,
       customer_note: shopifyOrder.customer_note,
-      notes: shopifyOrder.note || shopifyOrder.customer_note || '',
+      notes: (() => {
+        const baseNote = shopifyOrder.note || shopifyOrder.customer_note || ''
+        const totalPrice = parseFloat(shopifyOrder.current_total_price || shopifyOrder.total_price || 0)
+        const outstanding = parseFloat(shopifyOrder.total_outstanding || 0)
+        const paid = totalPrice - outstanding
+        const currency = shopifyOrder.currency || 'EGP'
+        if (paid > 0 && outstanding > 0) {
+          const partialNote = `💰 مدفوع جزئياً | Partially Paid — مدفوع/Paid: ${paid.toFixed(2)} ${currency} | غير مدفوع/Unpaid: ${outstanding.toFixed(2)} ${currency}`
+          return baseNote ? `${partialNote}\n${baseNote}` : partialNote
+        }
+        return baseNote
+      })(),
       shopify_created_at: shopifyOrder.created_at ? new Date(shopifyOrder.created_at).toISOString() : null,
       shopify_updated_at: shopifyOrder.updated_at ? new Date(shopifyOrder.updated_at).toISOString() : null,
       shopify_cancelled_at: shopifyOrder.cancelled_at ? new Date(shopifyOrder.cancelled_at).toISOString() : null,

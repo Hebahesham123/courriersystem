@@ -1433,14 +1433,14 @@ const OrdersManagement: React.FC = () => {
         throw error
       }
 
-      const changes = diffFields(originalOrder as any, updateData as any)
-      if (changes.length > 0) {
+      const fieldChanges = diffFields(originalOrder as any, updateData as any)
+      if (fieldChanges.length > 0) {
         logActivity({
           action: "update_order",
           entityType: "order",
           entityId: orderId,
           entityLabel: originalOrder?.order_id || originalOrder?.customer_name || null,
-          details: { changes },
+          details: { changes: fieldChanges },
           actor: user ? { id: user.id, name: user.name, email: user.email, role: user.role } : null,
         })
       }
