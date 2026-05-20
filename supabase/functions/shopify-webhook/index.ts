@@ -515,12 +515,13 @@ Deno.serve(async (req: Request) => {
     }
 
     if (existingMain) {
-      // Check if order has courier edits - protect ALL courier-edited fields
-      const hasCourierEdits = existingMain.delivery_fee || 
-                             existingMain.partial_paid_amount || 
-                             existingMain.collected_by || 
+      // Check if order has courier/admin edits - protect ALL edited fields
+      const hasCourierEdits = existingMain.delivery_fee ||
+                             existingMain.partial_paid_amount ||
+                             existingMain.collected_by ||
                              existingMain.payment_sub_type ||
                              existingMain.internal_comment ||
+                             (existingMain.payment_status && existingMain.payment_status !== '') ||
                              (existingMain.status && existingMain.status !== 'pending' && existingMain.status !== 'assigned')
       
       // Check if tags have changed (CRITICAL: Always sync tag changes immediately)
@@ -628,8 +629,11 @@ Deno.serve(async (req: Request) => {
         
         console.log(`🔒 PROTECTING courier edits for order ${shopifyOrder.id}: status=${updateData.status}, fulfillment_status=${updateData.fulfillment_status}, collected_by=${existingMain.collected_by}`)
       } else {
-        // No courier edits yet - allow Shopify to set payment info
-        updateData.payment_status = orderData.payment_status
+        // No courier/admin edits yet - allow Shopify to set payment info.
+        // BUT still preserve any admin-set payment_status even if other fields are empty.
+        updateData.payment_status = (existingMain.payment_status && existingMain.payment_status !== '')
+          ? existingMain.payment_status
+          : orderData.payment_status
         updateData.payment_method = orderData.payment_method
         updateData.payment_gateway_names = orderData.payment_gateway_names
         
@@ -669,17 +673,18 @@ Deno.serve(async (req: Request) => {
       // Use upsert but check if order exists first to avoid overwriting courier edits
       const { data: checkExisting } = await supabaseClient
         .from('orders')
-        .select('id, status, delivery_fee, partial_paid_amount, collected_by, payment_sub_type, internal_comment')
+        .select('id, status, delivery_fee, partial_paid_amount, collected_by, payment_sub_type, internal_comment, payment_status')
         .eq('shopify_order_id', shopifyOrder.id)
         .maybeSingle()
-      
+
       if (checkExisting) {
-        // Order exists but wasn't found in first query - protect courier edits
-        const hasCourierEdits = checkExisting.delivery_fee || 
-                               checkExisting.partial_paid_amount || 
-                               checkExisting.collected_by || 
+        // Order exists but wasn't found in first query - protect courier/admin edits
+        const hasCourierEdits = checkExisting.delivery_fee ||
+                               checkExisting.partial_paid_amount ||
+                               checkExisting.collected_by ||
                                checkExisting.payment_sub_type ||
                                checkExisting.internal_comment ||
+                               (checkExisting.payment_status && checkExisting.payment_status !== '') ||
                                (checkExisting.status && checkExisting.status !== 'pending' && checkExisting.status !== 'assigned')
         
         if (hasCourierEdits) {

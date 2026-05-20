@@ -519,12 +519,13 @@ Deno.serve(async (req: Request) => {
         })
 
         // For orders with courier assignments, only update Shopify metadata, not the management fields
-        // CRITICAL: Protect ALL courier edits - never overwrite what courier has set
-        const hasCourierEdits = existing.delivery_fee || 
-                                existing.partial_paid_amount || 
-                                existing.collected_by || 
+        // CRITICAL: Protect ALL courier/admin edits - never overwrite what courier or admin has set
+        const hasCourierEdits = existing.delivery_fee ||
+                                existing.partial_paid_amount ||
+                                existing.collected_by ||
                                 existing.payment_sub_type ||
                                 existing.internal_comment ||
+                                (existing.payment_status && existing.payment_status !== '') ||
                                 (existing.status && existing.status !== 'pending' && existing.status !== 'assigned')
         
         const updateData: any = {
@@ -589,14 +590,20 @@ Deno.serve(async (req: Request) => {
             ? existing.payment_method
             : orderData.payment_method,
           payment_status: (() => {
-            // CRITICAL: For partial payments, force payment_status to empty (غير محدد) — never inherit "paid" from a prior sync.
+            // ALWAYS preserve admin's manual payment_status if they've set one (non-empty).
+            // Admin overrides take priority over any Shopify-derived value.
+            if (existing.payment_status && existing.payment_status !== '') {
+              return existing.payment_status;
+            }
+            // For partial payments with no admin override yet, leave empty (غير محدد)
+            // so admin must set it manually instead of inheriting a stale "paid" value.
             const shopifyPaid = orderData.total_paid || 0;
             const shopifyOutstanding = orderData.balance || 0;
             const hasPartialPayment = shopifyPaid > 0 && shopifyOutstanding > 0;
             if (hasPartialPayment) {
-              return ''; // Leave unspecified so admin must set it manually
+              return '';
             }
-            return (hasCourierEdits && existing.payment_status) ? existing.payment_status : orderData.payment_status;
+            return orderData.payment_status;
           })(),
           collected_by: (hasCourierEdits && existing.collected_by)
             ? existing.collected_by
