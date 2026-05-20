@@ -157,10 +157,57 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // Fetch real transactions for an order. Shopify's orders.json does NOT include
+    // payment_transactions inline (even when requested via fields=), so for orders
+    // we care about (partial payments, gift cards) we hit /orders/{id}/transactions.json.
+    const fetchOrderTransactions = async (orderId: number | string): Promise<any[]> => {
+      try {
+        const txUrl = `https://${cleanStoreUrl}/admin/api/${shopifyApiVersion}/orders/${orderId}/transactions.json`
+        const txResp = await fetch(txUrl, {
+          headers: {
+            'X-Shopify-Access-Token': shopifyAccessToken,
+            'Content-Type': 'application/json',
+          },
+        })
+        if (!txResp.ok) {
+          console.log(`⚠️ Could not fetch transactions for order ${orderId}: ${txResp.status}`)
+          return []
+        }
+        const data = await txResp.json()
+        return data.transactions || []
+      } catch (e) {
+        console.log(`⚠️ Error fetching transactions for order ${orderId}:`, e)
+        return []
+      }
+    }
+
+    // Compute net captured amount from a transactions array.
+    // Sums successful sale/capture transactions and subtracts successful refunds.
+    const sumPaidFromTransactions = (txs: any[]): number => {
+      let paid = 0
+      for (const t of txs) {
+        const status = (t.status || '').toLowerCase()
+        const kind = (t.kind || '').toLowerCase()
+        const amount = parseFloat(t.amount || 0)
+        if (status !== 'success' || isNaN(amount)) continue
+        if (kind === 'sale' || kind === 'capture') paid += amount
+        else if (kind === 'refund') paid -= amount
+      }
+      return paid
+    }
+
     // Function to process a single order
     const processOrder = async (shopifyOrder: any, imageMap: Record<string, string> = {}): Promise<{ imported: boolean, updated: boolean }> => {
       // Get payment transactions (for gift cards and partial payments)
-      const transactions = shopifyOrder.payment_transactions || []
+      let transactions = shopifyOrder.payment_transactions || []
+
+      // If Shopify says partially_paid (or there's a gift card gateway), fetch the real
+      // transactions so we know the actual paid amount — orders.json doesn't include them.
+      const financialStatusForTx = (shopifyOrder.financial_status || '').toLowerCase()
+      const isPartiallyPaidStatus = financialStatusForTx.includes('partially')
+      if (transactions.length === 0 && isPartiallyPaidStatus && shopifyOrder.id) {
+        transactions = await fetchOrderTransactions(shopifyOrder.id)
+      }
       
       // Check both gateway and payment_gateway_names for payment method detection
       const gatewayString = shopifyOrder.gateway || 
@@ -364,19 +411,35 @@ Deno.serve(async (req: Request) => {
         total_discounts: parseFloat(shopifyOrder.current_total_discounts || shopifyOrder.total_discounts || 0),
         total_shipping_price: parseFloat(shopifyOrder.total_shipping_price_set?.shop_money?.amount || shopifyOrder.total_shipping_price_set?.amount || 0),
         currency: shopifyOrder.currency || 'EGP',
-        balance: parseFloat(shopifyOrder.total_outstanding || 0),
-        total_price: parseFloat(shopifyOrder.current_total_price || shopifyOrder.total_price || 0),
-        total_paid: parseFloat(shopifyOrder.current_total_price || shopifyOrder.total_price || 0) - parseFloat(shopifyOrder.total_outstanding || 0),
-        // Set partial_paid_amount from Shopify payment data if there's a partial payment
-        partial_paid_amount: (() => {
-          const totalPrice = parseFloat(shopifyOrder.current_total_price || shopifyOrder.total_price || 0);
-          const outstanding = parseFloat(shopifyOrder.total_outstanding || 0);
-          const paid = totalPrice - outstanding;
-          // If there's a partial payment (paid > 0 but outstanding > 0), set partial_paid_amount
-          if (paid > 0 && outstanding > 0) {
-            return paid;
+        balance: (() => {
+          // Prefer Shopify's total_outstanding when > 0. Otherwise, for partial-paid orders,
+          // derive balance from total - transactions (Shopify reports total_outstanding=0
+          // when the unpaid amount is "unauthorized" rather than captured-but-owed).
+          const outstanding = parseFloat(shopifyOrder.total_outstanding || 0)
+          if (outstanding > 0) return outstanding
+          if (isPartiallyPaidStatus) {
+            const totalPrice = parseFloat(shopifyOrder.current_total_price || shopifyOrder.total_price || 0)
+            const txPaid = sumPaidFromTransactions(transactions)
+            if (txPaid > 0 && txPaid < totalPrice) return totalPrice - txPaid
           }
-          return null;
+          return outstanding
+        })(),
+        total_price: parseFloat(shopifyOrder.current_total_price || shopifyOrder.total_price || 0),
+        total_paid: (() => {
+          const totalPrice = parseFloat(shopifyOrder.current_total_price || shopifyOrder.total_price || 0)
+          const outstanding = parseFloat(shopifyOrder.total_outstanding || 0)
+          const txPaid = sumPaidFromTransactions(transactions)
+          if (isPartiallyPaidStatus && txPaid > 0) return txPaid
+          return totalPrice - outstanding
+        })(),
+        partial_paid_amount: (() => {
+          const totalPrice = parseFloat(shopifyOrder.current_total_price || shopifyOrder.total_price || 0)
+          const outstanding = parseFloat(shopifyOrder.total_outstanding || 0)
+          const txPaid = sumPaidFromTransactions(transactions)
+          if (isPartiallyPaidStatus && txPaid > 0 && txPaid < totalPrice) return txPaid
+          const derivedPaid = totalPrice - outstanding
+          if (derivedPaid > 0 && outstanding > 0) return derivedPaid
+          return null
         })(),
         customer_name: shippingAddress.name || billingAddress.name || `${customer.first_name || ''} ${customer.last_name || ''}`.trim() || 'Unknown',
         customer_email: customer.email || shopifyOrder.email,
@@ -413,11 +476,26 @@ Deno.serve(async (req: Request) => {
         notes: (() => {
           const baseNote = shopifyOrder.note || shopifyOrder.customer_note || ''
           const totalPrice = parseFloat(shopifyOrder.current_total_price || shopifyOrder.total_price || 0)
-          const outstanding = parseFloat(shopifyOrder.total_outstanding || 0)
-          const paid = totalPrice - outstanding
+          const shopifyOutstanding = parseFloat(shopifyOrder.total_outstanding || 0)
+          const txPaid = sumPaidFromTransactions(transactions)
           const currency = shopifyOrder.currency || 'EGP'
-          if (paid > 0 && outstanding > 0) {
-            const partialNote = `💰 مدفوع جزئياً | Partially Paid — مدفوع/Paid: ${paid.toFixed(2)} ${currency} | غير مدفوع/Unpaid: ${outstanding.toFixed(2)} ${currency}`
+
+          // Prefer transactions for paid (accurate), fall back to outstanding-based math
+          let paid: number
+          let unpaid: number
+          if (isPartiallyPaidStatus && txPaid > 0) {
+            paid = txPaid
+            unpaid = Math.max(totalPrice - txPaid, 0)
+          } else {
+            paid = totalPrice - shopifyOutstanding
+            unpaid = shopifyOutstanding
+          }
+
+          const isPartial = isPartiallyPaidStatus || (paid > 0 && unpaid > 0 && paid < totalPrice)
+          if (isPartial && totalPrice > 0) {
+            const partialNote = paid > 0
+              ? `💰 مدفوع جزئياً | Partially Paid — مدفوع/Paid: ${paid.toFixed(2)} ${currency} | غير مدفوع/Unpaid: ${unpaid.toFixed(2)} ${currency}`
+              : `💰 مدفوع جزئياً | Partially Paid — راجع Shopify للمبلغ المدفوع / See Shopify for paid amount`
             return baseNote ? `${partialNote}\n${baseNote}` : partialNote
           }
           return baseNote

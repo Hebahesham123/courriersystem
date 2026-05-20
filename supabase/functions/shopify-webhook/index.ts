@@ -112,8 +112,53 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // Get payment transactions (for gift cards and partial payments)
-    const transactions = shopifyOrder.payment_transactions || []
+    // Compute net captured amount from a transactions array.
+    // Sums successful sale/capture transactions and subtracts successful refunds.
+    const sumPaidFromTransactions = (txs: any[]): number => {
+      let paid = 0
+      for (const t of txs) {
+        const status = (t.status || '').toLowerCase()
+        const kind = (t.kind || '').toLowerCase()
+        const amount = parseFloat(t.amount || 0)
+        if (status !== 'success' || isNaN(amount)) continue
+        if (kind === 'sale' || kind === 'capture') paid += amount
+        else if (kind === 'refund') paid -= amount
+      }
+      return paid
+    }
+
+    // Shopify webhooks don't include payment_transactions inline. For partial-paid
+    // orders we need the real paid amount, so fetch /orders/{id}/transactions.json.
+    const financialStatusForTx = (shopifyOrder.financial_status || '').toLowerCase()
+    const isPartiallyPaidStatus = financialStatusForTx.includes('partially')
+    let transactions = shopifyOrder.payment_transactions || []
+
+    if (transactions.length === 0 && isPartiallyPaidStatus && shopifyOrder.id) {
+      const shopifyStoreUrl = Deno.env.get('SHOPIFY_STORE_URL') || ''
+      const shopifyAccessToken = Deno.env.get('SHOPIFY_ACCESS_TOKEN') || ''
+      const shopifyApiVersion = Deno.env.get('SHOPIFY_API_VERSION') || '2024-01'
+      if (shopifyStoreUrl && shopifyAccessToken) {
+        try {
+          const cleanStoreUrl = shopifyStoreUrl.replace(/^https?:\/\//, '').replace(/\/$/, '')
+          const txUrl = `https://${cleanStoreUrl}/admin/api/${shopifyApiVersion}/orders/${shopifyOrder.id}/transactions.json`
+          const txResp = await fetch(txUrl, {
+            headers: {
+              'X-Shopify-Access-Token': shopifyAccessToken,
+              'Content-Type': 'application/json',
+            },
+          })
+          if (txResp.ok) {
+            const data = await txResp.json()
+            transactions = data.transactions || []
+            console.log(`💳 Fetched ${transactions.length} transactions for partial-paid order ${shopifyOrder.id}`)
+          } else {
+            console.log(`⚠️ Could not fetch transactions for order ${shopifyOrder.id}: ${txResp.status}`)
+          }
+        } catch (e) {
+          console.log(`⚠️ Error fetching transactions:`, e)
+        }
+      }
+    }
     
     // Check both gateway and payment_gateway_names for payment method detection
     const gatewayString = shopifyOrder.gateway || 
@@ -417,11 +462,25 @@ Deno.serve(async (req: Request) => {
       notes: (() => {
         const baseNote = shopifyOrder.note || shopifyOrder.customer_note || ''
         const totalPrice = parseFloat(shopifyOrder.current_total_price || shopifyOrder.total_price || 0)
-        const outstanding = parseFloat(shopifyOrder.total_outstanding || 0)
-        const paid = totalPrice - outstanding
+        const shopifyOutstanding = parseFloat(shopifyOrder.total_outstanding || 0)
+        const txPaid = sumPaidFromTransactions(transactions)
         const currency = shopifyOrder.currency || 'EGP'
-        if (paid > 0 && outstanding > 0) {
-          const partialNote = `💰 مدفوع جزئياً | Partially Paid — مدفوع/Paid: ${paid.toFixed(2)} ${currency} | غير مدفوع/Unpaid: ${outstanding.toFixed(2)} ${currency}`
+
+        let paid: number
+        let unpaid: number
+        if (isPartiallyPaidStatus && txPaid > 0) {
+          paid = txPaid
+          unpaid = Math.max(totalPrice - txPaid, 0)
+        } else {
+          paid = totalPrice - shopifyOutstanding
+          unpaid = shopifyOutstanding
+        }
+
+        const isPartial = isPartiallyPaidStatus || (paid > 0 && unpaid > 0 && paid < totalPrice)
+        if (isPartial && totalPrice > 0) {
+          const partialNote = paid > 0
+            ? `💰 مدفوع جزئياً | Partially Paid — مدفوع/Paid: ${paid.toFixed(2)} ${currency} | غير مدفوع/Unpaid: ${unpaid.toFixed(2)} ${currency}`
+            : `💰 مدفوع جزئياً | Partially Paid — راجع Shopify للمبلغ المدفوع / See Shopify for paid amount`
           return baseNote ? `${partialNote}\n${baseNote}` : partialNote
         }
         return baseNote
