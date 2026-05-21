@@ -1132,7 +1132,7 @@ const OrdersList: React.FC = () => {
       // Primary: assigned_at in range (includes all orders assigned to this courier, including receive_piece/exchange)
       const { data: assignedAtOrders, error: assignedAtError } = await supabase
         .from("orders")
-        .select("id, assigned_at")
+        .select("id, assigned_at, hold_fee, hold_fee_added_at, hold_fee_removed_at")
         .eq("assigned_courier_id", user.id)
         .not("assigned_at", "is", null)
         .gte("assigned_at", startWindow.toISOString())
@@ -1141,30 +1141,48 @@ const OrdersList: React.FC = () => {
       // Fallback: created_at in range for rows without assigned_at (legacy)
       const { data: createdAtOrders, error: createdAtError } = await supabase
         .from("orders")
-        .select("id, created_at")
+        .select("id, created_at, hold_fee, hold_fee_added_at, hold_fee_removed_at")
         .eq("assigned_courier_id", user.id)
         .is("assigned_at", null)
         .gte("created_at", startWindow.toISOString())
         .lte("created_at", endWindow.toISOString())
 
+      // Also fetch orders whose hold-fee window covers the target date. An order
+      // can have an older assigned_at (outside the window) but was put on hold
+      // during the target day — after the hold is removed it should reappear
+      // dated to hold_fee_added_at, not its original assigned_at.
+      const { data: heldOnDateOrders } = await supabase
+        .from("orders")
+        .select("id, assigned_at, created_at, hold_fee, hold_fee_added_at, hold_fee_removed_at")
+        .eq("assigned_courier_id", user.id)
+        .not("hold_fee_added_at", "is", null)
+        .gte("hold_fee_added_at", startWindow.toISOString())
+        .lte("hold_fee_added_at", endWindow.toISOString())
+
+      // Helpers: hide actively-held orders entirely, and use hold_fee_added_at
+      // as the "effective date" for orders whose hold was later removed.
+      const isActivelyOnHold = (o: any) =>
+        Number(o?.hold_fee || 0) > 0 && !o?.hold_fee_removed_at
+      const effectiveDateOf = (o: any): string => {
+        // If the order was ever put on hold and the hold has since been removed,
+        // attribute it to the day the hold was applied.
+        if (o?.hold_fee_added_at && o?.hold_fee_removed_at) {
+          return toCairoYMD(o.hold_fee_added_at)
+        }
+        return toCairoYMD(o?.assigned_at || o?.created_at)
+      }
+
       // Filter by Cairo timezone date in memory
       const assignedOrderIds = new Set<string>()
-      if (assignedAtOrders) {
-        assignedAtOrders.forEach(order => {
-          const cairoDate = toCairoYMD(order.assigned_at)
-          if (cairoDate === targetDate) {
-            assignedOrderIds.add(order.id)
-          }
-        })
+      const addIfMatchesDate = (order: any) => {
+        if (isActivelyOnHold(order)) return // hidden from all daily views
+        if (effectiveDateOf(order) === targetDate) {
+          assignedOrderIds.add(order.id)
+        }
       }
-      if (createdAtOrders) {
-        createdAtOrders.forEach(order => {
-          const cairoDate = toCairoYMD(order.created_at)
-          if (cairoDate === targetDate) {
-            assignedOrderIds.add(order.id)
-          }
-        })
-      }
+      if (assignedAtOrders) assignedAtOrders.forEach(addIfMatchesDate)
+      if (createdAtOrders) createdAtOrders.forEach(addIfMatchesDate)
+      if (heldOnDateOrders) heldOnDateOrders.forEach(addIfMatchesDate)
 
       if (assignedAtError) {
         console.warn("Error fetching assigned_at orders:", assignedAtError)

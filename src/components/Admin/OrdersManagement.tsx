@@ -547,6 +547,7 @@ const OrdersManagement: React.FC = () => {
           shopify_created_at, shopify_cancelled_at, assigned_courier_id, original_courier_id, assigned_at, created_at, updated_at,
           archived, archived_at, collected_by, payment_sub_type, delivery_fee, partial_paid_amount, internal_comment, receive_piece_or_exchange,
           admin_prepaid_amount, admin_prepaid_method, admin_prepaid_at, admin_prepaid_by,
+          hold_fee, hold_fee_comment, hold_fee_added_at, hold_fee_removed_at, hold_fee_created_by, hold_fee_created_at,
           balance, total_paid, shopify_raw_data, base_order_id,
           users!orders_assigned_courier_id_fkey(name)
         `,
@@ -770,6 +771,15 @@ const OrdersManagement: React.FC = () => {
         })
       }
 
+      // Hide orders that are currently on hold from ALL date-filtered views.
+      // (They reappear, dated to the hold-applied day, only after admin removes the hold.)
+      if (activeDateRange && activeDateRange.from && activeDateRange.to) {
+        filteredData = filteredData.filter((order: any) => {
+          const onHold = Number(order?.hold_fee || 0) > 0 && !order?.hold_fee_removed_at
+          return !onHold
+        })
+      }
+
       // Filter orders by local date to match Shopify-style display logic
       // Only apply date filter if user has explicitly selected a date range
       // Default is to show all orders from all days
@@ -778,8 +788,12 @@ const OrdersManagement: React.FC = () => {
           // When courier filter is applied, use assigned_at to show orders assigned on that date
           // Otherwise, use shopify_created_at or created_at
           let timestamp: string | null = null
-          
-          if (activeFilters.couriers.length > 0 && viewMode !== "archived") {
+
+          // If the order was previously held (hold added then removed), attribute it to
+          // the day the hold was applied — overrides assigned_at/created_at for date matching.
+          if (order?.hold_fee_added_at && order?.hold_fee_removed_at) {
+            timestamp = order.hold_fee_added_at
+          } else if (activeFilters.couriers.length > 0 && viewMode !== "archived") {
             // When filtering by courier, use assigned_at (when order was assigned to this courier)
             // Fallback to created_at for legacy orders without assigned_at
             timestamp = order.assigned_at || order.created_at
@@ -787,7 +801,7 @@ const OrdersManagement: React.FC = () => {
             // For general date filtering, use shopify_created_at if available, otherwise created_at
             timestamp = order.shopify_created_at || order.created_at
           }
-          
+
           if (!timestamp) return false
           
           const utcDate = new Date(timestamp)

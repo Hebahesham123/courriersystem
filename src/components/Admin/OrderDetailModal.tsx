@@ -91,6 +91,12 @@ interface Order {
   admin_prepaid_method?: string | null
   admin_prepaid_at?: string | null
   admin_prepaid_by?: string | null
+  hold_fee?: number | null
+  hold_fee_comment?: string | null
+  hold_fee_added_at?: string | null
+  hold_fee_removed_at?: string | null
+  hold_fee_created_by?: string | null
+  hold_fee_created_at?: string | null
 }
 
 interface OrderDetailModalProps {
@@ -134,6 +140,10 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
   const [couriers, setCouriers] = useState<Array<{ id: string; name: string; email: string }>>([])
   const [loadingCouriers, setLoadingCouriers] = useState(false)
   const [assigningCourier, setAssigningCourier] = useState(false)
+  const [holdFeeAmount, setHoldFeeAmount] = useState<string>("")
+  const [holdFeeComment, setHoldFeeComment] = useState<string>("")
+  const [holdFeeSaving, setHoldFeeSaving] = useState(false)
+  const [holdFeeEditing, setHoldFeeEditing] = useState(false)
 
   // Safety check - if no order, don't render
   if (!order) {
@@ -300,6 +310,68 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
   }
 
   // Manual sync function to refresh order from Shopify
+  // Apply a hold fee. While active, the order is hidden from daily views.
+  // hold_fee_added_at is preserved on removal so the order reappears dated to
+  // the day it was put on hold (not the removal day).
+  const handleSaveHoldFee = async () => {
+    const amount = Number.parseFloat(holdFeeAmount) || 0
+    if (amount <= 0) {
+      alert("Enter a hold-fee amount greater than 0 / أدخل قيمة رسوم تعليق أكبر من صفر")
+      return
+    }
+    setHoldFeeSaving(true)
+    try {
+      const nowIso = new Date().toISOString()
+      // Keep the original hold_fee_added_at if the order was already on hold and
+      // we're just updating the amount/comment — preserves the "reappear date".
+      const existingAddedAt = (order as any).hold_fee_added_at
+      const updateData: any = {
+        hold_fee: amount,
+        hold_fee_comment: holdFeeComment || null,
+        hold_fee_added_at: existingAddedAt || nowIso,
+        hold_fee_removed_at: null,
+        hold_fee_created_at: (order as any).hold_fee_created_at || nowIso,
+      }
+      const { error } = await supabase.from("orders").update(updateData).eq("id", order.id)
+      if (error) throw error
+      setHoldFeeEditing(false)
+      if (onUpdate) onUpdate()
+    } catch (e: any) {
+      console.error("Hold fee save error:", e)
+      alert(`Failed to save hold fee: ${e?.message || "Unknown error"}`)
+    } finally {
+      setHoldFeeSaving(false)
+    }
+  }
+
+  // Remove the hold fee. We deliberately DO NOT clear hold_fee_added_at —
+  // daily/calendar views key the order's "effective date" off it so the order
+  // reappears on the day it was originally held.
+  const handleRemoveHoldFee = async () => {
+    if (!confirm("Remove hold fee? The order will reappear on the day it was held. / إزالة رسوم التعليق؟ سيظهر الطلب في اليوم الذي تم تعليقه فيه.")) return
+    setHoldFeeSaving(true)
+    try {
+      const { error } = await supabase
+        .from("orders")
+        .update({
+          hold_fee: null,
+          hold_fee_comment: null,
+          hold_fee_removed_at: new Date().toISOString(),
+        })
+        .eq("id", order.id)
+      if (error) throw error
+      setHoldFeeEditing(false)
+      setHoldFeeAmount("")
+      setHoldFeeComment("")
+      if (onUpdate) onUpdate()
+    } catch (e: any) {
+      console.error("Hold fee remove error:", e)
+      alert(`Failed to remove hold fee: ${e?.message || "Unknown error"}`)
+    } finally {
+      setHoldFeeSaving(false)
+    }
+  }
+
   const handleManualSync = async () => {
     if (!order.shopify_order_id) {
       alert("This order does not have a Shopify ID linked / هذا الطلب ليس له معرف Shopify")
@@ -2143,6 +2215,131 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                   </div>
                 )}
               </div>
+
+              {/* Hold Fee section — admin can put the order on hold so it's hidden from
+                  daily views; when removed later it reappears dated to the day the hold
+                  was applied (hold_fee_added_at), not the removal day. */}
+              {(() => {
+                const holdAmount = Number((order as any).hold_fee || 0)
+                const isOnHold = holdAmount > 0 && !(order as any).hold_fee_removed_at
+                const heldOnDate = (order as any).hold_fee_added_at
+                  ? new Date((order as any).hold_fee_added_at).toLocaleDateString("en-CA", { timeZone: "Africa/Cairo" })
+                  : null
+                return (
+                  <div className={`bg-white border-2 rounded-lg p-4 ${isOnHold ? "border-orange-300 bg-orange-50" : "border-gray-200"}`}>
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                        <Clock className={`w-5 h-5 ${isOnHold ? "text-orange-600" : "text-gray-500"}`} />
+                        Hold Fee / رسوم التعليق
+                        {isOnHold && (
+                          <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-200 text-orange-900">
+                            ON HOLD
+                          </span>
+                        )}
+                      </h3>
+                      {!holdFeeEditing && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setHoldFeeAmount(holdAmount > 0 ? String(holdAmount) : "")
+                            setHoldFeeComment((order as any).hold_fee_comment || "")
+                            setHoldFeeEditing(true)
+                          }}
+                          className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-orange-600 hover:bg-orange-700 text-white"
+                        >
+                          {isOnHold ? "Edit / تعديل" : "Put on Hold / تعليق"}
+                        </button>
+                      )}
+                    </div>
+                    {isOnHold && !holdFeeEditing && (
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-700">المبلغ المحتجز:</span>
+                          <span className="font-bold text-orange-800">{order.currency || "EGP"} {holdAmount.toFixed(2)}</span>
+                        </div>
+                        {heldOnDate && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-700">تاريخ التعليق:</span>
+                            <span className="font-medium text-gray-900">{heldOnDate}</span>
+                          </div>
+                        )}
+                        {(order as any).hold_fee_comment && (
+                          <div className="pt-2 border-t border-orange-200">
+                            <p className="text-xs text-gray-600 mb-1">السبب / Reason:</p>
+                            <p className="text-sm text-gray-900">{(order as any).hold_fee_comment}</p>
+                          </div>
+                        )}
+                        <p className="text-[11px] text-orange-700 pt-2 leading-snug">
+                          ⓘ هذا الطلب مخفي من قائمة اليوم. عند إزالة التعليق سيظهر في يوم {heldOnDate || "التعليق"}.
+                        </p>
+                      </div>
+                    )}
+                    {!isOnHold && !holdFeeEditing && (
+                      <p className="text-xs text-gray-500">
+                        لا توجد رسوم تعليق على هذا الطلب. اضغط "تعليق" لتأجيله من قائمة اليوم.
+                      </p>
+                    )}
+                    {holdFeeEditing && (
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">المبلغ / Amount</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={holdFeeAmount}
+                            onChange={(e) => setHoldFeeAmount(e.target.value)}
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                            placeholder="0.00"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">السبب / Reason (optional)</label>
+                          <textarea
+                            value={holdFeeComment}
+                            onChange={(e) => setHoldFeeComment(e.target.value)}
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 resize-none"
+                            rows={2}
+                            placeholder="سبب التعليق..."
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            disabled={holdFeeSaving}
+                            onClick={handleSaveHoldFee}
+                            className="flex-1 px-3 py-2 text-sm font-semibold rounded-lg bg-orange-600 hover:bg-orange-700 text-white disabled:opacity-50"
+                          >
+                            {holdFeeSaving ? "Saving..." : "Apply Hold / تطبيق"}
+                          </button>
+                          {isOnHold && (
+                            <button
+                              type="button"
+                              disabled={holdFeeSaving}
+                              onClick={handleRemoveHoldFee}
+                              className="px-3 py-2 text-sm font-semibold rounded-lg bg-red-600 hover:bg-red-700 text-white disabled:opacity-50"
+                            >
+                              Remove / إزالة
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            disabled={holdFeeSaving}
+                            onClick={() => {
+                              setHoldFeeEditing(false)
+                              setHoldFeeAmount("")
+                              setHoldFeeComment("")
+                            }}
+                            className="px-3 py-2 text-sm font-semibold rounded-lg bg-gray-200 hover:bg-gray-300 text-gray-800"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
             </div>
 
             {/* Right Column - Sidebar */}
