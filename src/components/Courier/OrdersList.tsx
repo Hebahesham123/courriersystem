@@ -883,7 +883,6 @@ const OrdersList: React.FC = () => {
             .from('order_items')
             .select('id, order_id, title, variant_title, quantity, price, sku, image_url, vendor, product_type, is_removed, is_new, properties')
             .eq('order_id', changedOrderId)
-            .or('is_removed.is.null,is_removed.eq.false')
           setOrders((prev) =>
             prev.map((o) =>
               o.id === changedOrderId
@@ -900,6 +899,7 @@ const OrdersList: React.FC = () => {
                       vendor: it.vendor,
                       product_type: it.product_type,
                       is_removed: it.is_removed,
+                      is_new: it.is_new,
                       properties: it.properties,
                     })),
                   }
@@ -1224,12 +1224,11 @@ const OrdersList: React.FC = () => {
           })
         }
 
-        // Fetch order items (products) — exclude items removed from Shopify
+        // Fetch order items (products) — include removed/new so courier can see Shopify edits
         const { data: orderItems, error: itemsError } = await supabase
           .from("order_items")
           .select("id, order_id, title, variant_title, quantity, price, sku, image_url, vendor, product_type, is_removed, is_new, properties")
           .in("order_id", orderIds)
-          .or("is_removed.is.null,is_removed.eq.false")
 
         if (itemsError) {
           console.warn("Error fetching order items:", itemsError)
@@ -1251,6 +1250,7 @@ const OrdersList: React.FC = () => {
               vendor: item.vendor,
               product_type: item.product_type,
               is_removed: item.is_removed,
+              is_new: item.is_new,
               properties: item.properties,
             })
           })
@@ -4005,9 +4005,10 @@ const deleteDuplicatedOrder = async (order: Order) => {
                       Number(i?.quantity) === 0 ||
                       i?.properties?._is_removed === true ||
                       i?.properties?._is_removed === 'true'
-                    // IMPORTANT: For courier view, filter out removed items - they should NOT appear
-                    // Removed items will still appear in admin view with dashes/strikethrough
-                    const allItems = (allItemsRaw || []).filter((i: any) => !isRemoved(i))
+                    // Show ALL items (including removed). Removed ones render with
+                    // strikethrough + "removed" badge so the courier knows what was
+                    // removed in Shopify. New items get a "New" badge.
+                    const allItems = (allItemsRaw || [])
                     
                     if (allItems && allItems.length > 0) {
                       return (
