@@ -42,6 +42,7 @@ import {
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
 import { useAuth } from "../../contexts/AuthContext"
+import HoldFeeControl from "../shared/HoldFeeControl"
 // useLanguage is unused
 // import { useLanguage } from "../../contexts/LanguageContext"
 import { useModalScrollPreserve } from "../../lib/useModalScrollPreserve"
@@ -3508,6 +3509,16 @@ const Summary: React.FC = () => {
                           </div>
                         </div>
 
+                        {/* Hold Fee Control — admin can put this order on hold (hides from daily views) */}
+                        <div className="mt-3">
+                          <HoldFeeControl
+                            order={order}
+                            isAdmin={isAdmin}
+                            userId={user?.id}
+                            onChange={() => { fetchAllHoldFeesData?.(); }}
+                          />
+                        </div>
+
                         {/* Comment */}
                         {order.internal_comment && (
                           <div className="mt-4 pt-4 border-t border-gray-200">
@@ -5457,6 +5468,17 @@ const Summary: React.FC = () => {
                             })()}
 
                           </div>
+                        </div>
+
+                        {/* Hold Fee Control — visible to admin only; couriers see badge when on hold */}
+                        <div className="mt-3">
+                          <HoldFeeControl
+                            order={order}
+                            isAdmin={isAdmin}
+                            userId={user?.id}
+                            onChange={() => { fetchAllHoldFeesData?.(); }}
+                            compact={isCourier}
+                          />
                         </div>
 
                         {/* Comment */}
