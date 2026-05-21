@@ -2095,15 +2095,20 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                               <>
                                 <span className="text-xs text-gray-600 block mb-1">المجموع:</span>
                                 <span className="block font-bold text-lg">{order.currency || 'EGP'} {orderTotal.toFixed(2)}</span>
-                                {hasPartialPayment && (
+                                {hasPartialPayment && (orderPaid > 0 || orderBalance > 0) && (
                                   <div className="mt-1 space-y-0.5">
                                     <p className="text-xs text-green-700 font-semibold">
                                       مدفوع: {order.currency || 'EGP'} {orderPaid.toFixed(2)}
                                     </p>
                                     <p className="text-xs text-red-700 font-bold">
-                                      المتبقي للتحصيل: {order.currency || 'EGP'} {orderBalance.toFixed(2)}
+                                      المتبقي للتحصيل: {order.currency || 'EGP'} {(orderBalance > 0 ? orderBalance : Math.max(0, orderTotal - orderPaid)).toFixed(2)}
                                     </p>
                                   </div>
+                                )}
+                                {hasPartialPayment && orderPaid === 0 && orderBalance === 0 && (
+                                  <p className="text-xs text-orange-700 font-semibold mt-1">
+                                    ⚠️ مدفوع جزئياً — راجع Shopify للمبلغ المدفوع والمتبقي
+                                  </p>
                                 )}
                                 {(fulfillmentTotals.removedTotal > 0 || fulfillmentTotals.unfulfilledTotal > 0) && !hasPartialPayment && (
                                   <p className="text-xs text-amber-700 font-semibold">

@@ -4500,15 +4500,20 @@ const OrdersManagement: React.FC = () => {
                                     <span className={`text-sm font-semibold ${isCanceled ? "text-red-700 line-through" : "text-gray-900"}`}>
                                       {order.currency || 'EGP'} {orderTotal.toFixed(2)}
                                     </span>
-                                    {hasPartialPayment && (
+                                    {hasPartialPayment && (orderPaid > 0 || orderBalance > 0) && (
                                       <>
                                         <span className="text-[10px] text-green-700 font-semibold">
                                           مدفوع: {orderPaid.toFixed(2)} {order.currency || 'EGP'}
                                         </span>
                                         <span className="text-[10px] text-red-700 font-bold">
-                                          المتبقي: {orderBalance.toFixed(2)} {order.currency || 'EGP'}
+                                          المتبقي: {(orderBalance > 0 ? orderBalance : Math.max(0, orderTotal - orderPaid)).toFixed(2)} {order.currency || 'EGP'}
                                         </span>
                                       </>
+                                    )}
+                                    {hasPartialPayment && orderPaid === 0 && orderBalance === 0 && (
+                                      <span className="text-[10px] text-orange-700 font-semibold">
+                                        ⚠️ جزئي — راجع Shopify
+                                      </span>
                                     )}
                                     {!hasPartialPayment && unfulfilledTotal > 0 && collectibleAmount < orderTotal && (
                                       <span className="text-[10px] text-amber-600 font-semibold">
