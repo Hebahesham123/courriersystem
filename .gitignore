@@ -28,3 +28,13 @@ dist-ssr
 # Test files with potential secrets
 test-*.html
 test-*.js
+
+# Credentials and local-only files
+YOUR_DATABASE_CREDENTIALS.txt
+*credentials*
+*CREDENTIALS*
+server/.env
+.env.*
+!.env.example
+!server.env.example
+New Text Document.txt

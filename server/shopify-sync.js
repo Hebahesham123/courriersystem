@@ -33,6 +33,45 @@ if (!SHOPIFY_STORE_URL || !SHOPIFY_ACCESS_TOKEN) {
   process.exit(1);
 }
 
+// Fetch real transactions for an order from Shopify (orders.json doesn't include them).
+// Needed for partial-paid orders where total_outstanding can be 0 (unauthorized balance).
+async function fetchOrderTransactions(orderId) {
+  if (!orderId) return [];
+  const cleanStoreUrl = SHOPIFY_STORE_URL.replace(/^https?:\/\//, '').replace(/\/$/, '');
+  const url = `https://${cleanStoreUrl}/admin/api/${SHOPIFY_API_VERSION}/orders/${orderId}/transactions.json`;
+  try {
+    const resp = await fetch(url, {
+      headers: {
+        'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+        'Content-Type': 'application/json',
+      },
+    });
+    if (!resp.ok) {
+      console.log(`⚠️ Could not fetch transactions for order ${orderId}: ${resp.status}`);
+      return [];
+    }
+    const data = await resp.json();
+    return data.transactions || [];
+  } catch (e) {
+    console.log(`⚠️ Error fetching transactions for order ${orderId}:`, e.message);
+    return [];
+  }
+}
+
+// Net captured amount from transactions: sum successful sale/capture, subtract successful refunds.
+function sumPaidFromTransactions(txs) {
+  let paid = 0;
+  for (const t of (txs || [])) {
+    const status = (t.status || '').toLowerCase();
+    const kind = (t.kind || '').toLowerCase();
+    const amount = parseFloat(t.amount || 0);
+    if (status !== 'success' || isNaN(amount)) continue;
+    if (kind === 'sale' || kind === 'capture') paid += amount;
+    else if (kind === 'refund') paid -= amount;
+  }
+  return Math.max(0, paid);
+}
+
 // Payment method normalization (enhanced to handle gift cards and partial payments)
 const normalizePayment = (paymentGateway, financialStatus, transactions = []) => {
   const gateway = (paymentGateway || '').toLowerCase();
@@ -491,8 +530,18 @@ async function fetchProductImages(productIds, variantIds) {
 // Convert Shopify order to database format (COMPLETE DATA)
 async function convertShopifyOrderToDB(shopifyOrder, imageMap = {}, existingOrder = null) {
   // Get payment transactions (for gift cards and partial payments)
-  const transactions = shopifyOrder.payment_transactions || [];
-  
+  let transactions = shopifyOrder.payment_transactions || [];
+
+  // Shopify's orders.json doesn't include transactions inline. For partial-paid orders
+  // (where total_outstanding can be 0 because the unpaid balance is "unauthorized"),
+  // we MUST fetch the real transactions to compute the actual paid amount.
+  const _financialStatusLower = (shopifyOrder.financial_status || '').toLowerCase();
+  const _isPartiallyPaidStatus = _financialStatusLower.includes('partially') || _financialStatusLower === 'partial';
+  if (transactions.length === 0 && _isPartiallyPaidStatus && shopifyOrder.id) {
+    transactions = await fetchOrderTransactions(shopifyOrder.id);
+    console.log(`💳 Fetched ${transactions.length} transactions for partial-paid order ${shopifyOrder.name || shopifyOrder.id}`);
+  }
+
   const paymentInfo = normalizePayment(
     shopifyOrder.gateway || shopifyOrder.payment_gateway_names?.[0],
     shopifyOrder.financial_status,
@@ -697,18 +746,37 @@ async function convertShopifyOrderToDB(shopifyOrder, imageMap = {}, existingOrde
     total_discounts: parseFloat(shopifyOrder.current_total_discounts || shopifyOrder.total_discounts || 0),
     total_shipping_price: parseFloat(shopifyOrder.total_shipping_price_set?.shop_money?.amount || shopifyOrder.total_shipping_price_set?.amount || 0),
     currency: shopifyOrder.currency || 'EGP',
-    balance: parseFloat(shopifyOrder.total_outstanding || 0),
+    balance: (() => {
+      // For partial-paid orders, Shopify often reports total_outstanding=0 when the
+      // unpaid amount is "unauthorized" rather than captured-but-owed. In that case,
+      // derive balance from total - (sum of successful sale/capture transactions).
+      const totalPrice = parseFloat(shopifyOrder.current_total_price || shopifyOrder.total_price || 0);
+      const outstanding = parseFloat(shopifyOrder.total_outstanding || 0);
+      if (outstanding > 0) return outstanding;
+      if (_isPartiallyPaidStatus) {
+        const txPaid = sumPaidFromTransactions(transactions);
+        if (txPaid > 0 && txPaid < totalPrice) return totalPrice - txPaid;
+      }
+      return outstanding;
+    })(),
     total_price: parseFloat(shopifyOrder.current_total_price || shopifyOrder.total_price || 0),
-    total_paid: parseFloat(shopifyOrder.current_total_price || shopifyOrder.total_price || 0) - parseFloat(shopifyOrder.total_outstanding || 0),
+    total_paid: (() => {
+      const totalPrice = parseFloat(shopifyOrder.current_total_price || shopifyOrder.total_price || 0);
+      const outstanding = parseFloat(shopifyOrder.total_outstanding || 0);
+      const txPaid = sumPaidFromTransactions(transactions);
+      // For partial-paid orders, prefer the transactions sum (accurate) over the
+      // outstanding-based math (which fails when outstanding=0 due to unauthorized balance).
+      if (_isPartiallyPaidStatus && txPaid > 0) return txPaid;
+      return totalPrice - outstanding;
+    })(),
     // Set partial_paid_amount from Shopify payment data if there's a partial payment
     partial_paid_amount: (() => {
       const totalPrice = parseFloat(shopifyOrder.current_total_price || shopifyOrder.total_price || 0);
       const outstanding = parseFloat(shopifyOrder.total_outstanding || 0);
+      const txPaid = sumPaidFromTransactions(transactions);
+      if (_isPartiallyPaidStatus && txPaid > 0 && txPaid < totalPrice) return txPaid;
       const paid = totalPrice - outstanding;
-      // If there's a partial payment (paid > 0 but outstanding > 0), set partial_paid_amount
-      if (paid > 0 && outstanding > 0) {
-        return paid;
-      }
+      if (paid > 0 && outstanding > 0) return paid;
       return null;
     })(),
     

@@ -3136,19 +3136,24 @@ const deleteDuplicatedOrder = async (order: Order) => {
               // balance = total_outstanding from Shopify (the unpaid amount)
               const orderBalance = (order as any).balance || 0
               const orderPaid = (order as any).total_paid || 0
-              // Check for partial payment: balance > 0 (unpaid) AND paid > 0 (some payment made)
-              // Also check payment_status in case financial_status is not set correctly
-              const hasPartialPayment = orderBalance > 0 && orderPaid > 0 && (
-                order.financial_status === 'partial' || 
+              const _financialStatusLower = (order.financial_status || '').toLowerCase()
+              // Partial payment if Shopify's financial_status says so, OR if the math indicates it.
+              // We must NOT gate on balance>0 alone — Shopify can report balance=0 when the unpaid
+              // amount is "unauthorized" while still marking the order partially_paid.
+              const hasPartialPayment = (
+                _financialStatusLower === 'partially_paid' ||
+                _financialStatusLower === 'partial' ||
                 order.payment_status === 'partial' ||
-                (order.financial_status !== 'paid' && orderPaid > 0 && orderBalance > 0)
+                (orderBalance > 0 && orderPaid > 0)
               )
               
               // If admin has set a total (even if 0), use it. Otherwise calculate from items
               let baseAmount = hasAdminTotal ? adminTotal : Math.max(0, fulfilledTotal)
-              
-              // If there's a partial payment, show the unpaid amount (balance) instead of total
-              const collectibleAmount = hasPartialPayment ? orderBalance : baseAmount
+
+              // For partial payments, show the FULL total as the main figure, but expose
+              // the paid/remaining breakdown so the courier knows what to actually collect.
+              const collectibleAmount = baseAmount
+              const remainingToCollect = hasPartialPayment ? orderBalance : baseAmount
               
               // Calculate amount before discount (subtotal)
               const subtotalBeforeDiscount = fulfilledItems.reduce((sum: number, i: any) => {
@@ -3491,10 +3496,14 @@ const deleteDuplicatedOrder = async (order: Order) => {
                           </div>
                         )}
                         <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold ${
-                          isPaid ? "bg-green-100 text-green-700 border border-green-300" : "bg-yellow-100 text-yellow-700 border border-yellow-300"
+                          hasPartialPayment
+                            ? "bg-orange-100 text-orange-700 border border-orange-300"
+                            : isPaid
+                              ? "bg-green-100 text-green-700 border border-green-300"
+                              : "bg-yellow-100 text-yellow-700 border border-yellow-300"
                         }`}>
-                          {isPaid ? <CheckCircle className="w-4 h-4" /> : <DollarSign className="w-4 h-4" />}
-                          <span>{isPaid ? "مدفوع" : "غير مدفوع"}</span>
+                          {hasPartialPayment ? <DollarSign className="w-4 h-4" /> : isPaid ? <CheckCircle className="w-4 h-4" /> : <DollarSign className="w-4 h-4" />}
+                          <span>{hasPartialPayment ? "مدفوع جزئياً" : isPaid ? "مدفوع" : "غير مدفوع"}</span>
                         </div>
                         {hasRemovedItems && (
                           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-50 text-red-700 border border-red-200">
@@ -3544,21 +3553,47 @@ const deleteDuplicatedOrder = async (order: Order) => {
 
                     {/* Financial Info Row - Modern Grid */}
                     <div className="grid grid-cols-2 gap-3">
-                      <div className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200 rounded-xl p-3 text-center">
-                        <p className="text-xs text-green-700 mb-1">المبلغ للتحصيل</p>
+                      <div className={`bg-gradient-to-br border-2 rounded-xl p-3 text-center ${
+                        hasPartialPayment
+                          ? "from-orange-50 to-amber-50 border-orange-300"
+                          : "from-green-50 to-emerald-50 border-green-200"
+                      }`}>
+                        <p className={`text-xs mb-1 ${hasPartialPayment ? "text-orange-700" : "text-green-700"}`}>
+                          {hasPartialPayment ? "إجمالي الطلب" : "المبلغ للتحصيل"}
+                        </p>
                         {discountInfo.amount > 0 && amountBeforeDiscount > collectibleAmount && (
                           <p className="text-xs text-gray-500 line-through mb-0.5">
                             {amountBeforeDiscount.toFixed(0)} ج.م
                           </p>
                         )}
-                        <p className="text-2xl font-bold text-green-800">{collectibleAmount.toFixed(0)}</p>
-                        <p className="text-xs text-green-600">ج.م</p>
-                        {!hasAdminTotal && unfulfilledTotal > 0 && (
+                        <p className={`text-2xl font-bold ${hasPartialPayment ? "text-orange-800" : "text-green-800"}`}>
+                          {collectibleAmount.toFixed(0)}
+                        </p>
+                        <p className={`text-xs ${hasPartialPayment ? "text-orange-600" : "text-green-600"}`}>ج.م</p>
+                        {hasPartialPayment && (
+                          <div className="mt-2 pt-2 border-t border-orange-200 space-y-0.5">
+                            {orderPaid > 0 || orderBalance > 0 ? (
+                              <>
+                                <p className="text-[11px] text-green-700 font-semibold">
+                                  مدفوع مسبقاً: {orderPaid.toFixed(2)} ج.م
+                                </p>
+                                <p className="text-[12px] text-red-700 font-bold">
+                                  المتبقي للتحصيل: {(orderBalance > 0 ? orderBalance : Math.max(0, collectibleAmount - orderPaid)).toFixed(2)} ج.م
+                                </p>
+                              </>
+                            ) : (
+                              <p className="text-[11px] text-orange-700 font-semibold leading-tight">
+                                ⚠️ مدفوع جزئياً — راجع Shopify للمبلغ المدفوع والمتبقي
+                              </p>
+                            )}
+                          </div>
+                        )}
+                        {!hasPartialPayment && !hasAdminTotal && unfulfilledTotal > 0 && (
                           <p className="text-[11px] text-amber-700 font-semibold mt-1">
                             طرح {unfulfilledTotal.toFixed(0)} ج.م لمنتجات غير منفذة
                           </p>
                         )}
-                        {hasAdminTotal && (
+                        {!hasPartialPayment && hasAdminTotal && (
                           <p className="text-[10px] text-gray-500 mt-1">
                             المبلغ المحدد من الإدارة
                           </p>
@@ -3567,6 +3602,11 @@ const deleteDuplicatedOrder = async (order: Order) => {
                       <div className="bg-gradient-to-br from-blue-50 to-cyan-50 border-2 border-blue-200 rounded-xl p-3 text-center">
                         <p className="text-xs text-blue-700 mb-1">طريقة الدفع</p>
                         <p className="text-sm font-semibold text-blue-800">{getDisplayPaymentMethod(order)}</p>
+                        {hasPartialPayment && (
+                          <p className="text-[10px] text-blue-600 mt-1">
+                            (دُفع جزء عبر هذه الطريقة)
+                          </p>
+                        )}
                       </div>
                     </div>
 
@@ -4349,15 +4389,35 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         <CreditCard className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-white" />
                       </div>
                       <h4 className="text-sm sm:text-lg font-bold text-gray-800">تفاصيل الدفع</h4>
-                      {selectedOrder.payment_status && (
-                        <span className={`px-1.5 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold ${
-                          selectedOrder.payment_status === 'paid' 
-                            ? 'bg-green-100 text-green-700' 
-                            : 'bg-yellow-100 text-yellow-700'
-                        }`}>
-                          {selectedOrder.payment_status === 'paid' ? 'مدفوع' : 'في الانتظار'}
-                        </span>
-                      )}
+                      {(() => {
+                        const fs = (selectedOrder.financial_status || '').toLowerCase()
+                        const ob = (selectedOrder as any).balance || 0
+                        const op = (selectedOrder as any).total_paid || 0
+                        const ot = selectedOrder.total_order_fees || 0
+                        const isPartial = (
+                          fs === 'partially_paid' ||
+                          fs === 'partial' ||
+                          selectedOrder.payment_status === 'partial' ||
+                          (ob > 0 && op > 0 && ot > op)
+                        )
+                        if (isPartial) {
+                          return (
+                            <span className="px-1.5 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold bg-orange-100 text-orange-700">
+                              مدفوع جزئياً
+                            </span>
+                          )
+                        }
+                        if (!selectedOrder.payment_status) return null
+                        return (
+                          <span className={`px-1.5 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold ${
+                            selectedOrder.payment_status === 'paid'
+                              ? 'bg-green-100 text-green-700'
+                              : 'bg-yellow-100 text-yellow-700'
+                          }`}>
+                            {selectedOrder.payment_status === 'paid' ? 'مدفوع' : 'في الانتظار'}
+                          </span>
+                        )
+                      })()}
                     </div>
                     <div className="space-y-1.5 sm:space-y-2.5 bg-white rounded-lg sm:rounded-xl p-2 sm:p-4 border border-amber-100">
                       <div className="flex justify-between items-center py-1 sm:py-1.5 border-b border-gray-100">

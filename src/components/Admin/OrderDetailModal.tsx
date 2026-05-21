@@ -2009,7 +2009,21 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
               <div className="bg-white border border-gray-200 rounded-lg p-4">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="font-semibold text-gray-900">Payment</h3>
-                  {order.payment_status && getStatusBadge(order.payment_status, 'payment')}
+                  {(() => {
+                    const fs = (order.financial_status || '').toLowerCase()
+                    const orderBalance = (order as any).balance || balance || 0
+                    const orderPaid = (order as any).total_paid || paid || 0
+                    const orderTotal = total || 0
+                    const isPartial = (
+                      fs === 'partially_paid' ||
+                      fs === 'partial' ||
+                      order.payment_status === 'partial' ||
+                      (orderBalance > 0 && orderPaid > 0 && orderTotal > orderPaid)
+                    )
+                    if (isPartial) return getStatusBadge('partially_paid', 'payment')
+                    if (order.payment_status) return getStatusBadge(order.payment_status, 'payment')
+                    return null
+                  })()}
                 </div>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
@@ -2066,29 +2080,30 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                         </div>
                       ) : (
                         <div className="text-right">
-                          {/* CRITICAL: If there's a partial payment, show unpaid amount (balance), otherwise show total */}
                           {(() => {
-                            // CRITICAL: Check for partial payment - if balance > 0 AND paid > 0, it's a partial payment
-                            // This means: total = 8750, paid = 1000, balance = 7750 → show 7750 (unpaid amount)
-                            // We check balance and paid directly from order data, not just status flags
                             const orderBalance = (order as any).balance || balance || 0
                             const orderPaid = (order as any).total_paid || paid || 0
                             const orderTotal = total || 0
-                            
-                            // Partial payment exists if: there's an unpaid amount (balance > 0) AND some payment was made (paid > 0)
-                            // AND the total is greater than the paid amount (meaning not fully paid)
-                            const hasPartialPayment = orderBalance > 0 && orderPaid > 0 && orderTotal > orderPaid
-                            const displayAmount = hasPartialPayment ? orderBalance : total
-                            const displayLabel = hasPartialPayment ? 'المبلغ المتبقي (غير مدفوع)' : 'المجموع'
-                            
+                            const financialStatusLower = (order.financial_status || '').toLowerCase()
+                            const hasPartialPayment = (
+                              financialStatusLower === 'partially_paid' ||
+                              financialStatusLower === 'partial' ||
+                              (orderBalance > 0 && orderPaid > 0 && orderTotal > orderPaid)
+                            )
+
                             return (
                               <>
-                                <span className="text-xs text-gray-600 block mb-1">{displayLabel}:</span>
-                                <span className="block font-bold text-lg">{order.currency || 'EGP'} {displayAmount.toFixed(2)}</span>
+                                <span className="text-xs text-gray-600 block mb-1">المجموع:</span>
+                                <span className="block font-bold text-lg">{order.currency || 'EGP'} {orderTotal.toFixed(2)}</span>
                                 {hasPartialPayment && (
-                                  <p className="text-xs text-blue-600 font-semibold mt-1">
-                                    مدفوع: {order.currency || 'EGP'} {orderPaid.toFixed(2)} | الإجمالي: {order.currency || 'EGP'} {orderTotal.toFixed(2)}
-                                  </p>
+                                  <div className="mt-1 space-y-0.5">
+                                    <p className="text-xs text-green-700 font-semibold">
+                                      مدفوع: {order.currency || 'EGP'} {orderPaid.toFixed(2)}
+                                    </p>
+                                    <p className="text-xs text-red-700 font-bold">
+                                      المتبقي للتحصيل: {order.currency || 'EGP'} {orderBalance.toFixed(2)}
+                                    </p>
+                                  </div>
                                 )}
                                 {(fulfillmentTotals.removedTotal > 0 || fulfillmentTotals.unfulfilledTotal > 0) && !hasPartialPayment && (
                                   <p className="text-xs text-amber-700 font-semibold">

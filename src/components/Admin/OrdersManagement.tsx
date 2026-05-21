@@ -2607,20 +2607,28 @@ const OrdersManagement: React.FC = () => {
             </div>
 
             {/* Payment Status Edit */}
-            {isEditing && (
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700">حالة الدفع</label>
-                <select
-                  value={edited.payment_status ?? order.payment_status}
-                  onChange={(e) => handleEditChange(order.id, "payment_status", e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="paid">مدفوع</option>
-                  <option value="pending">معلق</option>
-                  <option value="cod">عند التسليم</option>
-                </select>
-              </div>
-            )}
+            {isEditing && (() => {
+              const fs = (order.financial_status || '').toLowerCase()
+              const isPartial = fs === 'partially_paid' || fs === 'partial' || order.payment_status === 'partial'
+              const displayValue = edited.payment_status !== undefined
+                ? edited.payment_status
+                : (isPartial ? '' : (order.payment_status ?? ''))
+              return (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700">حالة الدفع</label>
+                  <select
+                    value={displayValue}
+                    onChange={(e) => handleEditChange(order.id, "payment_status", e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="">غير محدد</option>
+                    <option value="paid">مدفوع</option>
+                    <option value="pending">معلق</option>
+                    <option value="cod">عند التسليم</option>
+                  </select>
+                </div>
+              )
+            })()}
 
             {/* Address */}
             <div className="space-y-2">
@@ -2714,16 +2722,25 @@ const OrdersManagement: React.FC = () => {
                   </select>
                   
                   {/* Payment Status */}
-                  <select
-                    value={edited.payment_status ?? order.payment_status ?? ""}
-                    onChange={(e) => handleEditChange(order.id, "payment_status", e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="">غير محدد</option>
-                    <option value="paid">مدفوع</option>
-                    <option value="pending">معلق</option>
-                    <option value="cod">عند التسليم</option>
-                  </select>
+                  {(() => {
+                    const fs = (order.financial_status || '').toLowerCase()
+                    const isPartial = fs === 'partially_paid' || fs === 'partial' || order.payment_status === 'partial'
+                    const displayValue = edited.payment_status !== undefined
+                      ? edited.payment_status
+                      : (isPartial ? '' : (order.payment_status ?? ''))
+                    return (
+                      <select
+                        value={displayValue}
+                        onChange={(e) => handleEditChange(order.id, "payment_status", e.target.value)}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      >
+                        <option value="">غير محدد</option>
+                        <option value="paid">مدفوع</option>
+                        <option value="pending">معلق</option>
+                        <option value="cod">عند التسليم</option>
+                      </select>
+                    )
+                  })()}
 
                   {/* Collected By */}
                   <select
@@ -4467,27 +4484,31 @@ const OrdersManagement: React.FC = () => {
                           ) : (
                             <div className="flex flex-col">
                               {(() => {
-                                // CRITICAL: If there's a partial payment, show unpaid amount (balance) instead of total
                                 const orderBalance = (order as any).balance || 0
                                 const orderPaid = (order as any).total_paid || 0
                                 const orderTotal = order.total_order_fees || 0
-                                
-                                // Partial payment exists if: there's an unpaid amount (balance > 0) AND some payment was made (paid > 0)
-                                // AND the total is greater than the paid amount (meaning not fully paid)
-                                const hasPartialPayment = orderBalance > 0 && orderPaid > 0 && orderTotal > orderPaid
-                                
-                                const displayAmount = hasPartialPayment ? orderBalance : orderTotal
-                                const displayLabel = hasPartialPayment ? 'غير مدفوع' : ''
-                                
+                                const financialStatusLower = (order.financial_status || '').toLowerCase()
+
+                                const hasPartialPayment = (
+                                  financialStatusLower === 'partially_paid' ||
+                                  financialStatusLower === 'partial' ||
+                                  (orderBalance > 0 && orderPaid > 0 && orderTotal > orderPaid)
+                                )
+
                                 return (
                                   <>
                                     <span className={`text-sm font-semibold ${isCanceled ? "text-red-700 line-through" : "text-gray-900"}`}>
-                                      {order.currency || 'EGP'} {displayAmount.toFixed(2)}
+                                      {order.currency || 'EGP'} {orderTotal.toFixed(2)}
                                     </span>
                                     {hasPartialPayment && (
-                                      <span className="text-[10px] text-blue-600 font-semibold">
-                                        {displayLabel} | مدفوع: {orderPaid.toFixed(2)} | الإجمالي: {orderTotal.toFixed(2)}
-                                      </span>
+                                      <>
+                                        <span className="text-[10px] text-green-700 font-semibold">
+                                          مدفوع: {orderPaid.toFixed(2)} {order.currency || 'EGP'}
+                                        </span>
+                                        <span className="text-[10px] text-red-700 font-bold">
+                                          المتبقي: {orderBalance.toFixed(2)} {order.currency || 'EGP'}
+                                        </span>
+                                      </>
                                     )}
                                     {!hasPartialPayment && unfulfilledTotal > 0 && collectibleAmount < orderTotal && (
                                       <span className="text-[10px] text-amber-600 font-semibold">
@@ -4501,30 +4522,46 @@ const OrdersManagement: React.FC = () => {
                           )}
                         </td>
                         <td className="px-3 py-2.5">
-                          {isEditing ? (
-                            <select
-                              value={edited.payment_status ?? order.payment_status ?? ""}
-                              onChange={(e) => handleEditChange(order.id, "payment_status", e.target.value)}
-                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            >
-                              <option value="">غير محدد</option>
-                              <option value="paid">مدفوع</option>
-                              <option value="pending">معلق</option>
-                              <option value="cod">عند التسليم</option>
-                            </select>
-                          ) : (
+                          {isEditing ? (() => {
+                            const fs = (order.financial_status || '').toLowerCase()
+                            const isPartial = fs === 'partially_paid' || fs === 'partial' || order.payment_status === 'partial'
+                            const displayValue = edited.payment_status !== undefined
+                              ? edited.payment_status
+                              : (isPartial ? '' : (order.payment_status ?? ''))
+                            return (
+                              <select
+                                value={displayValue}
+                                onChange={(e) => handleEditChange(order.id, "payment_status", e.target.value)}
+                                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              >
+                                <option value="">غير محدد</option>
+                                <option value="paid">مدفوع</option>
+                                <option value="pending">معلق</option>
+                                <option value="cod">عند التسليم</option>
+                              </select>
+                            )
+                          })() : (
                             (() => {
                               const paymentStatus = order.payment_status || 'pending'
-                              const isPaid = paymentStatus === 'paid'
+                              const orderBalance = (order as any).balance || 0
+                              const orderPaid = (order as any).total_paid || 0
+                              const orderTotal = order.total_order_fees || 0
+                              const isPartiallyPaid = (
+                                financialLower === 'partially_paid' ||
+                                financialLower === 'partial' ||
+                                paymentStatus === 'partial' ||
+                                (orderBalance > 0 && orderPaid > 0 && orderTotal > orderPaid)
+                              )
+                              const isPaid = !isPartiallyPaid && paymentStatus === 'paid'
                               const isPaymentCanceled = paymentStatus === 'cancelled' || paymentStatus === 'canceled' || paymentStatus === 'voided' || financialLower === 'void' || financialLower === 'voided'
                               const fulfillmentStatus = order.fulfillment_status || 'unfulfilled'
                               const isFulfilled = fulfillmentStatus === 'fulfilled'
                               return (
                                 <div className="flex flex-col gap-1">
                                   <div className="flex items-center gap-1">
-                                    <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isPaymentCanceled ? 'bg-red-500' : isPaid ? 'bg-gray-500' : 'bg-orange-500'}`}></div>
-                                    <span className={`text-xs ${isCanceled || isPaymentCanceled ? 'text-red-700' : 'text-gray-700'}`}>
-                                      {isPaymentCanceled ? 'Cancelled' : isPaid ? 'Paid' : 'Pending'}
+                                    <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isPaymentCanceled ? 'bg-red-500' : isPartiallyPaid ? 'bg-orange-500' : isPaid ? 'bg-gray-500' : 'bg-orange-500'}`}></div>
+                                    <span className={`text-xs ${isCanceled || isPaymentCanceled ? 'text-red-700' : isPartiallyPaid ? 'text-orange-700 font-semibold' : 'text-gray-700'}`}>
+                                      {isPaymentCanceled ? 'Cancelled' : isPartiallyPaid ? 'Partially paid' : isPaid ? 'Paid' : 'Pending'}
                                     </span>
                                   </div>
                                   <div className="flex items-center gap-1">
