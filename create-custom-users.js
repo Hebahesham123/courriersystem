@@ -37,13 +37,7 @@ function getServiceRoleKey() {
 
 // Requested users (all set to courier role by default)
 const users = [
-  { email: 'testa@gmail.com', password: 'testa123!', role: 'courier', name: 'Testa' },
-  { email: 'testb@gmail.com', password: 'testb123!', role: 'courier', name: 'Testb' },
-  { email: 'yousef@gmail.com', password: 'yousef123!', role: 'courier', name: 'Yousef' },
-  { email: 'ahmed@gmail.com', password: 'ahmed123!', role: 'courier', name: 'Ahmed' },
-  { email: 'car@gmail.com', password: 'car123!', role: 'courier', name: 'Car' },
-  { email: 'ahmedeid@gmail.com', password: 'ahmedeid123!', role: 'courier', name: 'Ahmed Eid' },
-  { email: 'abdelaziz@gmail.com', password: 'abdelaziz123!', role: 'courier', name: 'Abdelaziz' }
+  { email: 'essam@gmail.com', password: 'essam123!', role: 'courier', name: 'Essam' }
 ]
 
 async function createUsers() {
