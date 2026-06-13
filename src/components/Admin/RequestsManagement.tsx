@@ -103,7 +103,7 @@ const RequestsManagement: React.FC = () => {
   const [bulkStatus, setBulkStatus] = useState<Request['status']>('pending')
   const [bulkAssignee, setBulkAssignee] = useState<string>('')
 
-  const assignees = ['Toka', 'Marina', 'Shrouq', 'Mariam']
+  const assignees = ['Toka', 'Marina', 'Shrouq', 'Mariam', 'Amira', 'Salma']
   const statuses: { value: Request['status']; label: string; color: string; icon: React.ComponentType<{ className?: string }> }[] = [
     { value: 'pending', label: 'Pending', color: 'text-yellow-500', icon: Clock },
     { value: 'process', label: 'In Process', color: 'text-blue-500', icon: Play },
