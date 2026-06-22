@@ -37,13 +37,77 @@ const SplitPaymentModal: React.FC<SplitPaymentModalProps> = ({
     currentPrepaidAmount ? String(currentPrepaidAmount) : "",
   )
   const [method, setMethod] = useState<string>(currentPrepaidMethod || "")
+  const [lastAt, setLastAt] = useState<string | null>(currentPrepaidAt ?? null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // The actual order row we will read from and write to.
+  // Split payment must always live on the DATED working copy, never the
+  // original Shopify order. We resolve that copy here.
+  const [targetId, setTargetId] = useState<string>(orderId)
+  const [resolving, setResolving] = useState(true)
+
   useEffect(() => {
-    setAmount(currentPrepaidAmount ? String(currentPrepaidAmount) : "")
-    setMethod(currentPrepaidMethod || "")
-  }, [currentPrepaidAmount, currentPrepaidMethod])
+    let active = true
+
+    const resolveTarget = async () => {
+      setResolving(true)
+      setError(null)
+      try {
+        // Look at the row that was clicked to find its order group.
+        const { data: clicked, error: clickedError } = await supabase
+          .from("orders")
+          .select("id, base_order_id, admin_prepaid_amount, admin_prepaid_method, admin_prepaid_at")
+          .eq("id", orderId)
+          .single()
+
+        if (clickedError) throw clickedError
+
+        let resolvedId = orderId
+        let amt: number | null = clicked?.admin_prepaid_amount ?? null
+        let mtd: string | null = clicked?.admin_prepaid_method ?? null
+        let at: string | null = clicked?.admin_prepaid_at ?? null
+
+        if (clicked?.base_order_id) {
+          // The clicked row is already a dated copy → edit it directly.
+          resolvedId = clicked.id
+        } else {
+          // The clicked row is the ORIGINAL. Redirect to its most recent
+          // dated copy so the original is never modified.
+          const { data: dated } = await supabase
+            .from("orders")
+            .select("id, admin_prepaid_amount, admin_prepaid_method, admin_prepaid_at")
+            .eq("base_order_id", clicked!.id)
+            .order("created_at", { ascending: false })
+            .limit(1)
+
+          if (dated && dated.length > 0) {
+            resolvedId = dated[0].id
+            amt = dated[0].admin_prepaid_amount ?? null
+            mtd = dated[0].admin_prepaid_method ?? null
+            at = dated[0].admin_prepaid_at ?? null
+          }
+          // If there is no dated copy yet, fall back to the original row
+          // (it is the only row that exists for this order).
+        }
+
+        if (!active) return
+        setTargetId(resolvedId)
+        setAmount(amt ? String(amt) : "")
+        setMethod(mtd || "")
+        setLastAt(at)
+      } catch (e: any) {
+        if (active) setError(e?.message || "Failed to load / فشل التحميل")
+      } finally {
+        if (active) setResolving(false)
+      }
+    }
+
+    resolveTarget()
+    return () => {
+      active = false
+    }
+  }, [orderId])
 
   const parsedAmount = Number.parseFloat(amount) || 0
   const remaining = Math.max(0, orderTotal - parsedAmount)
@@ -75,7 +139,7 @@ const SplitPaymentModal: React.FC<SplitPaymentModalProps> = ({
           admin_prepaid_at: new Date().toISOString(),
           admin_prepaid_by: user?.id ?? null,
         })
-        .eq("id", orderId)
+        .eq("id", targetId)
 
       if (updateError) throw updateError
 
@@ -101,7 +165,7 @@ const SplitPaymentModal: React.FC<SplitPaymentModalProps> = ({
           admin_prepaid_at: null,
           admin_prepaid_by: null,
         })
-        .eq("id", orderId)
+        .eq("id", targetId)
       if (updateError) throw updateError
       onSaved?.()
       onClose()
@@ -155,8 +219,9 @@ const SplitPaymentModal: React.FC<SplitPaymentModalProps> = ({
                 max={orderTotal}
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
+                disabled={resolving}
                 placeholder="0.00"
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base"
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base disabled:bg-gray-100"
               />
               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">
                 EGP
@@ -173,7 +238,8 @@ const SplitPaymentModal: React.FC<SplitPaymentModalProps> = ({
               <select
                 value={method}
                 onChange={(e) => setMethod(e.target.value)}
-                className="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base bg-white"
+                disabled={resolving}
+                className="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base bg-white disabled:bg-gray-100"
               >
                 <option value="">-- Select / اختر --</option>
                 {PAYMENT_METHODS.map((m) => (
@@ -192,10 +258,17 @@ const SplitPaymentModal: React.FC<SplitPaymentModalProps> = ({
             <span className="text-xl font-bold text-green-600">{remaining.toFixed(2)} EGP</span>
           </div>
 
-          {currentPrepaidAt && (
+          {resolving && (
+            <p className="text-xs text-gray-500 flex items-center gap-1.5">
+              <RefreshCw className="w-3 h-3 animate-spin" />
+              Loading current value… / جارٍ تحميل القيمة الحالية…
+            </p>
+          )}
+
+          {lastAt && !resolving && (
             <p className="text-xs text-gray-500">
               Last updated:{" "}
-              {new Date(currentPrepaidAt).toLocaleString("en-GB", {
+              {new Date(lastAt).toLocaleString("en-GB", {
                 day: "2-digit",
                 month: "short",
                 year: "numeric",
@@ -214,10 +287,10 @@ const SplitPaymentModal: React.FC<SplitPaymentModalProps> = ({
 
         {/* Footer */}
         <div className="px-5 py-4 bg-gray-50 flex items-center justify-between gap-3">
-          {currentPrepaidAmount ? (
+          {parsedAmount > 0 ? (
             <button
               onClick={handleClear}
-              disabled={saving}
+              disabled={saving || resolving}
               className="flex items-center gap-1.5 px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg text-sm font-medium transition disabled:opacity-50"
             >
               <Trash2 className="w-4 h-4" />
@@ -236,7 +309,7 @@ const SplitPaymentModal: React.FC<SplitPaymentModalProps> = ({
             </button>
             <button
               onClick={handleSave}
-              disabled={saving}
+              disabled={saving || resolving}
               className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition disabled:opacity-50"
             >
               {saving ? (
