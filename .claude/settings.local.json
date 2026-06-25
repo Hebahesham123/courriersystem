@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C \"C:\\\\Users\\\\g8\\\\Downloads\\\\courriersystem-main \\(1\\)\\\\courriersystem-main\" status)",
+      "Bash(ls -la .env* server/.env*)",
+      "Bash(ls YOUR_DATABASE_CREDENTIALS.txt server.env.example)",
+      "Bash(ls .gitignore)",
+      "Bash(git ls-remote *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)"
+    ]
+  }
+}
