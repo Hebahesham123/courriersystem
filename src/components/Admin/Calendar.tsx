@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react"
 import { ChevronLeft, ChevronRight, RefreshCw, Calendar as CalIcon, X, UserPlus, Phone, Clock, MapPin } from "lucide-react"
 import { whatsappSupabase, type WhatsAppOrder } from "../../lib/whatsappSupabase"
 import { supabase } from "../../lib/supabase"
+import { notifyCourierAssigned } from "../../lib/notifyAssignment"
 
 interface Courier {
   id: string
@@ -494,6 +495,14 @@ const Calendar: React.FC = () => {
           })
           .eq("id", order.id)
       }
+      // Notify the customer (via n8n) that their order is now with a courier.
+      notifyCourierAssigned({
+        orderNumber: matchedOrder.order_id || String(matchedOrder.id),
+        courierName: couriers.find((c) => c.id === chosenCourier)?.name || "المندوب",
+        customerName: matchedOrder.customer_name ?? null,
+        customerPhone: matchedOrder.customer_phone ?? null,
+      })
+
       setAssignSuccess("تم التعيين بنجاح")
       setTimeout(() => closeModal(), 1200)
     } catch (e: any) {

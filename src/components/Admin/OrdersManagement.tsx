@@ -47,6 +47,7 @@ import { supabase } from "../../lib/supabase"
 import { useLanguage } from "../../contexts/LanguageContext"
 import { useAuth } from "../../contexts/AuthContext"
 import { logActivity, diffFields } from "../../lib/activityLogger"
+import { notifyCourierAssigned } from "../../lib/notifyAssignment"
 import OrderDetailModal from "./OrderDetailModal"
 import SplitPaymentModal from "./SplitPaymentModal"
 import BulkSplitPaymentModal from "./BulkSplitPaymentModal"
@@ -1459,6 +1460,21 @@ const OrdersManagement: React.FC = () => {
         })
       }
 
+      // Notify the customer (via n8n) when this save assigned the order to a
+      // (new) courier. Only fires on an actual courier change, not other edits.
+      if (
+        updateData.assigned_courier_id &&
+        updateData.assigned_courier_id !== originalOrder?.assigned_courier_id
+      ) {
+        const courierName = couriers.find((c) => c.id === updateData.assigned_courier_id)?.name || "المندوب"
+        notifyCourierAssigned({
+          orderNumber: originalOrder?.order_id || String(orderId),
+          courierName,
+          customerName: originalOrder?.customer_name ?? null,
+          customerPhone: (originalOrder as any)?.mobile_number || (originalOrder as any)?.customer_phone || null,
+        })
+      }
+
       setSuccessMessage("Changes saved successfully / تم حفظ التغييرات بنجاح")
       setOrderEdits((prev) => {
         const copy = { ...prev }
@@ -2001,6 +2017,17 @@ const OrdersManagement: React.FC = () => {
             actor: user ? { id: user.id, name: user.name, email: user.email, role: user.role } : null,
           })
         }
+      }
+
+      // Notify the customer (via n8n) for each order assigned in this batch.
+      const bulkCourierName = couriers.find((c) => c.id === selectedCourier)?.name || "المندوب"
+      for (const order of currentOrders) {
+        notifyCourierAssigned({
+          orderNumber: (order as any).order_id || String((order as any).id),
+          courierName: bulkCourierName,
+          customerName: (order as any).customer_name ?? null,
+          customerPhone: (order as any).mobile_number || (order as any).customer_phone || null,
+        })
       }
 
       // Refresh orders to show the new date-suffixed orders
