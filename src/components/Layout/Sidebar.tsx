@@ -26,6 +26,7 @@ import {
   RefreshCw,
   Globe,
   Calendar,
+  Map as MapIcon,
 } from "lucide-react"
 import { useAuth } from "../../contexts/AuthContext"
 import { useLanguage } from "../../contexts/LanguageContext"
@@ -196,6 +197,13 @@ const Sidebar: React.FC = () => {
       label: t("طلباطي") || "Orders",
       color: "text-green-400",
       description: "طلبات التوصيل المخصصة لي",
+    },
+    {
+      path: "/courier/maps",
+      icon: MapIcon,
+      label: "خريطة الطريق",
+      color: "text-teal-400",
+      description: "ترتيب الطلبات حسب الأقرب والتنقّل",
     },
     {
       path: "/courier/yoursheet",

@@ -38,6 +38,7 @@ import {
   Percent,
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
+import { whatsappSupabase } from "../../lib/whatsappSupabase"
 import { useAuth } from "../../contexts/AuthContext"
 import { logActivity, diffFields } from "../../lib/activityLogger"
 import { useModalScrollPreserve } from "../../lib/useModalScrollPreserve"
@@ -335,6 +336,12 @@ const OrdersList: React.FC = () => {
   }
 
   const [selectedDate, setSelectedDate] = useState<string>(getTodayDateString())
+  // Route sequence (from the Maps/Route tab) + customer-requested delivery window,
+  // used to order the cards the same way as the map and to show the time badge.
+  const [routeSeqByOrderId, setRouteSeqByOrderId] = useState<Map<string, number>>(new Map())
+  const [deliveryInfoByOrderId, setDeliveryInfoByOrderId] = useState<
+    Map<string, { date: string | null; time: string | null }>
+  >(new Map())
   const [updateData, setUpdateData] = useState({
     status: "",
     delivery_fee: "",
@@ -1087,6 +1094,75 @@ const OrdersList: React.FC = () => {
     const match = orderId.match(/\d+/)
     return match ? Number.parseInt(match[0], 10) : 0
   }
+
+  // Load the courier's saved route order (from the Maps/Route tab) and the
+  // customer-requested delivery windows, so the cards mirror the map: same
+  // arrangement, a sequence number, and the customer's preferred time.
+  useEffect(() => {
+    if (!user?.id) return
+    let alive = true
+    ;(async () => {
+      // 1) saved route → order_id -> sequence number (1-based, map order)
+      const { data: routeRow } = await supabase
+        .from("courier_routes")
+        .select("stops")
+        .eq("courier_id", user.id)
+        .eq("route_date", selectedDate)
+        .maybeSingle()
+      const seq = new Map<string, number>()
+      if (routeRow?.stops && Array.isArray(routeRow.stops)) {
+        ;(routeRow.stops as { order_id?: string | number }[]).forEach((s, i) => {
+          if (s?.order_id != null) seq.set(String(s.order_id), i + 1)
+        })
+      }
+      if (alive) setRouteSeqByOrderId(seq)
+
+      // 2) WhatsApp delivery windows (read-only project), keyed by several ids
+      try {
+        const { data: wa } = await whatsappSupabase
+          .from("bb_whatsapp_orders")
+          .select("order_id, customer_phone, delivery_date, delivery_time")
+          .order("created_at", { ascending: false })
+          .limit(2000)
+        const info = new Map<string, { date: string | null; time: string | null }>()
+        for (const w of wa || []) {
+          const entry = { date: w.delivery_date, time: w.delivery_time }
+          if (w.order_id) info.set("oid:" + String(w.order_id), entry)
+          if (w.customer_phone) info.set("ph:" + String(w.customer_phone), entry)
+        }
+        if (alive) setDeliveryInfoByOrderId(info)
+      } catch {
+        /* WhatsApp project optional — ignore if unreachable */
+      }
+    })()
+    return () => {
+      alive = false
+    }
+  }, [user?.id, selectedDate, orders.length])
+
+  // Look up a customer's requested delivery window for an order.
+  const getDeliveryInfo = (order: Order): { date: string | null; time: string | null } | null => {
+    const anyOrder = order as unknown as { shopify_order_id?: string | number; customer_phone?: string | null }
+    return (
+      deliveryInfoByOrderId.get("oid:" + String(order.order_id)) ||
+      (anyOrder.shopify_order_id ? deliveryInfoByOrderId.get("oid:" + String(anyOrder.shopify_order_id)) : undefined) ||
+      (order.mobile_number ? deliveryInfoByOrderId.get("ph:" + String(order.mobile_number)) : undefined) ||
+      (anyOrder.customer_phone ? deliveryInfoByOrderId.get("ph:" + String(anyOrder.customer_phone)) : undefined) ||
+      null
+    )
+  }
+
+  // Cards displayed in the same order as the map route (by saved sequence),
+  // falling back to the existing order-number sort for anything not in the route.
+  const displayedOrders = useMemo(() => {
+    if (routeSeqByOrderId.size === 0) return orders
+    return [...orders].sort((a, b) => {
+      const sa = routeSeqByOrderId.get(String(a.order_id)) ?? Number.POSITIVE_INFINITY
+      const sb = routeSeqByOrderId.get(String(b.order_id)) ?? Number.POSITIVE_INFINITY
+      if (sa !== sb) return sa - sb
+      return getOrderNumber(a.order_id) - getOrderNumber(b.order_id)
+    })
+  }, [orders, routeSeqByOrderId])
 
   const fetchOrders = useCallback(async (showRefreshing = false, showFullLoading = true, dateOverride?: string) => {
     if (!user?.id) {
@@ -3108,7 +3184,9 @@ const deleteDuplicatedOrder = async (order: Order) => {
         ) : (
           // Orders List - Two Columns on Mobile and Desktop
           <div className="grid grid-cols-2 gap-2 sm:gap-3 md:gap-4 lg:grid-cols-3 xl:grid-cols-4">
-            {orders.map((order, index) => {
+            {displayedOrders.map((order, index) => {
+              const routeSeq = routeSeqByOrderId.get(String(order.order_id))
+              const deliveryInfo = getDeliveryInfo(order)
               const statusInfo = getStatusInfo(order.status)
               const StatusIcon = statusInfo.icon
               const deliveryFee = order.delivery_fee || 0
@@ -3475,6 +3553,14 @@ const deleteDuplicatedOrder = async (order: Order) => {
                       {/* Order ID and badges */}
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2 flex-wrap">
+                          {routeSeq != null && (
+                            <span
+                              className="flex items-center justify-center w-7 h-7 rounded-full bg-gradient-to-br from-blue-600 to-purple-600 text-white text-sm font-bold shadow flex-shrink-0"
+                              title={`ترتيب المسار رقم ${routeSeq} (حسب خريطة الطريق)`}
+                            >
+                              {routeSeq}
+                            </span>
+                          )}
                           <h3 className="text-lg font-bold text-gray-900">#{order.order_id}</h3>
                           {order.order_id.includes("(نسخة)") && (
                             <span className="px-2 py-1 bg-green-600 text-white text-xs rounded-full font-medium whitespace-nowrap">
@@ -3484,11 +3570,30 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         </div>
                         <p className="text-xs text-gray-500">{formatTime(order.created_at)}</p>
                       </div>
-                      
+
                       {/* Customer name */}
                       <div>
                         <p className="text-base font-semibold text-gray-800">{order.customer_name}</p>
                       </div>
+
+                      {/* Customer-requested delivery window (from WhatsApp) */}
+                      {deliveryInfo && (deliveryInfo.time || deliveryInfo.date) && (
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {deliveryInfo.time && (
+                            <span className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                              <Clock className="w-3.5 h-3.5" />
+                              {deliveryInfo.time}
+                            </span>
+                          )}
+                          {deliveryInfo.date && (
+                            <span className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                              <CalendarDays className="w-3.5 h-3.5" />
+                              {deliveryInfo.date}
+                            </span>
+                          )}
+                          <span className="text-[10px] text-gray-400">الموعد المطلوب من العميل</span>
+                        </div>
+                      )}
                       
                       {/* Status & Payment Badges */}
                       <div className="flex gap-2 flex-wrap">

@@ -123,10 +123,51 @@ Deno.serve(async (req: Request) => {
         if (!paymentMethods.includes('paymob')) paymentMethods.push('paymob')
       }
 
-      // Determine payment status
-      // Paymob, Valu, and all online payment methods are always paid, regardless of financial_status
+      // Explicit Cash-on-Delivery detection. This takes PRECEDENCE over any card
+      // gateway that may also be present: when a customer's card is refused and
+      // they fall back to COD, Shopify keeps the failed card gateway in the list,
+      // but the order is unpaid COD. We must NOT read that as paid.
+      // (Careful: "vodafone cash"/"orange cash" are online wallets, not COD — the
+      // patterns below only match true cash-on-delivery markers.)
+      const mentionsCOD =
+        gatewayLower.includes('cash on delivery') ||
+        gatewayLower.includes('cash_on_delivery') ||
+        gatewayLower.includes('cashondelivery') ||
+        gatewayLower.includes('(cod)') ||
+        /(^|[^a-z])cod([^a-z]|$)/.test(gatewayLower) ||
+        gatewayLower.includes('عند الاستلام') ||
+        gatewayLower.includes('عند الإستلام')
+
+      // Real captured money = sum of SUCCESSFUL sale/capture transactions (minus
+      // refunds). A failed/declined card contributes nothing. This is what tells a
+      // "refused card then COD" order (captured = 0 → unpaid COD) apart from a
+      // genuine "paid part online + rest COD" (captured > 0 → real partial).
+      let capturedPaid = 0
+      for (const t of (transactions || [])) {
+        const st = (t.status || '').toLowerCase()
+        const kind = (t.kind || '').toLowerCase()
+        const amt = parseFloat(t.amount || 0)
+        if (st !== 'success' || isNaN(amt)) continue
+        if (kind === 'sale' || kind === 'capture') capturedPaid += amt
+        else if (kind === 'refund') capturedPaid -= amt
+      }
+
+      // Determine payment status.
+      // COD takes precedence, but ONLY marks the order paid if money was actually
+      // captured. Otherwise online methods are treated as paid (Paymob/Valu often
+      // report Shopify financial_status=pending even after a real capture).
       let paymentStatus = 'cod'
-      if (gatewayLower.includes('valu')) {
+      if (mentionsCOD) {
+        if (statusLower.includes('paid') && !isPartiallyPaid) {
+          paymentStatus = 'paid' // Shopify itself confirms full payment (rare prepaid+COD)
+        } else if (capturedPaid > 0) {
+          // Some money really was captured → genuine partial; let admin confirm.
+          paymentStatus = ''
+        } else {
+          // Nothing captured (e.g. a refused card attempt) → plain unpaid COD.
+          paymentStatus = 'cod'
+        }
+      } else if (gatewayLower.includes('valu')) {
         paymentStatus = 'paid'
       } else if (isOnlinePayment) {
         paymentStatus = 'paid'
@@ -140,9 +181,12 @@ Deno.serve(async (req: Request) => {
         paymentStatus = 'pending'
       }
 
-      // Determine primary payment method
+      // Determine primary payment method. A refused-card-then-COD order (COD gateway,
+      // nothing captured) must read as cash, not the leftover card/paymob method.
       let primaryMethod = 'cash'
-      if (paymentMethods.length > 0) {
+      if (mentionsCOD && capturedPaid <= 0 && !(statusLower.includes('paid') && !isPartiallyPaid)) {
+        primaryMethod = 'cash'
+      } else if (paymentMethods.length > 0) {
         primaryMethod = paymentMethods[0]
       } else if (statusLower.includes('paid') && !isPartiallyPaid) {
         primaryMethod = 'paid'
@@ -209,11 +253,15 @@ Deno.serve(async (req: Request) => {
         transactions = await fetchOrderTransactions(shopifyOrder.id)
       }
       
-      // Check both gateway and payment_gateway_names for payment method detection
-      const gatewayString = shopifyOrder.gateway || 
-                           shopifyOrder.payment_gateway_names?.[0] || 
-                           (Array.isArray(shopifyOrder.payment_gateway_names) ? shopifyOrder.payment_gateway_names.join(' ') : '') ||
-                           ''
+      // Check both gateway and ALL payment_gateway_names for payment method detection.
+      // We must include the WHOLE array (not just [0]) so that a "Cash on Delivery"
+      // gateway is still seen when a failed/declined card attempt sits in front of it.
+      const gatewayString = [
+        shopifyOrder.gateway,
+        ...(Array.isArray(shopifyOrder.payment_gateway_names) ? shopifyOrder.payment_gateway_names : []),
+      ]
+        .filter(Boolean)
+        .join(' ')
       
       const paymentInfo = normalizePayment(
         gatewayString,
@@ -397,7 +445,13 @@ Deno.serve(async (req: Request) => {
         shopify_order_number: shopifyOrder.order_number?.toString(),
         order_id: shopifyOrder.name || shopifyOrder.order_number?.toString() || shopifyOrder.id?.toString(),
         status: initialStatus,
-        financial_status: shopifyOrder.financial_status || paymentInfo.status,
+        // If we determined the order is an unpaid COD (COD gateway, nothing
+        // captured — e.g. a refused card then COD), do NOT store Shopify's
+        // misleading 'partially_paid'/'pending'; store 'pending' so the UI doesn't
+        // flag it as partially paid.
+        financial_status: paymentInfo.status === 'cod'
+          ? 'pending'
+          : (shopifyOrder.financial_status || paymentInfo.status),
         payment_status: initialPaymentStatus,
         payment_method: initialPaymentMethod,
         collected_by: initialCollectedBy,
@@ -412,33 +466,34 @@ Deno.serve(async (req: Request) => {
         total_shipping_price: parseFloat(shopifyOrder.total_shipping_price_set?.shop_money?.amount || shopifyOrder.total_shipping_price_set?.amount || 0),
         currency: shopifyOrder.currency || 'EGP',
         balance: (() => {
-          // Prefer Shopify's total_outstanding when > 0. Otherwise, for partial-paid orders,
-          // derive balance from total - transactions (Shopify reports total_outstanding=0
-          // when the unpaid amount is "unauthorized" rather than captured-but-owed).
-          const outstanding = parseFloat(shopifyOrder.total_outstanding || 0)
-          if (outstanding > 0) return outstanding
-          if (isPartiallyPaidStatus) {
-            const totalPrice = parseFloat(shopifyOrder.current_total_price || shopifyOrder.total_price || 0)
+          // When we fetched real transactions, base the balance on ACTUALLY captured
+          // money (total - captured) so a refused card attempt doesn't fake a paid
+          // balance. Only fall back to Shopify's outstanding when we have no
+          // transactions (e.g. fully-paid orders we didn't fetch txns for).
+          const totalPrice = parseFloat(shopifyOrder.current_total_price || shopifyOrder.total_price || 0)
+          if (transactions && transactions.length > 0) {
             const txPaid = sumPaidFromTransactions(transactions)
-            if (txPaid > 0 && txPaid < totalPrice) return totalPrice - txPaid
+            return Math.max(0, totalPrice - txPaid)
           }
-          return outstanding
+          return parseFloat(shopifyOrder.total_outstanding || 0)
         })(),
         total_price: parseFloat(shopifyOrder.current_total_price || shopifyOrder.total_price || 0),
         total_paid: (() => {
+          // Prefer real captured money from transactions; only fall back to the
+          // outstanding-based math when we have no transactions to go on.
           const totalPrice = parseFloat(shopifyOrder.current_total_price || shopifyOrder.total_price || 0)
+          if (transactions && transactions.length > 0) return sumPaidFromTransactions(transactions)
           const outstanding = parseFloat(shopifyOrder.total_outstanding || 0)
-          const txPaid = sumPaidFromTransactions(transactions)
-          if (isPartiallyPaidStatus && txPaid > 0) return txPaid
           return totalPrice - outstanding
         })(),
         partial_paid_amount: (() => {
           const totalPrice = parseFloat(shopifyOrder.current_total_price || shopifyOrder.total_price || 0)
-          const outstanding = parseFloat(shopifyOrder.total_outstanding || 0)
           const txPaid = sumPaidFromTransactions(transactions)
-          if (isPartiallyPaidStatus && txPaid > 0 && txPaid < totalPrice) return txPaid
-          const derivedPaid = totalPrice - outstanding
-          if (derivedPaid > 0 && outstanding > 0) return derivedPaid
+          // Only REAL captured money (a successful transaction) counts as partially
+          // paid. Do NOT derive "paid" from total - outstanding: a refused card
+          // attempt then COD leaves an outstanding gap that is NOT money received,
+          // which previously made unpaid COD orders look partially paid.
+          if (txPaid > 0 && txPaid < totalPrice) return txPaid
           return null
         })(),
         customer_name: shippingAddress.name || billingAddress.name || `${customer.first_name || ''} ${customer.last_name || ''}`.trim() || 'Unknown',
