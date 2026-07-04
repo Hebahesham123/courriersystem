@@ -25,7 +25,6 @@ import {
   RotateCcw,
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
-import { notifyCourierAssigned } from "../../lib/notifyAssignment"
 import SplitPaymentModal from "./SplitPaymentModal"
 
 interface OrderItem {
@@ -936,18 +935,6 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
           .eq('id', order.id)
 
         if (updateError) throw updateError
-      }
-
-      // Notify the customer (via n8n) when a courier was actually assigned
-      // (not on unassign).
-      if (courierId) {
-        const courierName = couriers.find((c) => c.id === courierId)?.name || "المندوب"
-        notifyCourierAssigned({
-          orderNumber: order.order_id || String(order.id),
-          courierName,
-          customerName: order.customer_name ?? null,
-          customerPhone: (order as any).mobile_number || (order as any).customer_phone || null,
-        })
       }
 
       // Refresh order data
