@@ -3262,22 +3262,16 @@ const deleteDuplicatedOrder = async (order: Order) => {
                 ? order.subtotal_price 
                 : subtotalBeforeDiscount
               
-              const noteText = `${order.internal_comment || ""} ${order.notes || ""}`.toLowerCase()
-              const isReceivingPartNote =
-                noteText.includes("استلام قط") || noteText.includes("استلام قطعة") || noteText.includes("استلام قطعه")
-              const isExchangeNote =
-                noteText.includes("تبديل") || noteText.includes("استبدال") || noteText.includes("exchange")
-              
               // Check receive_piece_or_exchange field first (primary indicator from admin)
               // CRITICAL: This field takes precedence - if it's set, ignore all other indicators
               const isReceivePieceFromField = order.receive_piece_or_exchange === "receive_piece"
               const isExchangeFromField = order.receive_piece_or_exchange === "exchange"
-              
+
               // If receive_piece_or_exchange field is set, use it exclusively (don't check other indicators)
               // This ensures only one status appears: either "استلام قطعة" OR "تبديل", not both
               let isReceivingPartStatus = false
               let isExchangeStatus = false
-              
+
               if (isReceivePieceFromField) {
                 // Order is set to "استلام قطعة" - show only this status
                 isReceivingPartStatus = true
@@ -3287,16 +3281,17 @@ const deleteDuplicatedOrder = async (order: Order) => {
                 isExchangeStatus = true
                 isReceivingPartStatus = false
               } else {
-                // Fallback to other indicators only if receive_piece_or_exchange is not set
+                // Fallback ONLY to real courier/admin-set states — NOT to note text.
+                // Guessing from notes wrongly flagged normal orders as تبديل whenever
+                // the Shopify/WhatsApp note merely mentioned the word "exchange"
+                // (e.g. "Exchange done by chatbot: added ...").
                 isReceivingPartStatus =
                   order.status === "receiving_part" ||
-                  order.payment_sub_type === "receiving_part" ||
-                  isReceivingPartNote
+                  order.payment_sub_type === "receiving_part"
                 isExchangeStatus =
                   order.status === "hand_to_hand" ||
                   order.payment_sub_type === "hand_to_hand" ||
-                  order.payment_sub_type === "exchange" ||
-                  isExchangeNote
+                  order.payment_sub_type === "exchange"
               }
               
               const showSpecialBadge = isReceivingPartStatus || isExchangeStatus
