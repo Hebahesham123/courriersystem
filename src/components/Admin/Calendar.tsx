@@ -2,9 +2,10 @@
 
 import type React from "react"
 import { useEffect, useMemo, useState } from "react"
-import { ChevronLeft, ChevronRight, RefreshCw, Calendar as CalIcon, X, UserPlus, Phone, Clock, MapPin } from "lucide-react"
+import { ChevronLeft, ChevronRight, ChevronDown, RefreshCw, Calendar as CalIcon, X, UserPlus, Phone, Clock, MapPin, Pencil } from "lucide-react"
 import { whatsappSupabase, type WhatsAppOrder } from "../../lib/whatsappSupabase"
 import { supabase } from "../../lib/supabase"
+import { assignmentStatusFor } from "../../lib/scheduling"
 
 interface Courier {
   id: string
@@ -158,6 +159,119 @@ const extractDDeposit = (note?: string | null): number | null => {
   return m ? parseFloat(m[1]) : null
 }
 
+// ── Zones (from order_tags) ───────────────────────────────────────────────
+// Each zone is identified by one or more tag aliases (matched case-insensitively
+// against the order's order_tags array) and carries its own unique color.
+interface ZoneDef {
+  key: string
+  label: string
+  aliases: string[]
+  classes: string // bg/text/border for cards & badges
+  dot: string // legend swatch
+}
+const ZONE_DEFS: ZoneDef[] = [
+  { key: "Cairo", label: "Cairo", aliases: ["cairo", "القاهرة", "قاهرة"], classes: "bg-blue-100 text-blue-800 border-blue-300", dot: "bg-blue-400" },
+  { key: "Giza", label: "Giza", aliases: ["giza", "الجيزة", "جيزة"], classes: "bg-amber-100 text-amber-800 border-amber-300", dot: "bg-amber-400" },
+  { key: "Mm", label: "Mm", aliases: ["mm"], classes: "bg-emerald-100 text-emerald-800 border-emerald-300", dot: "bg-emerald-400" },
+  { key: "Ns", label: "Ns", aliases: ["ns"], classes: "bg-pink-100 text-pink-800 border-pink-300", dot: "bg-pink-400" },
+  { key: "Mso", label: "Mso", aliases: ["mso"], classes: "bg-teal-100 text-teal-800 border-teal-300", dot: "bg-teal-400" },
+  { key: "Out cairo", label: "Out Cairo", aliases: ["out cairo", "outcairo", "out-cairo", "out_cairo", "خارج القاهرة"], classes: "bg-orange-100 text-orange-800 border-orange-300", dot: "bg-orange-400" },
+]
+
+// Short-code zones must match a tag EXACTLY (case-insensitive) — substring
+// matching on 2–3 letter codes would produce false hits (e.g. "mm" inside "summer").
+const SHORT_CODE_ZONES = new Set(["Mm", "Ns", "Mso"])
+
+// Return the matching zone key for a list of order tags, or null.
+// Tolerant: a tag only needs to CONTAIN the city word (so "Cairo Zone",
+// "Cairo - Nasr", "القاهرة" all map to Cairo). "Out Cairo" is checked first
+// because it is more specific than (and contains) "Cairo".
+const detectZoneTag = (tags?: string[] | null): string | null => {
+  if (!tags || tags.length === 0) return null
+  const norm = tags.map((t) => String(t).trim().toLowerCase()).filter(Boolean)
+  if (norm.length === 0) return null
+  // 1) Out Cairo — more specific than Cairo, so test it first.
+  if (norm.some((t) => /out[\s\-_]*cairo/.test(t) || t.includes("خارج"))) return "Out cairo"
+  // 2) Short codes (Mm / Ns / Mso) — match as a whole word, any capitalization.
+  //    \b boundaries let "ns", "NS", "Ns area" match while avoiding false hits
+  //    inside other words ("fans", "summer").
+  for (const z of ZONE_DEFS) {
+    if (!SHORT_CODE_ZONES.has(z.key)) continue
+    if (z.aliases.some((a) => norm.some((t) => t === a || new RegExp(`\\b${a}\\b`).test(t)))) {
+      return z.key
+    }
+  }
+  // 3) Cairo / Giza — tolerant "contains" match.
+  if (norm.some((t) => t.includes("cairo") || t.includes("قاهرة"))) return "Cairo"
+  if (norm.some((t) => t.includes("giza") || t.includes("جيزة"))) return "Giza"
+  return null
+}
+const zoneDef = (key: string | null): ZoneDef | null => ZONE_DEFS.find((z) => z.key === key) || null
+const zoneClasses = (key: string | null): string =>
+  zoneDef(key)?.classes || "bg-gray-100 text-gray-700 border-gray-300"
+
+// Parse "11:00 AM" / "3:00 PM - 5:00 PM" → minutes since midnight (for sorting). 9999 if unknown.
+// Finds the FIRST time anywhere in the string, so leading spaces / RTL marks / prefixes
+// (e.g. "‏11:00 AM") still parse correctly.
+const parseTimeToMinutes = (t?: string | null): number => {
+  if (!t) return 9999
+  const m = t.match(/(\d{1,2}):(\d{2})\s*(AM|PM|ص|م)?/i)
+  if (!m) return 9999
+  let h = Number(m[1])
+  const min = Number(m[2])
+  const ampm = (m[3] || "").toUpperCase()
+  if ((ampm === "PM" || ampm === "م") && h < 12) h += 12
+  if ((ampm === "AM" || ampm === "ص") && h === 12) h = 0
+  return h * 60 + min
+}
+
+// The start of a delivery_time window, used as the time-slot label.
+// e.g. "3:00 PM - 5:00 PM" → "3:00 PM"
+const timeSlotLabel = (t?: string | null): string | null => {
+  if (!t) return null
+  const start = t.split(" - ")[0].trim()
+  return start || null
+}
+
+// Three delivery time buckets, matching the actual delivery windows shown inside
+// the calendar: 11–3 (midday), 3–6 (afternoon), 6–9 (evening).
+const TIME_BUCKETS = [
+  { key: "11-3", label: "11 - 3" },
+  { key: "3-6", label: "3 - 6" },
+  { key: "6-9", label: "6 - 9" },
+] as const
+
+// The fixed delivery-time windows offered when editing an order's time.
+const TIME_WINDOW_OPTIONS = [
+  "11:00 AM - 3:00 PM",
+  "3:00 PM - 6:00 PM",
+  "6:00 PM - 9:00 PM",
+] as const
+
+// Remap legacy delivery-time windows onto the current ones.
+//   3:00 PM - 7:00 PM  → 3:00 PM - 6:00 PM
+//   7:00 PM - 11:00 PM → 6:00 PM - 9:00 PM
+const TIME_REMAP: Record<string, string> = {
+  "3:00 PM - 7:00 PM": "3:00 PM - 6:00 PM",
+  "7:00 PM - 11:00 PM": "6:00 PM - 9:00 PM",
+}
+// Returns the remapped window (or the original value untouched if no remap applies).
+const normalizeDeliveryTime = (t?: string | null): string | null => {
+  if (!t) return t ?? null
+  const key = t.trim().replace(/\s+/g, " ")
+  return TIME_REMAP[key] ?? t
+}
+
+// Map a delivery_time to one of the three buckets by its window start time.
+// Everything before 3 PM → 11-3, 3 PM–6 PM → 3-6, 6 PM+ → 6-9.
+const bucketForTime = (t?: string | null): string | null => {
+  const m = parseTimeToMinutes(t)
+  if (m >= 9999) return null
+  if (m < 15 * 60) return "11-3"
+  if (m < 18 * 60) return "3-6"
+  return "6-9"
+}
+
 const Calendar: React.FC = () => {
   const today = new Date()
   const [cursor, setCursor] = useState(new Date(today.getFullYear(), today.getMonth(), 1))
@@ -172,6 +286,23 @@ const Calendar: React.FC = () => {
   const [dayList, setDayList] = useState<{ key: string; label: string; orders: WhatsAppOrder[] } | null>(null)
   const [zoneFilter, setZoneFilter] = useState<"all" | "cairo" | "giza" | "unknown">("all")
   const [depositFilter, setDepositFilter] = useState<"all" | "with" | "without">("all")
+  // Zone-tag filter (from order_tags): "all" or a ZONE_DEFS key.
+  const [zoneTagFilter, setZoneTagFilter] = useState<string>("all")
+  // Time-slot filter: "all" or a delivery-time start label (e.g. "11:00 AM").
+  const [timeFilter, setTimeFilter] = useState<string>("all")
+  // Map of shopify_order_id / order_id / "phone:<phone>" → detected zone key (from order_tags)
+  const [zoneByOrderId, setZoneByOrderId] = useState<Map<string, string>>(new Map())
+  // Inline delivery-time editing (in the day-list popup)
+  const [editingTimeId, setEditingTimeId] = useState<number | null>(null)
+  const [savingTimeId, setSavingTimeId] = useState<number | null>(null)
+  // Which delivery-time slots are expanded in the day-list popup (collapsed by default)
+  const [expandedSlots, setExpandedSlots] = useState<Set<string>>(new Set())
+  const toggleSlot = (slot: string) =>
+    setExpandedSlots((prev) => {
+      const next = new Set(prev)
+      next.has(slot) ? next.delete(slot) : next.add(slot)
+      return next
+    })
   const [matchedOrder, setMatchedOrder] = useState<any | null>(null)
   const [matching, setMatching] = useState(false)
   const [couriers, setCouriers] = useState<Courier[]>([])
@@ -180,6 +311,26 @@ const Calendar: React.FC = () => {
   const [assigning, setAssigning] = useState(false)
   const [assignError, setAssignError] = useState<string | null>(null)
   const [assignSuccess, setAssignSuccess] = useState<string | null>(null)
+
+  // One-time migration: persist remapped delivery-time windows back to the DB.
+  // Batched per target window; self-terminating (after success no rows match again).
+  const migrateDeliveryTimes = async (orders: WhatsAppOrder[]) => {
+    const byNew = new Map<string, number[]>()
+    for (const o of orders) {
+      const nt = normalizeDeliveryTime(o.delivery_time)
+      if (!nt) continue
+      if (!byNew.has(nt)) byNew.set(nt, [])
+      byNew.get(nt)!.push(o.id)
+    }
+    for (const [nt, idList] of byNew) {
+      const { error } = await whatsappSupabase
+        .from("bb_whatsapp_orders")
+        .update({ delivery_time: nt })
+        .in("id", idList)
+      if (error) console.error("[Calendar] delivery_time migration failed for", nt, error)
+      else console.debug(`[Calendar] migrated ${idList.length} order(s) → "${nt}"`)
+    }
+  }
 
   const fetchData = async () => {
     setLoading(true)
@@ -191,8 +342,16 @@ const Calendar: React.FC = () => {
         .order("created_at", { ascending: false })
         .limit(2000)
       if (error) throw error
-      const list = (data || []) as WhatsAppOrder[]
+      const rawList = (data || []) as WhatsAppOrder[]
+      // Normalize legacy time windows on read so the whole UI reflects the new
+      // windows immediately, and queue a one-time DB migration for the changed rows.
+      const list = rawList.map((o) => {
+        const nt = normalizeDeliveryTime(o.delivery_time)
+        return nt !== o.delivery_time ? { ...o, delivery_time: nt } : o
+      })
       setWaOrders(list)
+      const toMigrate = rawList.filter((o) => normalizeDeliveryTime(o.delivery_time) !== o.delivery_time)
+      if (toMigrate.length > 0) void migrateDeliveryTimes(toMigrate)
 
       // Fetch address (text) for these orders from the main orders table.
       // Used for city detection and display alongside the location coordinates.
@@ -202,7 +361,7 @@ const Calendar: React.FC = () => {
         // Run two/three lookups in parallel: by shopify_order_id, by order_id (text),
         // and by customer_phone (last-resort fallback for orders that don't have a
         // matching shopify_order_id).
-        const sel = "order_id, shopify_order_id, customer_phone, address, shipping_address, billing_address, shipping_city, billing_city, order_note, notes, admin_prepaid_amount"
+        const sel = "order_id, shopify_order_id, customer_phone, address, shipping_address, billing_address, shipping_city, billing_city, order_note, notes, admin_prepaid_amount, order_tags"
         const [a, b, c] = await Promise.all([
           ids.length > 0
             ? supabase.from("orders").select(sel).in("shopify_order_id", ids)
@@ -217,6 +376,7 @@ const Calendar: React.FC = () => {
         const matched = [...(a.data || []), ...(b.data || []), ...(c.data || [])]
         const map = new Map<string, string>()
         const depositMap = new Map<string, number>()
+        const zoneMap = new Map<string, string>()
         for (const r of matched) {
           const a = (r as any).address || (r as any).shipping_address || (r as any).billing_address
           // Combine all available text — address + city fields — so detectCityFromText
@@ -239,9 +399,34 @@ const Calendar: React.FC = () => {
             if ((r as any).order_id) depositMap.set(String((r as any).order_id), dep)
             if ((r as any).customer_phone) depositMap.set("phone:" + String((r as any).customer_phone), dep)
           }
+          // Detect zone from the order's tags (Cairo / Giza / Mm / Ns / Mso / Out cairo).
+          const zone = detectZoneTag((r as any).order_tags)
+          if (zone) {
+            if ((r as any).shopify_order_id) zoneMap.set(String((r as any).shopify_order_id), zone)
+            if ((r as any).order_id) zoneMap.set(String((r as any).order_id), zone)
+            if ((r as any).customer_phone) zoneMap.set("phone:" + String((r as any).customer_phone), zone)
+          }
         }
         setAddressByOrderId(map)
         setDepositByOrderId(depositMap)
+        setZoneByOrderId(zoneMap)
+
+        // Diagnostic: surface the distinct order_tags found and which ones did NOT
+        // map to a known zone — open the browser console to inspect if a zone
+        // (e.g. Cairo) appears empty so we can adjust the aliases.
+        try {
+          const allTags = new Set<string>()
+          const unmatched = new Set<string>()
+          for (const r of matched) {
+            const tgs = ((r as any).order_tags || []) as string[]
+            for (const t of tgs) allTags.add(String(t))
+            if (tgs.length > 0 && !detectZoneTag(tgs)) {
+              for (const t of tgs) unmatched.add(String(t))
+            }
+          }
+          console.debug("[Calendar] distinct order_tags:", Array.from(allTags))
+          console.debug("[Calendar] tags on orders with NO detected zone:", Array.from(unmatched))
+        } catch {}
       }
     } catch (e: any) {
       setError(e?.message || "Failed to fetch WhatsApp orders")
@@ -260,6 +445,12 @@ const Calendar: React.FC = () => {
     fetchCouriers()
   }, [])
 
+  // Resolve an order's zone (from order_tags) via order_id / shopify_order_id / phone.
+  const getZone = (o: WhatsAppOrder): string | null =>
+    zoneByOrderId.get(String(o.order_id)) ||
+    (o.customer_phone ? zoneByOrderId.get("phone:" + o.customer_phone) : null) ||
+    null
+
   // Group orders by the customer's chosen delivery date — skip rows without one.
   const ordersByDay = useMemo(() => {
     const map = new Map<string, WhatsAppOrder[]>()
@@ -275,6 +466,11 @@ const Calendar: React.FC = () => {
         if (zoneFilter === "cairo" && city !== "cairo") continue
         if (zoneFilter === "giza" && city !== "giza") continue
       }
+      // Apply zone-tag filter (from order_tags)
+      const zoneTag = getZone(o)
+      if (zoneTagFilter !== "all" && zoneTag !== zoneTagFilter) continue
+      // Apply time-bucket filter (9-3 / 3-6 / 6-9)
+      if (timeFilter !== "all" && bucketForTime(o.delivery_time) !== timeFilter) continue
       // Apply deposit filter
       const dep =
         depositByOrderId.get(String(o.order_id)) ||
@@ -287,22 +483,11 @@ const Calendar: React.FC = () => {
       map.get(key)!.push(o)
     }
     // Sort each day's entries by time window start so they appear chronologically
-    const parseTime = (t?: string | null): number => {
-      if (!t) return 9999
-      const m = t.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?/i)
-      if (!m) return 9999
-      let h = Number(m[1])
-      const min = Number(m[2])
-      const ampm = (m[3] || "").toUpperCase()
-      if (ampm === "PM" && h < 12) h += 12
-      if (ampm === "AM" && h === 12) h = 0
-      return h * 60 + min
-    }
     for (const arr of map.values()) {
-      arr.sort((a, b) => parseTime(a.delivery_time) - parseTime(b.delivery_time))
+      arr.sort((a, b) => parseTimeToMinutes(a.delivery_time) - parseTimeToMinutes(b.delivery_time))
     }
     return map
-  }, [waOrders, zoneFilter, depositFilter, addressByOrderId, depositByOrderId])
+  }, [waOrders, zoneFilter, depositFilter, zoneTagFilter, timeFilter, addressByOrderId, depositByOrderId, zoneByOrderId])
 
   // Build the month grid (6 rows × 7 cols starting on Sunday)
   const grid = useMemo(() => {
@@ -333,13 +518,28 @@ const Calendar: React.FC = () => {
     if (!o.order_id) return
     setMatching(true)
     try {
-      const { data } = await supabase
-        .from("orders")
-        .select("id, order_id, customer_name, customer_phone, total_order_fees, status, assigned_courier_id, address, base_order_id, shopify_order_id")
-        .or(`shopify_order_id.eq.${o.order_id},order_id.eq.${o.order_id}`)
-        .limit(5)
+      const SEL = "id, order_id, customer_name, customer_phone, total_order_fees, status, assigned_courier_id, address, base_order_id, shopify_order_id"
+      // The orders table stores order_id as the Shopify name (e.g. "#47974"),
+      // while shopify_order_id is a BIGINT. Comparing the bigint column against a
+      // "#"-prefixed string errors out the whole query, so we split the lookups:
+      //  • order_id (text) — try the value as-is plus "#"/no-"#" variants
+      //  • shopify_order_id (bigint) — ONLY when the id is purely numeric
+      const raw = String(o.order_id).trim()
+      const noHash = raw.replace(/^#+/, "")
+      const idVariants = Array.from(new Set([raw, noHash, "#" + noHash].filter(Boolean)))
+      const queries: PromiseLike<{ data: any[] | null }>[] = [
+        supabase.from("orders").select(SEL).in("order_id", idVariants).limit(5),
+      ]
+      if (/^\d+$/.test(noHash)) {
+        queries.push(supabase.from("orders").select(SEL).eq("shopify_order_id", noHash).limit(5))
+      }
+      const results = await Promise.all(queries)
+      // Merge + de-duplicate rows by id
+      const byId = new Map<string, any>()
+      for (const r of results) for (const row of r.data || []) byId.set(String(row.id), row)
+      const rows = Array.from(byId.values())
       // Prefer a base order (no base_order_id) so the assign flow creates a fresh date-suffixed copy
-      const base = (data || []).find((r: any) => r.base_order_id == null) || (data || [])[0] || null
+      const base = rows.find((r: any) => r.base_order_id == null) || rows[0] || null
       setMatchedOrder(base)
     } finally {
       setMatching(false)
@@ -349,6 +549,34 @@ const Calendar: React.FC = () => {
   const closeModal = () => {
     setSelected(null)
     setMatchedOrder(null)
+  }
+
+  // Persist a new delivery_time for a WhatsApp order and reflect it everywhere
+  // (calendar grid, day-list popup, and the open detail modal).
+  const updateDeliveryTime = async (o: WhatsAppOrder, newTime: string) => {
+    if (!newTime || newTime === o.delivery_time) {
+      setEditingTimeId(null)
+      return
+    }
+    setSavingTimeId(o.id)
+    try {
+      const { error } = await whatsappSupabase
+        .from("bb_whatsapp_orders")
+        .update({ delivery_time: newTime })
+        .eq("id", o.id)
+      if (error) throw error
+      setWaOrders((prev) => prev.map((x) => (x.id === o.id ? { ...x, delivery_time: newTime } : x)))
+      setDayList((prev) =>
+        prev ? { ...prev, orders: prev.orders.map((x) => (x.id === o.id ? { ...x, delivery_time: newTime } : x)) } : prev
+      )
+      setSelected((prev) => (prev && prev.id === o.id ? { ...prev, delivery_time: newTime } : prev))
+      setEditingTimeId(null)
+    } catch (e: any) {
+      console.error("Failed to update delivery_time", e)
+      alert("فشل تحديث الوقت: " + (e?.message || "خطأ غير معروف"))
+    } finally {
+      setSavingTimeId(null)
+    }
   }
 
   // Lightweight assign-to-courier flow that mirrors OrdersManagement.handleAssignOrders
@@ -370,6 +598,8 @@ const Calendar: React.FC = () => {
       }
       const nowIso = assignmentDate.toISOString()
       const dayNum = assignmentDate.getDate()
+      // Future day -> "scheduled" so the confirmation webhook ignores it until then.
+      const assignStatus = assignmentStatusFor(assignmentDate)
 
       const order = matchedOrder
       const isShopifyOrder = order.shopify_order_id != null
@@ -442,7 +672,7 @@ const Calendar: React.FC = () => {
           shopify_cancelled_at: full.shopify_cancelled_at,
           shopify_closed_at: full.shopify_closed_at,
           assigned_courier_id: chosenCourier,
-          status: "assigned",
+          status: assignStatus,
           assigned_at: nowIso,
           updated_at: nowIso,
           created_at: nowIso,
@@ -487,7 +717,7 @@ const Calendar: React.FC = () => {
           .from("orders")
           .update({
             assigned_courier_id: chosenCourier,
-            status: "assigned",
+            status: assignStatus,
             updated_at: nowIso,
             assigned_at: nowIso,
             original_courier_id: order.original_courier_id || order.assigned_courier_id || chosenCourier,
@@ -598,6 +828,67 @@ const Calendar: React.FC = () => {
         })}
       </div>
 
+      {/* Zone (tag) filter — from order_tags, each zone its own color */}
+      <div className="mb-3 flex items-center gap-2 flex-wrap">
+        <span className="text-xs font-semibold text-gray-700">المنطقة (الوسوم):</span>
+        <button
+          onClick={() => setZoneTagFilter("all")}
+          className={`text-xs px-3 py-1 rounded-full border transition ${
+            zoneTagFilter === "all"
+              ? "bg-gray-100 text-gray-800 border-gray-300 ring-2 ring-offset-1 ring-indigo-400 font-semibold"
+              : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+          }`}
+        >
+          الكل
+        </button>
+        {ZONE_DEFS.map((z) => {
+          const active = zoneTagFilter === z.key
+          return (
+            <button
+              key={z.key}
+              onClick={() => setZoneTagFilter(z.key)}
+              className={`text-xs px-3 py-1 rounded-full border transition flex items-center gap-1.5 ${
+                active ? z.classes + " ring-2 ring-offset-1 ring-indigo-400 font-semibold" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+              }`}
+            >
+              <span className={`inline-block w-2 h-2 rounded-full ${z.dot}`} />
+              {z.label}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Time-bucket filter — 9-3 / 3-6 / 6-9 (by delivery time start) */}
+      <div className="mb-3 flex items-center gap-2 flex-wrap">
+        <span className="text-xs font-semibold text-gray-700">الوقت:</span>
+        <button
+          onClick={() => setTimeFilter("all")}
+          className={`text-xs px-3 py-1 rounded-full border transition ${
+            timeFilter === "all"
+              ? "bg-gray-100 text-gray-800 border-gray-300 ring-2 ring-offset-1 ring-indigo-400 font-semibold"
+              : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+          }`}
+        >
+          الكل
+        </button>
+        {TIME_BUCKETS.map((b) => {
+          const active = timeFilter === b.key
+          return (
+            <button
+              key={b.key}
+              onClick={() => setTimeFilter(b.key)}
+              className={`text-xs px-3 py-1 rounded-full border transition ${
+                active
+                  ? "bg-indigo-100 text-indigo-800 border-indigo-300 ring-2 ring-offset-1 ring-indigo-400 font-semibold"
+                  : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+              }`}
+            >
+              {b.label}
+            </button>
+          )
+        })}
+      </div>
+
       {error && (
         <div className="mb-3 p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg">{error}</div>
       )}
@@ -634,40 +925,46 @@ const Calendar: React.FC = () => {
                 <div className="flex-1 flex flex-col gap-1 overflow-hidden">
                   {dayOrders.slice(0, 3).map((o) => {
                     const city = detectCity(o.delivery_location, addressByOrderId.get(String(o.order_id)) || (o.customer_phone ? addressByOrderId.get("phone:" + o.customer_phone) : null))
+                    const zone = getZone(o)
                     const dep =
                       depositByOrderId.get(String(o.order_id)) ||
                       (o.customer_phone ? depositByOrderId.get("phone:" + o.customer_phone) : 0) ||
                       0
-                    // Deposit overrides the city color so it stands out
-                    const klass = dep > 0
-                      ? "bg-purple-100 text-purple-900 border-purple-400 ring-1 ring-purple-300"
-                      : cityClasses(city)
+                    // Zone-tag color is primary; a deposit adds a purple ring so it still
+                    // stands out. With no zone tag, fall back to deposit/city coloring.
+                    const klass = zone
+                      ? zoneClasses(zone) + (dep > 0 ? " ring-1 ring-purple-400" : "")
+                      : dep > 0
+                        ? "bg-purple-100 text-purple-900 border-purple-400 ring-1 ring-purple-300"
+                        : cityClasses(city)
                     return (
                       <button
                         key={o.id}
                         onClick={() => openOrder(o)}
                         className={`text-right truncate text-[11px] px-1.5 py-1 rounded border hover:brightness-95 ${klass}`}
-                        title={`${o.customer_name || ""} ${o.delivery_time || ""} ${cityLabelAr(city)}${dep > 0 ? ` · مقدم ${dep}` : ""}`}
+                        title={`${o.customer_name || ""} ${o.delivery_time || ""} ${zone ? zoneDef(zone)?.label : cityLabelAr(city)}${dep > 0 ? ` · مقدم ${dep}` : ""}`}
                       >
                         <span className="font-semibold">{o.order_name || o.order_id}</span>
                         {o.delivery_time && <span className="opacity-70"> · {o.delivery_time.split(" - ")[0]}</span>}
+                        {zone && <span className="opacity-80"> · {zoneDef(zone)?.label}</span>}
                         {dep > 0 ? (
                           <span className="opacity-90 font-semibold"> · 💰{dep}</span>
                         ) : (
-                          city && <span className="opacity-80"> · {cityLabelAr(city)}</span>
+                          !zone && city && <span className="opacity-80"> · {cityLabelAr(city)}</span>
                         )}
                       </button>
                     )
                   })}
                   {dayOrders.length > 3 && (
                     <button
-                      onClick={() =>
+                      onClick={() => {
+                        setExpandedSlots(new Set())
                         setDayList({
                           key,
                           label: `${WEEKDAYS_AR[d.getDay()]} ${d.getDate()} ${MONTHS_AR[d.getMonth()]} ${d.getFullYear()}`,
                           orders: dayOrders,
                         })
-                      }
+                      }}
                       className="text-[10px] text-indigo-700 hover:underline text-right"
                     >
                       +{dayOrders.length - 3} أخرى
@@ -699,72 +996,151 @@ const Calendar: React.FC = () => {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto p-3 space-y-2">
-              {dayList.orders.map((o) => {
-                const city = detectCity(o.delivery_location, addressByOrderId.get(String(o.order_id)) || (o.customer_phone ? addressByOrderId.get("phone:" + o.customer_phone) : null))
-                const dep =
-                  depositByOrderId.get(String(o.order_id)) ||
-                  (o.customer_phone ? depositByOrderId.get("phone:" + o.customer_phone) : 0) ||
-                  0
-                return (
-                  <button
-                    key={o.id}
-                    onClick={() => {
-                      setDayList(null)
-                      openOrder(o)
-                    }}
-                    className={`w-full text-right p-3 rounded-lg border transition-colors flex items-center justify-between gap-3 ${
-                      dep > 0
-                        ? "bg-purple-50 border-purple-300 hover:bg-purple-100"
-                        : "bg-white border-gray-200 hover:bg-emerald-50 hover:border-emerald-300"
-                    }`}
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                        <span className="font-semibold text-gray-900 text-sm">
-                          {o.order_name || o.order_id}
-                        </span>
-                        {dep > 0 && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded border font-semibold bg-purple-100 text-purple-800 border-purple-400">
-                            💰 مقدم {dep}
-                          </span>
-                        )}
-                        {city && (
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${cityClasses(city)}`}>
-                            {cityLabelAr(city)}
-                          </span>
-                        )}
-                        {o.status && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-700">
-                            {o.status}
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-xs text-gray-600 truncate">
-                        {o.customer_name || "—"}
-                        {o.customer_phone && (
-                          <span dir="ltr" className="mx-1 text-gray-400">· {o.customer_phone}</span>
-                        )}
-                      </div>
-                      {(() => {
-                        const addr = addressByOrderId.get(String(o.order_id)) || (o.customer_phone ? addressByOrderId.get("phone:" + o.customer_phone) : null)
-                        return addr ? (
-                          <div className="text-[11px] text-gray-500 truncate mt-0.5 flex items-center gap-1">
-                            <MapPin className="w-3 h-3 flex-shrink-0" />
-                            <span className="truncate">{addr}</span>
-                          </div>
-                        ) : null
-                      })()}
-                    </div>
-                    {o.delivery_time && (
-                      <div className="flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2 py-1 whitespace-nowrap">
-                        <Clock className="w-3 h-3" />
-                        {o.delivery_time}
-                      </div>
-                    )}
-                  </button>
+            <div className="flex-1 overflow-y-auto p-3 space-y-4">
+              {(() => {
+                // Group the day's orders by their delivery time slot, ordered chronologically.
+                const groups = new Map<string, WhatsAppOrder[]>()
+                for (const o of dayList.orders) {
+                  const slot = timeSlotLabel(o.delivery_time) || "—"
+                  if (!groups.has(slot)) groups.set(slot, [])
+                  groups.get(slot)!.push(o)
+                }
+                const orderedSlots = Array.from(groups.keys()).sort(
+                  (a, b) => parseTimeToMinutes(a) - parseTimeToMinutes(b)
                 )
-              })}
+                return orderedSlots.map((slot) => {
+                  const isOpen = expandedSlots.has(slot)
+                  return (
+                  <div key={slot} className="space-y-2">
+                    {/* Time-slot header — click to expand/collapse this slot's orders */}
+                    <button
+                      onClick={() => toggleSlot(slot)}
+                      className="w-full sticky top-0 z-10 -mx-1 px-2 py-1.5 flex items-center gap-2 bg-indigo-50/95 backdrop-blur border border-indigo-100 rounded-lg hover:bg-indigo-100/95 transition-colors"
+                    >
+                      <ChevronDown
+                        className={`w-4 h-4 text-indigo-600 transition-transform ${isOpen ? "" : "-rotate-90"}`}
+                      />
+                      <Clock className="w-4 h-4 text-indigo-600" />
+                      <span className="text-sm font-bold text-indigo-800">{slot}</span>
+                      <span className="text-[11px] text-indigo-500">({groups.get(slot)!.length})</span>
+                    </button>
+                    {isOpen && groups.get(slot)!.map((o) => {
+                      const city = detectCity(o.delivery_location, addressByOrderId.get(String(o.order_id)) || (o.customer_phone ? addressByOrderId.get("phone:" + o.customer_phone) : null))
+                      const zone = getZone(o)
+                      const dep =
+                        depositByOrderId.get(String(o.order_id)) ||
+                        (o.customer_phone ? depositByOrderId.get("phone:" + o.customer_phone) : 0) ||
+                        0
+                      const isEditing = editingTimeId === o.id
+                      const isSaving = savingTimeId === o.id
+                      return (
+                        <div
+                          key={o.id}
+                          className={`w-full p-3 rounded-lg border transition-colors flex items-center justify-between gap-3 ${
+                            dep > 0 ? "bg-purple-50 border-purple-300" : "bg-white border-gray-200"
+                          }`}
+                        >
+                          <button
+                            onClick={() => {
+                              setDayList(null)
+                              openOrder(o)
+                            }}
+                            className="flex-1 min-w-0 text-right hover:opacity-80"
+                          >
+                            <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                              <span className="font-semibold text-gray-900 text-sm">
+                                {o.order_name || o.order_id}
+                              </span>
+                              {dep > 0 && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded border font-semibold bg-purple-100 text-purple-800 border-purple-400">
+                                  💰 مقدم {dep}
+                                </span>
+                              )}
+                              {zone && (
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${zoneClasses(zone)}`}>
+                                  {zoneDef(zone)?.label}
+                                </span>
+                              )}
+                              {city && (
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${cityClasses(city)}`}>
+                                  {cityLabelAr(city)}
+                                </span>
+                              )}
+                              {o.status && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-700">
+                                  {o.status}
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-xs text-gray-600 truncate">
+                              {o.customer_name || "—"}
+                              {o.customer_phone && (
+                                <span dir="ltr" className="mx-1 text-gray-400">· {o.customer_phone}</span>
+                              )}
+                            </div>
+                            {(() => {
+                              const addr = addressByOrderId.get(String(o.order_id)) || (o.customer_phone ? addressByOrderId.get("phone:" + o.customer_phone) : null)
+                              return addr ? (
+                                <div className="text-[11px] text-gray-500 truncate mt-0.5 flex items-center gap-1">
+                                  <MapPin className="w-3 h-3 flex-shrink-0" />
+                                  <span className="truncate">{addr}</span>
+                                </div>
+                              ) : null
+                            })()}
+                          </button>
+                          {/* Delivery time — click the pencil to edit inline */}
+                          <div className="flex-shrink-0 flex items-center gap-1">
+                            {isEditing ? (
+                              <>
+                                <select
+                                  autoFocus
+                                  defaultValue={o.delivery_time || ""}
+                                  disabled={isSaving}
+                                  onChange={(e) => updateDeliveryTime(o, e.target.value)}
+                                  className="text-xs border border-indigo-300 rounded px-1.5 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                                >
+                                  <option value="" disabled>اختر الوقت</option>
+                                  {TIME_WINDOW_OPTIONS.map((w) => (
+                                    <option key={w} value={w}>{w}</option>
+                                  ))}
+                                  {o.delivery_time && !TIME_WINDOW_OPTIONS.includes(o.delivery_time as any) && (
+                                    <option value={o.delivery_time}>{o.delivery_time}</option>
+                                  )}
+                                </select>
+                                <button
+                                  onClick={() => setEditingTimeId(null)}
+                                  disabled={isSaving}
+                                  className="p-1 text-gray-400 hover:text-gray-600"
+                                  title="إلغاء"
+                                >
+                                  {isSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                {o.delivery_time && (
+                                  <div className="flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2 py-1 whitespace-nowrap">
+                                    <Clock className="w-3 h-3" />
+                                    {o.delivery_time}
+                                  </div>
+                                )}
+                                <button
+                                  onClick={() => setEditingTimeId(o.id)}
+                                  className="p-1 text-gray-400 hover:text-indigo-600"
+                                  title="تعديل الوقت"
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                  )
+                })
+              })()}
             </div>
           </div>
         </div>
@@ -810,6 +1186,16 @@ const Calendar: React.FC = () => {
                   <span>{selected.delivery_time}</span>
                 </div>
               )}
+              {(() => {
+                const zone = getZone(selected)
+                return zone ? (
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[11px] px-2 py-1 rounded border font-semibold ${zoneClasses(zone)}`}>
+                      📍 {zoneDef(zone)?.label}
+                    </span>
+                  </div>
+                ) : null
+              })()}
               {(() => {
                 const addr =
                   addressByOrderId.get(String(selected.order_id)) ||

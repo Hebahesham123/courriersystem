@@ -29,6 +29,7 @@ import Trach from "./components/Admin/Trach"
 import ReceivePieceOrExchange from "./components/Admin/ReceivePieceOrExchange"
 import Calendar from "./components/Admin/Calendar"
 import ActivityLogs from "./components/Admin/ActivityLogs"
+import { activateDueScheduledOrders } from "./lib/scheduling"
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles?: string[] }> = ({
   children,
@@ -64,6 +65,15 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 
 const AppRoutes: React.FC = () => {
   const { user, loading } = useAuth()
+
+  // When someone opens the app, activate any orders that were scheduled for a day
+  // that has now arrived (flip "scheduled" -> "assigned" so the confirmation
+  // webhook starts seeing them). The DB cron job does this server-side too.
+  useEffect(() => {
+    if (user) {
+      activateDueScheduledOrders()
+    }
+  }, [user?.id])
 
   if (loading) {
     return (

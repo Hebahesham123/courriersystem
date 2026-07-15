@@ -47,6 +47,7 @@ import { supabase } from "../../lib/supabase"
 import { useLanguage } from "../../contexts/LanguageContext"
 import { useAuth } from "../../contexts/AuthContext"
 import { logActivity, diffFields } from "../../lib/activityLogger"
+import { assignmentStatusFor } from "../../lib/scheduling"
 import OrderDetailModal from "./OrderDetailModal"
 import SplitPaymentModal from "./SplitPaymentModal"
 import BulkSplitPaymentModal from "./BulkSplitPaymentModal"
@@ -279,6 +280,12 @@ const statusConfig: Record<string, { label: string; color: string; bgColor: stri
       label: "جزئي",
       color: "text-yellow-700",
       bgColor: "bg-yellow-50 border-yellow-200",
+      icon: Activity,
+    },
+    scheduled: {
+      label: "مجدول",
+      color: "text-indigo-700",
+      bgColor: "bg-indigo-50 border-indigo-200",
       icon: Activity,
     },
     hand_to_hand: {
@@ -1767,6 +1774,9 @@ const OrdersManagement: React.FC = () => {
       }
       const nowIso = assignmentDate.toISOString()
       const today = assignmentDate.getDate() // Get day of month (1-31)
+      // If assigning for a future day, mark as "scheduled" so the confirmation
+      // webhook (which watches for "assigned") ignores it until its day arrives.
+      const assignStatus = assignmentStatusFor(assignmentDate)
       const newOrderIds: string[] = []
 
       for (const order of currentOrders) {
@@ -1899,7 +1909,7 @@ const OrdersManagement: React.FC = () => {
             
             // Assignment info - NEW for this courier
             assigned_courier_id: selectedCourier,
-            status: "assigned", // ALWAYS start with "assigned" - never copy status from base order
+            status: assignStatus, // "assigned" today, "scheduled" for a future day - never copy status from base order
             assigned_at: nowIso,
             updated_at: nowIso,
             created_at: nowIso,
@@ -1976,7 +1986,7 @@ const OrdersManagement: React.FC = () => {
           // For non-Shopify orders or already date-suffixed orders, update directly
           const updateData: any = {
             assigned_courier_id: selectedCourier,
-            status: "assigned",
+            status: assignStatus,
             updated_at: nowIso,
             assigned_at: nowIso,
             last_modified_by: user?.id ?? null,
@@ -1997,7 +2007,7 @@ const OrdersManagement: React.FC = () => {
             entityType: "order",
             entityId: order.id,
             entityLabel: (order as any).order_id || null,
-            details: { courier_id: selectedCourier, status: "assigned" },
+            details: { courier_id: selectedCourier, status: assignStatus },
             actor: user ? { id: user.id, name: user.name, email: user.email, role: user.role } : null,
           })
         }
