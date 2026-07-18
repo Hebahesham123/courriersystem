@@ -303,6 +303,21 @@ const Calendar: React.FC = () => {
       next.has(slot) ? next.delete(slot) : next.add(slot)
       return next
     })
+  // Free-text search across order name / id / customer / phone / address.
+  const [search, setSearch] = useState("")
+  // Multi-select + bulk-assign (inside the day-list popup)
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [bulkCourier, setBulkCourier] = useState("")
+  const [bulkDate, setBulkDate] = useState("")
+  const [bulkAssigning, setBulkAssigning] = useState(false)
+  const [bulkError, setBulkError] = useState<string | null>(null)
+  const [bulkSuccess, setBulkSuccess] = useState<string | null>(null)
+  const toggleSelected = (id: number) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
   const [matchedOrder, setMatchedOrder] = useState<any | null>(null)
   const [matching, setMatching] = useState(false)
   const [couriers, setCouriers] = useState<Courier[]>([])
@@ -451,14 +466,30 @@ const Calendar: React.FC = () => {
     (o.customer_phone ? zoneByOrderId.get("phone:" + o.customer_phone) : null) ||
     null
 
+  // Does this order match the current free-text search?
+  const matchesSearch = (o: WhatsAppOrder): boolean => {
+    const q = search.trim().toLowerCase()
+    if (!q) return true
+    const addr =
+      addressByOrderId.get(String(o.order_id)) ||
+      (o.customer_phone ? addressByOrderId.get("phone:" + o.customer_phone) : "") ||
+      ""
+    return [o.order_name, o.order_id, o.customer_name, o.customer_phone, addr].some(
+      (v) => v && String(v).toLowerCase().includes(q),
+    )
+  }
+
   // Group orders by the customer's chosen delivery date — skip rows without one.
+  // Orders WITH a date but no time are kept (shown under "بدون وقت") so the admin
+  // can set a time range for them.
   const ordersByDay = useMemo(() => {
     const map = new Map<string, WhatsAppOrder[]>()
     for (const o of waOrders) {
-      // Only include orders where the customer chose BOTH a date and a time
+      // A delivery date is required to place the order on the calendar; a time is not.
       const d = parseDeliveryDate(o.delivery_date)
-      const t = (o.delivery_time || "").trim()
-      if (!d || !t) continue
+      if (!d) continue
+      // Apply search filter
+      if (!matchesSearch(o)) continue
       // Apply zone filter
       const city = detectCity(o.delivery_location, addressByOrderId.get(String(o.order_id)) || (o.customer_phone ? addressByOrderId.get("phone:" + o.customer_phone) : null))
       if (zoneFilter !== "all") {
@@ -487,7 +518,15 @@ const Calendar: React.FC = () => {
       arr.sort((a, b) => parseTimeToMinutes(a.delivery_time) - parseTimeToMinutes(b.delivery_time))
     }
     return map
-  }, [waOrders, zoneFilter, depositFilter, zoneTagFilter, timeFilter, addressByOrderId, depositByOrderId, zoneByOrderId])
+  }, [waOrders, search, zoneFilter, depositFilter, zoneTagFilter, timeFilter, addressByOrderId, depositByOrderId, zoneByOrderId])
+
+  // Search results — ALL matching orders regardless of whether they have a
+  // delivery date or time, so an order with no time range can still be found and
+  // given one (it isn't limited to today or to any single day).
+  const searchResults = useMemo(() => {
+    if (!search.trim()) return [] as WhatsAppOrder[]
+    return waOrders.filter(matchesSearch).slice(0, 300)
+  }, [search, waOrders, addressByOrderId])
 
   // Build the month grid (6 rows × 7 cols starting on Sunday)
   const grid = useMemo(() => {
@@ -518,29 +557,7 @@ const Calendar: React.FC = () => {
     if (!o.order_id) return
     setMatching(true)
     try {
-      const SEL = "id, order_id, customer_name, customer_phone, total_order_fees, status, assigned_courier_id, address, base_order_id, shopify_order_id"
-      // The orders table stores order_id as the Shopify name (e.g. "#47974"),
-      // while shopify_order_id is a BIGINT. Comparing the bigint column against a
-      // "#"-prefixed string errors out the whole query, so we split the lookups:
-      //  • order_id (text) — try the value as-is plus "#"/no-"#" variants
-      //  • shopify_order_id (bigint) — ONLY when the id is purely numeric
-      const raw = String(o.order_id).trim()
-      const noHash = raw.replace(/^#+/, "")
-      const idVariants = Array.from(new Set([raw, noHash, "#" + noHash].filter(Boolean)))
-      const queries: PromiseLike<{ data: any[] | null }>[] = [
-        supabase.from("orders").select(SEL).in("order_id", idVariants).limit(5),
-      ]
-      if (/^\d+$/.test(noHash)) {
-        queries.push(supabase.from("orders").select(SEL).eq("shopify_order_id", noHash).limit(5))
-      }
-      const results = await Promise.all(queries)
-      // Merge + de-duplicate rows by id
-      const byId = new Map<string, any>()
-      for (const r of results) for (const row of r.data || []) byId.set(String(row.id), row)
-      const rows = Array.from(byId.values())
-      // Prefer a base order (no base_order_id) so the assign flow creates a fresh date-suffixed copy
-      const base = rows.find((r: any) => r.base_order_id == null) || rows[0] || null
-      setMatchedOrder(base)
+      setMatchedOrder(await findMatchedRow(o))
     } finally {
       setMatching(false)
     }
@@ -579,33 +596,48 @@ const Calendar: React.FC = () => {
     }
   }
 
-  // Lightweight assign-to-courier flow that mirrors OrdersManagement.handleAssignOrders
-  const doAssign = async () => {
-    if (!matchedOrder || !chosenCourier) {
-      setAssignError("اختر مندوب")
-      return
+  // Convert a "YYYY-MM-DD" string to a local-midday Date (falls back to now()).
+  const ymdToDate = (ymd?: string | null): Date => {
+    if (!ymd) return new Date()
+    const [yy, mm, dd] = ymd.split("-").map(Number)
+    return new Date(yy, (mm || 1) - 1, dd || 1, 12, 0, 0, 0)
+  }
+
+  // Find the orders-table row for a WhatsApp order (prefer the base order so the
+  // assign flow creates a fresh date-suffixed copy). Returns null if not found.
+  const findMatchedRow = async (o: WhatsAppOrder): Promise<any | null> => {
+    if (!o.order_id) return null
+    const SEL =
+      "id, order_id, customer_name, customer_phone, total_order_fees, status, assigned_courier_id, address, base_order_id, shopify_order_id, original_courier_id"
+    const raw = String(o.order_id).trim()
+    const noHash = raw.replace(/^#+/, "")
+    const idVariants = Array.from(new Set([raw, noHash, "#" + noHash].filter(Boolean)))
+    const queries: PromiseLike<{ data: any[] | null }>[] = [
+      supabase.from("orders").select(SEL).in("order_id", idVariants).limit(5),
+    ]
+    if (/^\d+$/.test(noHash)) {
+      queries.push(supabase.from("orders").select(SEL).eq("shopify_order_id", noHash).limit(5))
     }
-    setAssigning(true)
-    setAssignError(null)
-    setAssignSuccess(null)
-    try {
-      let assignmentDate: Date
-      if (chosenDate) {
-        const [yy, mm, dd] = chosenDate.split("-").map(Number)
-        assignmentDate = new Date(yy, (mm || 1) - 1, dd || 1, 12, 0, 0, 0)
-      } else {
-        assignmentDate = new Date()
-      }
-      const nowIso = assignmentDate.toISOString()
-      const dayNum = assignmentDate.getDate()
-      // Future day -> "scheduled" so the confirmation webhook ignores it until then.
-      const assignStatus = assignmentStatusFor(assignmentDate)
+    const results = await Promise.all(queries)
+    const byId = new Map<string, any>()
+    for (const r of results) for (const row of r.data || []) byId.set(String(row.id), row)
+    const rows = Array.from(byId.values())
+    return rows.find((r: any) => r.base_order_id == null) || rows[0] || null
+  }
 
-      const order = matchedOrder
-      const isShopifyOrder = order.shopify_order_id != null
-      const isBaseOrder = order.base_order_id == null
+  // Assign a single matched orders-table row to a courier for the given date.
+  // Mirrors OrdersManagement.handleAssignOrders (Shopify base -> fresh date-suffixed
+  // copy; otherwise a direct update). Future day -> "scheduled".
+  const assignOrderRow = async (order: any, courierId: string, assignmentDate: Date) => {
+    const nowIso = assignmentDate.toISOString()
+    const dayNum = assignmentDate.getDate()
+    const assignStatus = assignmentStatusFor(assignmentDate)
 
-      if (isShopifyOrder && isBaseOrder) {
+    const isShopifyOrder = order.shopify_order_id != null
+    const isBaseOrder = order.base_order_id == null
+    const chosenCourier = courierId
+
+    if (isShopifyOrder && isBaseOrder) {
         const baseOrderId = order.order_id
         const dateSuffix = String(dayNum).padStart(2, "0")
         const newOrderId = `${baseOrderId}-${dateSuffix}`
@@ -724,6 +756,19 @@ const Calendar: React.FC = () => {
           })
           .eq("id", order.id)
       }
+  }
+
+  // Single-order assign (from the detail modal).
+  const doAssign = async () => {
+    if (!matchedOrder || !chosenCourier) {
+      setAssignError("اختر مندوب")
+      return
+    }
+    setAssigning(true)
+    setAssignError(null)
+    setAssignSuccess(null)
+    try {
+      await assignOrderRow(matchedOrder, chosenCourier, ymdToDate(chosenDate))
       setAssignSuccess("تم التعيين بنجاح")
       setTimeout(() => closeModal(), 1200)
     } catch (e: any) {
@@ -731,6 +776,60 @@ const Calendar: React.FC = () => {
     } finally {
       setAssigning(false)
     }
+  }
+
+  // Bulk assign: match every selected WhatsApp order to its orders-table row and
+  // assign them all to the chosen courier for the chosen date.
+  const assignMany = async () => {
+    if (selectedIds.size === 0 || !bulkCourier) {
+      setBulkError("اختر مندوب وطلب واحد على الأقل")
+      return
+    }
+    setBulkAssigning(true)
+    setBulkError(null)
+    setBulkSuccess(null)
+    try {
+      const assignmentDate = ymdToDate(bulkDate)
+      const chosen = waOrders.filter((o) => selectedIds.has(o.id))
+      let ok = 0
+      const failed: string[] = []
+      for (const o of chosen) {
+        try {
+          const row = await findMatchedRow(o)
+          if (!row) {
+            failed.push(String(o.order_name || o.order_id))
+            continue
+          }
+          await assignOrderRow(row, bulkCourier, assignmentDate)
+          ok++
+        } catch {
+          failed.push(String(o.order_name || o.order_id))
+        }
+      }
+      setBulkSuccess(
+        `تم تعيين ${ok} طلب${failed.length ? ` — تعذّر ${failed.length}: ${failed.join("، ")}` : ""}`,
+      )
+      if (ok > 0) setSelectedIds(new Set())
+    } catch (e: any) {
+      setBulkError(e?.message || "فشل التعيين")
+    } finally {
+      setBulkAssigning(false)
+    }
+  }
+
+  // Open the day-list popup for a given day, resetting per-popup UI state.
+  const openDayList = (d: Date, key: string, orders: WhatsAppOrder[]) => {
+    setExpandedSlots(new Set())
+    setSelectedIds(new Set())
+    setBulkCourier("")
+    setBulkDate("")
+    setBulkError(null)
+    setBulkSuccess(null)
+    setDayList({
+      key,
+      label: `${WEEKDAYS_AR[d.getDay()]} ${d.getDate()} ${MONTHS_AR[d.getMonth()]} ${d.getFullYear()}`,
+      orders,
+    })
   }
 
   const goPrev = () => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))
@@ -889,11 +988,154 @@ const Calendar: React.FC = () => {
         })}
       </div>
 
+      {/* Search — order name / id / customer / phone / address */}
+      <div className="mb-3 flex items-center gap-2">
+        <div className="relative flex-1 max-w-md">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="ابحث برقم الطلب أو اسم العميل أو الهاتف أو العنوان..."
+            className="w-full ps-3 pe-8 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+          />
+          {search && (
+            <button
+              onClick={() => setSearch("")}
+              className="absolute inset-y-0 left-2 flex items-center text-gray-400 hover:text-gray-600"
+              title="مسح البحث"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+        {search && (
+          <span className="text-xs text-gray-500">
+            {Array.from(ordersByDay.values()).reduce((n, arr) => n + arr.length, 0)} نتيجة
+          </span>
+        )}
+      </div>
+
       {error && (
         <div className="mb-3 p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg">{error}</div>
       )}
 
+      {/* Search results — every matching order (any day, with or without a time),
+          so an order missing a time range can be found and given one here. */}
+      {search.trim() && (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-4">
+          <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+            <span className="text-sm font-semibold text-gray-800">نتائج البحث</span>
+            <span className="text-xs text-gray-500">{searchResults.length} طلب</span>
+          </div>
+          {searchResults.length === 0 ? (
+            <div className="p-6 text-center text-sm text-gray-500">لا توجد نتائج مطابقة</div>
+          ) : (
+            <div className="max-h-[65vh] overflow-y-auto divide-y divide-gray-100">
+              {searchResults.map((o) => {
+                const addr =
+                  addressByOrderId.get(String(o.order_id)) ||
+                  (o.customer_phone ? addressByOrderId.get("phone:" + o.customer_phone) : null)
+                const zone = getZone(o)
+                const d = parseDeliveryDate(o.delivery_date)
+                const isEditing = editingTimeId === o.id
+                const isSaving = savingTimeId === o.id
+                return (
+                  <div key={o.id} className="p-3 flex items-center justify-between gap-3 hover:bg-gray-50">
+                    <button
+                      onClick={() => openOrder(o)}
+                      className="flex-1 min-w-0 text-right"
+                    >
+                      <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                        <span className="font-semibold text-gray-900 text-sm">{o.order_name || o.order_id}</span>
+                        {zone && (
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${zoneClasses(zone)}`}>
+                            {zoneDef(zone)?.label}
+                          </span>
+                        )}
+                        {!o.delivery_time && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300 font-medium">
+                            بدون وقت
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-gray-600 truncate">
+                        {o.customer_name || "—"}
+                        {o.customer_phone && <span dir="ltr" className="mx-1 text-gray-400">· {o.customer_phone}</span>}
+                      </div>
+                      <div className="text-[11px] text-gray-500 mt-0.5 flex items-center gap-1">
+                        <CalIcon className="w-3 h-3 flex-shrink-0" />
+                        <span>{d ? o.delivery_date : "بدون تاريخ"}</span>
+                        {addr && (
+                          <>
+                            <MapPin className="w-3 h-3 flex-shrink-0 ms-2" />
+                            <span className="truncate">{addr}</span>
+                          </>
+                        )}
+                      </div>
+                    </button>
+                    {/* Time-range editor — add or change the window */}
+                    <div className="flex-shrink-0 flex items-center gap-1">
+                      {isEditing ? (
+                        <>
+                          <select
+                            autoFocus
+                            defaultValue={o.delivery_time || ""}
+                            disabled={isSaving}
+                            onChange={(e) => updateDeliveryTime(o, e.target.value)}
+                            className="text-xs border border-indigo-300 rounded px-1.5 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                          >
+                            <option value="" disabled>اختر الوقت</option>
+                            {TIME_WINDOW_OPTIONS.map((w) => (
+                              <option key={w} value={w}>{w}</option>
+                            ))}
+                            {o.delivery_time && !TIME_WINDOW_OPTIONS.includes(o.delivery_time as any) && (
+                              <option value={o.delivery_time}>{o.delivery_time}</option>
+                            )}
+                          </select>
+                          <button
+                            onClick={() => setEditingTimeId(null)}
+                            disabled={isSaving}
+                            className="p-1 text-gray-400 hover:text-gray-600"
+                            title="إلغاء"
+                          >
+                            {isSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
+                          </button>
+                        </>
+                      ) : o.delivery_time ? (
+                        <>
+                          <div className="flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2 py-1 whitespace-nowrap">
+                            <Clock className="w-3 h-3" />
+                            {o.delivery_time}
+                          </div>
+                          <button
+                            onClick={() => setEditingTimeId(o.id)}
+                            className="p-1 text-gray-400 hover:text-indigo-600"
+                            title="تعديل الوقت"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          onClick={() => setEditingTimeId(o.id)}
+                          className="flex items-center gap-1 text-xs font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 rounded px-2 py-1 hover:bg-indigo-100"
+                          title="إضافة وقت"
+                        >
+                          <Clock className="w-3 h-3" />
+                          إضافة وقت
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Calendar Grid */}
+      {!search.trim() && (
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <div className="grid grid-cols-7 bg-gray-50 border-b border-gray-200">
           {WEEKDAYS_AR.map((d) => (
@@ -915,12 +1157,23 @@ const Calendar: React.FC = () => {
                   inMonth ? "bg-white" : "bg-gray-50/60"
                 } ${isToday ? "ring-2 ring-inset ring-indigo-300" : ""}`}
               >
-                <div
-                  className={`text-xs font-semibold ${
-                    inMonth ? (isToday ? "text-indigo-700" : "text-gray-700") : "text-gray-400"
-                  }`}
-                >
-                  {d.getDate()}
+                <div className="flex items-center justify-between">
+                  <span
+                    className={`text-xs font-semibold ${
+                      inMonth ? (isToday ? "text-indigo-700" : "text-gray-700") : "text-gray-400"
+                    }`}
+                  >
+                    {d.getDate()}
+                  </span>
+                  {dayOrders.length > 0 && (
+                    <button
+                      onClick={() => openDayList(d, key, dayOrders)}
+                      className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-100"
+                      title="عرض كل الطلبات وتعيين متعدد"
+                    >
+                      {dayOrders.length} · تعيين
+                    </button>
+                  )}
                 </div>
                 <div className="flex-1 flex flex-col gap-1 overflow-hidden">
                   {dayOrders.slice(0, 3).map((o) => {
@@ -957,14 +1210,7 @@ const Calendar: React.FC = () => {
                   })}
                   {dayOrders.length > 3 && (
                     <button
-                      onClick={() => {
-                        setExpandedSlots(new Set())
-                        setDayList({
-                          key,
-                          label: `${WEEKDAYS_AR[d.getDay()]} ${d.getDate()} ${MONTHS_AR[d.getMonth()]} ${d.getFullYear()}`,
-                          orders: dayOrders,
-                        })
-                      }}
+                      onClick={() => openDayList(d, key, dayOrders)}
                       className="text-[10px] text-indigo-700 hover:underline text-right"
                     >
                       +{dayOrders.length - 3} أخرى
@@ -976,6 +1222,7 @@ const Calendar: React.FC = () => {
           })}
         </div>
       </div>
+      )}
 
       {/* Day list modal: shows ALL orders for a single day */}
       {dayList && (
@@ -1001,7 +1248,7 @@ const Calendar: React.FC = () => {
                 // Group the day's orders by their delivery time slot, ordered chronologically.
                 const groups = new Map<string, WhatsAppOrder[]>()
                 for (const o of dayList.orders) {
-                  const slot = timeSlotLabel(o.delivery_time) || "—"
+                  const slot = timeSlotLabel(o.delivery_time) || "بدون وقت"
                   if (!groups.has(slot)) groups.set(slot, [])
                   groups.get(slot)!.push(o)
                 }
@@ -1010,21 +1257,39 @@ const Calendar: React.FC = () => {
                 )
                 return orderedSlots.map((slot) => {
                   const isOpen = expandedSlots.has(slot)
+                  const slotOrders = groups.get(slot)!
+                  const allSelected = slotOrders.every((o) => selectedIds.has(o.id))
+                  const toggleSlotSelection = () =>
+                    setSelectedIds((prev) => {
+                      const next = new Set(prev)
+                      if (allSelected) slotOrders.forEach((o) => next.delete(o.id))
+                      else slotOrders.forEach((o) => next.add(o.id))
+                      return next
+                    })
                   return (
                   <div key={slot} className="space-y-2">
-                    {/* Time-slot header — click to expand/collapse this slot's orders */}
-                    <button
-                      onClick={() => toggleSlot(slot)}
-                      className="w-full sticky top-0 z-10 -mx-1 px-2 py-1.5 flex items-center gap-2 bg-indigo-50/95 backdrop-blur border border-indigo-100 rounded-lg hover:bg-indigo-100/95 transition-colors"
-                    >
-                      <ChevronDown
-                        className={`w-4 h-4 text-indigo-600 transition-transform ${isOpen ? "" : "-rotate-90"}`}
+                    {/* Time-slot header — checkbox selects the whole slot; the rest toggles expand */}
+                    <div className="sticky top-0 z-10 -mx-1 px-2 py-1.5 flex items-center gap-2 bg-indigo-50/95 backdrop-blur border border-indigo-100 rounded-lg">
+                      <input
+                        type="checkbox"
+                        checked={allSelected}
+                        onChange={toggleSlotSelection}
+                        className="w-4 h-4 accent-indigo-600 cursor-pointer flex-shrink-0"
+                        title="تحديد كل الطلبات في هذا الوقت"
                       />
-                      <Clock className="w-4 h-4 text-indigo-600" />
-                      <span className="text-sm font-bold text-indigo-800">{slot}</span>
-                      <span className="text-[11px] text-indigo-500">({groups.get(slot)!.length})</span>
-                    </button>
-                    {isOpen && groups.get(slot)!.map((o) => {
+                      <button
+                        onClick={() => toggleSlot(slot)}
+                        className="flex-1 flex items-center gap-2 hover:opacity-80"
+                      >
+                        <ChevronDown
+                          className={`w-4 h-4 text-indigo-600 transition-transform ${isOpen ? "" : "-rotate-90"}`}
+                        />
+                        <Clock className="w-4 h-4 text-indigo-600" />
+                        <span className="text-sm font-bold text-indigo-800">{slot}</span>
+                        <span className="text-[11px] text-indigo-500">({slotOrders.length})</span>
+                      </button>
+                    </div>
+                    {isOpen && slotOrders.map((o) => {
                       const city = detectCity(o.delivery_location, addressByOrderId.get(String(o.order_id)) || (o.customer_phone ? addressByOrderId.get("phone:" + o.customer_phone) : null))
                       const zone = getZone(o)
                       const dep =
@@ -1033,13 +1298,25 @@ const Calendar: React.FC = () => {
                         0
                       const isEditing = editingTimeId === o.id
                       const isSaving = savingTimeId === o.id
+                      const isChecked = selectedIds.has(o.id)
                       return (
                         <div
                           key={o.id}
                           className={`w-full p-3 rounded-lg border transition-colors flex items-center justify-between gap-3 ${
-                            dep > 0 ? "bg-purple-50 border-purple-300" : "bg-white border-gray-200"
+                            isChecked
+                              ? "bg-indigo-50 border-indigo-300"
+                              : dep > 0
+                                ? "bg-purple-50 border-purple-300"
+                                : "bg-white border-gray-200"
                           }`}
                         >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => toggleSelected(o.id)}
+                            className="w-4 h-4 accent-indigo-600 cursor-pointer flex-shrink-0"
+                            title="تحديد للتعيين الجماعي"
+                          />
                           <button
                             onClick={() => {
                               setDayList(null)
@@ -1142,6 +1419,56 @@ const Calendar: React.FC = () => {
                 })
               })()}
             </div>
+
+            {/* Bulk-assign footer — appears once one or more orders are selected */}
+            {(selectedIds.size > 0 || bulkSuccess || bulkError) && (
+              <div className="border-t border-gray-200 bg-gray-50 p-3 space-y-2">
+                {bulkError && (
+                  <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1">
+                    {bulkError}
+                  </div>
+                )}
+                {bulkSuccess && (
+                  <div className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2 py-1">
+                    {bulkSuccess}
+                  </div>
+                )}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-semibold text-gray-700 whitespace-nowrap">
+                    محدد: {selectedIds.size}
+                  </span>
+                  <select
+                    value={bulkCourier}
+                    onChange={(e) => setBulkCourier(e.target.value)}
+                    className="flex-1 min-w-[140px] px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  >
+                    <option value="">اختر المندوب</option>
+                    {couriers.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="date"
+                    value={bulkDate}
+                    onChange={(e) => setBulkDate(e.target.value)}
+                    title="اترك التاريخ فارغاً للتعيين اليوم؛ اختر يوماً قادماً للجدولة"
+                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  />
+                  <button
+                    onClick={assignMany}
+                    disabled={bulkAssigning || selectedIds.size === 0 || !bulkCourier}
+                    className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
+                  >
+                    {bulkAssigning ? (
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <UserPlus className="w-4 h-4" />
+                    )}
+                    تعيين المحدد
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
