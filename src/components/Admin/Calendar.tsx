@@ -45,6 +45,14 @@ const parseDeliveryDate = (s?: string | null): Date | null => {
 const sameDay = (a: Date, b: Date) =>
   a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
 
+// A payment_method other than cash / COD means the customer paid (or will pay)
+// online. An empty/unknown method is treated as COD (the default here).
+const isOnlinePaid = (method?: string | null): boolean => {
+  const m = (method || "").toLowerCase().trim()
+  if (!m) return false
+  return !/cash|cod|collect/.test(m)
+}
+
 // Parse "(lat,lng)" → { lat, lng }
 const parseLatLng = (loc?: string | null): { lat: number; lng: number } | null => {
   if (!loc) return null
@@ -290,8 +298,12 @@ const Calendar: React.FC = () => {
   const [zoneTagFilter, setZoneTagFilter] = useState<string>("all")
   // Time-slot filter: "all" or a delivery-time start label (e.g. "11:00 AM").
   const [timeFilter, setTimeFilter] = useState<string>("all")
+  // Customer filter: "all" | "green" (paid online or has deposit) | "red" (COD, no deposit)
+  const [customerFilter, setCustomerFilter] = useState<"all" | "green" | "red">("all")
   // Map of shopify_order_id / order_id / "phone:<phone>" → detected zone key (from order_tags)
   const [zoneByOrderId, setZoneByOrderId] = useState<Map<string, string>>(new Map())
+  // Map of shopify_order_id / order_id / "phone:<phone>" → payment info (method + prepaid)
+  const [paymentByOrderId, setPaymentByOrderId] = useState<Map<string, { method: string; prepaid: number }>>(new Map())
   // Inline delivery-time editing (in the day-list popup)
   const [editingTimeId, setEditingTimeId] = useState<number | null>(null)
   const [savingTimeId, setSavingTimeId] = useState<number | null>(null)
@@ -376,7 +388,7 @@ const Calendar: React.FC = () => {
         // Run two/three lookups in parallel: by shopify_order_id, by order_id (text),
         // and by customer_phone (last-resort fallback for orders that don't have a
         // matching shopify_order_id).
-        const sel = "order_id, shopify_order_id, customer_phone, address, shipping_address, billing_address, shipping_city, billing_city, order_note, notes, admin_prepaid_amount, order_tags"
+        const sel = "order_id, shopify_order_id, customer_phone, address, shipping_address, billing_address, shipping_city, billing_city, order_note, notes, admin_prepaid_amount, order_tags, payment_method, financial_status, payment_status"
         const [a, b, c] = await Promise.all([
           ids.length > 0
             ? supabase.from("orders").select(sel).in("shopify_order_id", ids)
@@ -392,6 +404,7 @@ const Calendar: React.FC = () => {
         const map = new Map<string, string>()
         const depositMap = new Map<string, number>()
         const zoneMap = new Map<string, string>()
+        const paymentMap = new Map<string, { method: string; prepaid: number }>()
         for (const r of matched) {
           const a = (r as any).address || (r as any).shipping_address || (r as any).billing_address
           // Combine all available text — address + city fields — so detectCityFromText
@@ -421,10 +434,21 @@ const Calendar: React.FC = () => {
             if ((r as any).order_id) zoneMap.set(String((r as any).order_id), zone)
             if ((r as any).customer_phone) zoneMap.set("phone:" + String((r as any).customer_phone), zone)
           }
+          // Payment info for the green/red customer classification:
+          //  method = payment_method (cash/cod => COD; anything else => paid online)
+          //  prepaid = admin-recorded deposit amount (counts as "paid a deposit")
+          const pay = {
+            method: String((r as any).payment_method || ""),
+            prepaid: Number((r as any).admin_prepaid_amount || 0) || 0,
+          }
+          if ((r as any).shopify_order_id) paymentMap.set(String((r as any).shopify_order_id), pay)
+          if ((r as any).order_id) paymentMap.set(String((r as any).order_id), pay)
+          if ((r as any).customer_phone) paymentMap.set("phone:" + String((r as any).customer_phone), pay)
         }
         setAddressByOrderId(map)
         setDepositByOrderId(depositMap)
         setZoneByOrderId(zoneMap)
+        setPaymentByOrderId(paymentMap)
 
         // Diagnostic: surface the distinct order_tags found and which ones did NOT
         // map to a known zone — open the browser console to inspect if a zone
@@ -465,6 +489,25 @@ const Calendar: React.FC = () => {
     zoneByOrderId.get(String(o.order_id)) ||
     (o.customer_phone ? zoneByOrderId.get("phone:" + o.customer_phone) : null) ||
     null
+
+  // Resolve an order's payment info via order_id / shopify_order_id / phone.
+  const getPayment = (o: WhatsAppOrder): { method: string; prepaid: number } =>
+    paymentByOrderId.get(String(o.order_id)) ||
+    (o.customer_phone ? paymentByOrderId.get("phone:" + o.customer_phone) : undefined) ||
+    { method: "", prepaid: 0 }
+
+  // Classify a customer:
+  //   green — paid online OR paid a deposit (already prepaid something)
+  //   red   — COD and no deposit
+  const customerClass = (o: WhatsAppOrder): "green" | "red" => {
+    const pay = getPayment(o)
+    const noteDeposit =
+      depositByOrderId.get(String(o.order_id)) ||
+      (o.customer_phone ? depositByOrderId.get("phone:" + o.customer_phone) : 0) ||
+      0
+    const hasDeposit = noteDeposit > 0 || pay.prepaid > 0
+    return isOnlinePaid(pay.method) || hasDeposit ? "green" : "red"
+  }
 
   // Does this order match the current free-text search?
   const matchesSearch = (o: WhatsAppOrder): boolean => {
@@ -509,6 +552,8 @@ const Calendar: React.FC = () => {
         0
       if (depositFilter === "with" && !(dep > 0)) continue
       if (depositFilter === "without" && dep > 0) continue
+      // Apply green/red customer filter
+      if (customerFilter !== "all" && customerClass(o) !== customerFilter) continue
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
       if (!map.has(key)) map.set(key, [])
       map.get(key)!.push(o)
@@ -518,15 +563,18 @@ const Calendar: React.FC = () => {
       arr.sort((a, b) => parseTimeToMinutes(a.delivery_time) - parseTimeToMinutes(b.delivery_time))
     }
     return map
-  }, [waOrders, search, zoneFilter, depositFilter, zoneTagFilter, timeFilter, addressByOrderId, depositByOrderId, zoneByOrderId])
+  }, [waOrders, search, zoneFilter, depositFilter, zoneTagFilter, timeFilter, customerFilter, addressByOrderId, depositByOrderId, zoneByOrderId, paymentByOrderId])
 
   // Search results — ALL matching orders regardless of whether they have a
   // delivery date or time, so an order with no time range can still be found and
   // given one (it isn't limited to today or to any single day).
   const searchResults = useMemo(() => {
     if (!search.trim()) return [] as WhatsAppOrder[]
-    return waOrders.filter(matchesSearch).slice(0, 300)
-  }, [search, waOrders, addressByOrderId])
+    return waOrders
+      .filter(matchesSearch)
+      .filter((o) => customerFilter === "all" || customerClass(o) === customerFilter)
+      .slice(0, 300)
+  }, [search, waOrders, addressByOrderId, customerFilter, paymentByOrderId, depositByOrderId])
 
   // Build the month grid (6 rows × 7 cols starting on Sunday)
   const grid = useMemo(() => {
@@ -988,6 +1036,43 @@ const Calendar: React.FC = () => {
         })}
       </div>
 
+      {/* Customer filter — green (paid online / has deposit) vs red (COD, no deposit) */}
+      <div className="mb-3 flex items-center gap-2 flex-wrap">
+        <span className="text-xs font-semibold text-gray-700">العميل:</span>
+        <button
+          onClick={() => setCustomerFilter("all")}
+          className={`text-xs px-3 py-1 rounded-full border transition ${
+            customerFilter === "all"
+              ? "bg-gray-100 text-gray-800 border-gray-300 ring-2 ring-offset-1 ring-indigo-400 font-semibold"
+              : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+          }`}
+        >
+          الكل
+        </button>
+        <button
+          onClick={() => setCustomerFilter("green")}
+          className={`text-xs px-3 py-1 rounded-full border transition flex items-center gap-1.5 ${
+            customerFilter === "green"
+              ? "bg-green-100 text-green-800 border-green-300 ring-2 ring-offset-1 ring-green-400 font-semibold"
+              : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+          }`}
+        >
+          <span className="inline-block w-2 h-2 rounded-full bg-green-500" />
+          عميل أخضر (أونلاين / مقدم)
+        </button>
+        <button
+          onClick={() => setCustomerFilter("red")}
+          className={`text-xs px-3 py-1 rounded-full border transition flex items-center gap-1.5 ${
+            customerFilter === "red"
+              ? "bg-red-100 text-red-800 border-red-300 ring-2 ring-offset-1 ring-red-400 font-semibold"
+              : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+          }`}
+        >
+          <span className="inline-block w-2 h-2 rounded-full bg-red-500" />
+          عميل أحمر (كاش بدون مقدم)
+        </button>
+      </div>
+
       {/* Search — order name / id / customer / phone / address */}
       <div className="mb-3 flex items-center gap-2">
         <div className="relative flex-1 max-w-md">
@@ -1046,6 +1131,12 @@ const Calendar: React.FC = () => {
                       className="flex-1 min-w-0 text-right"
                     >
                       <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                        <span
+                          className={`inline-block w-2 h-2 rounded-full ${
+                            customerClass(o) === "green" ? "bg-green-500" : "bg-red-500"
+                          }`}
+                          title={customerClass(o) === "green" ? "عميل أخضر" : "عميل أحمر"}
+                        />
                         <span className="font-semibold text-gray-900 text-sm">{o.order_name || o.order_id}</span>
                         {zone && (
                           <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${zoneClasses(zone)}`}>
@@ -1197,6 +1288,11 @@ const Calendar: React.FC = () => {
                         className={`text-right truncate text-[11px] px-1.5 py-1 rounded border hover:brightness-95 ${klass}`}
                         title={`${o.customer_name || ""} ${o.delivery_time || ""} ${zone ? zoneDef(zone)?.label : cityLabelAr(city)}${dep > 0 ? ` · مقدم ${dep}` : ""}`}
                       >
+                        <span
+                          className={`inline-block w-1.5 h-1.5 rounded-full me-1 align-middle ${
+                            customerClass(o) === "green" ? "bg-green-500" : "bg-red-500"
+                          }`}
+                        />
                         <span className="font-semibold">{o.order_name || o.order_id}</span>
                         {o.delivery_time && <span className="opacity-70"> · {o.delivery_time.split(" - ")[0]}</span>}
                         {zone && <span className="opacity-80"> · {zoneDef(zone)?.label}</span>}
@@ -1325,6 +1421,12 @@ const Calendar: React.FC = () => {
                             className="flex-1 min-w-0 text-right hover:opacity-80"
                           >
                             <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                              <span
+                                className={`inline-block w-2 h-2 rounded-full ${
+                                  customerClass(o) === "green" ? "bg-green-500" : "bg-red-500"
+                                }`}
+                                title={customerClass(o) === "green" ? "عميل أخضر" : "عميل أحمر"}
+                              />
                               <span className="font-semibold text-gray-900 text-sm">
                                 {o.order_name || o.order_id}
                               </span>
