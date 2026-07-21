@@ -29,6 +29,7 @@ import Trach from "./components/Admin/Trach"
 import ReceivePieceOrExchange from "./components/Admin/ReceivePieceOrExchange"
 import Calendar from "./components/Admin/Calendar"
 import ActivityLogs from "./components/Admin/ActivityLogs"
+import DailySettlement from "./components/Admin/DailySettlement"
 import { activateDueScheduledOrders } from "./lib/scheduling"
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles?: string[] }> = ({
@@ -239,6 +240,16 @@ const AppRoutes: React.FC = () => {
               <ProtectedRoute allowedRoles={["admin"]}>
                 <AppLayout>
                   <Calendar />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/settlement"
+            element={
+              <ProtectedRoute allowedRoles={["admin"]}>
+                <AppLayout>
+                  <DailySettlement />
                 </AppLayout>
               </ProtectedRoute>
             }

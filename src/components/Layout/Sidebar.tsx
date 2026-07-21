@@ -140,6 +140,13 @@ const Sidebar: React.FC = () => {
       description: "تقارير الأداء والإحصائيات",
     },
     {
+      path: "/admin/settlement",
+      icon: DollarSign,
+      label: "المحاسبة اليومية",
+      color: "text-emerald-400",
+      description: "تحصيل كل مندوب يومياً حسب طريقة الدفع (Excel)",
+    },
+    {
       path: "/admin/analytics",
       icon: BarChart3,
       label: "Analytics",
