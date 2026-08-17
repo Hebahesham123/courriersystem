@@ -148,12 +148,15 @@ const CourierActivitySummary: React.FC = () => {
         .from("orders")
         .select("*, collected_by, payment_sub_type")
 
-      // Apply date filter only if dates are provided
+      // Apply date filter only if dates are provided.
+      // Match by the day the order was ASSIGNED (the working day), with a created_at
+      // fallback only for legacy orders that have no assigned_at. We intentionally do
+      // NOT match updated_at — an order edited/synced today (e.g. Shopify sync) must
+      // not appear as if it were worked today.
       if (startDate && endDate) {
         query = query.or(
-          `and(created_at.gte.${startDate.toISOString()},created_at.lte.${endDate.toISOString()}),` +
           `and(assigned_at.gte.${startDate.toISOString()},assigned_at.lte.${endDate.toISOString()}),` +
-          `and(updated_at.gte.${startDate.toISOString()},updated_at.lte.${endDate.toISOString()})`
+          `and(assigned_at.is.null,created_at.gte.${startDate.toISOString()},created_at.lte.${endDate.toISOString()})`
         )
       }
 
