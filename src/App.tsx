@@ -30,7 +30,12 @@ import ReceivePieceOrExchange from "./components/Admin/ReceivePieceOrExchange"
 import Calendar from "./components/Admin/Calendar"
 import ActivityLogs from "./components/Admin/ActivityLogs"
 import DailySettlement from "./components/Admin/DailySettlement"
+import WarehouseReturns from "./components/Warehouse/WarehouseReturns"
 import { activateDueScheduledOrders } from "./lib/scheduling"
+
+// Landing route for a given role.
+const homeFor = (role?: string): string =>
+  role === "admin" ? "/admin" : role === "warehouse" ? "/warehouse/returns" : "/courier"
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles?: string[] }> = ({
   children,
@@ -48,7 +53,7 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles?: strin
 
   if (!user) return <Navigate to="/login" replace />
   if (allowedRoles && !allowedRoles.includes(user.role || "")) {
-    const redirectPath = user.role === "admin" ? "/admin" : "/courier"
+    const redirectPath = homeFor(user.role)
     return <Navigate to={redirectPath} replace />
   }
   return <>{children}</>
@@ -93,7 +98,7 @@ const AppRoutes: React.FC = () => {
         </>
       ) : (
         <>
-          <Route path="/" element={<Navigate to={user.role === "admin" ? "/admin" : "/courier"} replace />} />
+          <Route path="/" element={<Navigate to={homeFor(user.role)} replace />} />
           <Route
             path="/admin"
             element={
@@ -334,7 +339,17 @@ const AppRoutes: React.FC = () => {
               </ProtectedRoute>
             }
           />
-          <Route path="*" element={<Navigate to={user.role === "admin" ? "/admin" : "/courier"} replace />} />
+          <Route
+            path="/warehouse/returns"
+            element={
+              <ProtectedRoute allowedRoles={["warehouse", "admin"]}>
+                <AppLayout>
+                  <WarehouseReturns />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route path="*" element={<Navigate to={homeFor(user.role)} replace />} />
         </>
       )}
     </Routes>

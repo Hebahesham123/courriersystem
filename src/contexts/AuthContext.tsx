@@ -7,7 +7,7 @@ import { supabase } from "../lib/supabase"
 import { CheckCircle, XCircle, Activity, TrendingUp, HandMetal } from "lucide-react"
 
 interface AuthUser extends User {
-  role?: "admin" | "courier"
+  role?: "admin" | "courier" | "warehouse"
   name?: string
 }
 

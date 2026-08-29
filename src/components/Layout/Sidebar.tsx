@@ -27,6 +27,7 @@ import {
   Globe,
   Calendar,
   Map as MapIcon,
+  Warehouse,
 } from "lucide-react"
 import { useAuth } from "../../contexts/AuthContext"
 import { useLanguage } from "../../contexts/LanguageContext"
@@ -147,6 +148,13 @@ const Sidebar: React.FC = () => {
       description: "تحصيل كل مندوب يومياً حسب طريقة الدفع (Excel)",
     },
     {
+      path: "/warehouse/returns",
+      icon: Warehouse,
+      label: "المرتجعات (المخزن)",
+      color: "text-slate-300",
+      description: "مرتجع / ملغي / يد بيد / تبديل / استلام قطعة لكل مندوب",
+    },
+    {
       path: "/admin/analytics",
       icon: BarChart3,
       label: "Analytics",
@@ -228,7 +236,18 @@ const Sidebar: React.FC = () => {
     },
   ]
 
-  const menuItems = user?.role === "admin" ? adminMenuItems : courierMenuItems
+  const warehouseMenuItems: MenuItem[] = [
+    {
+      path: "/warehouse/returns",
+      icon: Warehouse,
+      label: "المرتجعات",
+      color: "text-slate-300",
+      description: "استلام المرتجعات لكل مندوب",
+    },
+  ]
+
+  const menuItems =
+    user?.role === "admin" ? adminMenuItems : user?.role === "warehouse" ? warehouseMenuItems : courierMenuItems
 
   const getUserInitials = (name?: string): string => {
     if (!name) return "U"
@@ -244,6 +263,7 @@ const Sidebar: React.FC = () => {
     const roleTranslations = {
       admin: "مدير النظام",
       courier: "مندوب توصيل",
+      warehouse: "المخزن",
     }
     return roleTranslations[user?.role as keyof typeof roleTranslations] || user?.role || "مستخدم"
   }
