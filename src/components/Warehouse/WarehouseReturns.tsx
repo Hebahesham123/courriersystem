@@ -94,6 +94,8 @@ const WarehouseReturns: React.FC = () => {
   const [search, setSearch] = useState("")
   const [catFilter, setCatFilter] = useState<CatKey | "all">("all")
   const [receivedFilter, setReceivedFilter] = useState<"all" | "received" | "pending">("all")
+  const [dateFrom, setDateFrom] = useState("")
+  const [dateTo, setDateTo] = useState("")
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [detail, setDetail] = useState<Order | null>(null)
   const [savingId, setSavingId] = useState<string | null>(null)
@@ -131,12 +133,17 @@ const WarehouseReturns: React.FC = () => {
     fetchData()
   }, [])
 
+  const orderDay = (o: Order): string => (o.created_at || "").slice(0, 10) // YYYY-MM-DD
+
   const matchesFilters = (o: Order): boolean => {
     const cat = categoryOf(o)
     if (cat === "other") return false
     if (catFilter !== "all" && cat !== catFilter) return false
     if (receivedFilter === "received" && !o.warehouse_received) return false
     if (receivedFilter === "pending" && o.warehouse_received) return false
+    const day = orderDay(o)
+    if (dateFrom && day < dateFrom) return false
+    if (dateTo && day > dateTo) return false
     const q = search.trim().toLowerCase()
     if (q) {
       const hay = [o.order_id, o.shopify_order_name, o.customer_name, o.customer_phone, o.mobile_number, o.address]
@@ -161,7 +168,7 @@ const WarehouseReturns: React.FC = () => {
       (couriers.get(a[0]) || "").localeCompare(couriers.get(b[0]) || ""),
     )
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orders, couriers, search, catFilter, receivedFilter])
+  }, [orders, couriers, search, catFilter, receivedFilter, dateFrom, dateTo])
 
   const totals = useMemo(() => {
     let total = 0
@@ -272,6 +279,52 @@ const WarehouseReturns: React.FC = () => {
             {r === "all" ? "الحالة: الكل" : r === "pending" ? "لم يُستلم" : "تم الاستلام"}
           </button>
         ))}
+      </div>
+
+      {/* Date filter */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <span className="text-xs font-semibold text-gray-700">التاريخ:</span>
+        <input
+          type="date"
+          value={dateFrom}
+          onChange={(e) => setDateFrom(e.target.value)}
+          className="px-2 py-1.5 border border-gray-300 rounded-lg text-xs"
+        />
+        <span className="text-gray-400">→</span>
+        <input
+          type="date"
+          value={dateTo}
+          onChange={(e) => setDateTo(e.target.value)}
+          className="px-2 py-1.5 border border-gray-300 rounded-lg text-xs"
+        />
+        {(() => {
+          const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+          const preset = (days: number | null) => {
+            if (days === null) {
+              setDateFrom("")
+              setDateTo("")
+              return
+            }
+            const now = new Date()
+            setDateTo(iso(now))
+            setDateFrom(iso(new Date(now.getFullYear(), now.getMonth(), now.getDate() - days)))
+          }
+          const presets: [string, number | null][] = [
+            ["اليوم", 0],
+            ["٧ أيام", 7],
+            ["٣٠ يوم", 30],
+            ["الكل", null],
+          ]
+          return presets.map(([label, days]) => (
+            <button
+              key={label}
+              onClick={() => preset(days)}
+              className="text-xs px-2.5 py-1 rounded-full border bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+            >
+              {label}
+            </button>
+          ))
+        })()}
       </div>
 
       {/* Search */}
