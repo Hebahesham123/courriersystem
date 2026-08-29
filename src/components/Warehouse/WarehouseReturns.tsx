@@ -55,6 +55,13 @@ const parseItems = (raw: any): any[] => {
   }
 }
 
+// product_images entries look like { image, title, product_id, variant_id }.
+const imgSrc = (x: any): string | null => {
+  if (!x) return null
+  if (typeof x === "string") return x
+  return x.image || x.src || x.url || x.image_url || null
+}
+
 interface Order {
   id: string
   order_id: string
@@ -458,28 +465,55 @@ const OrderDetail: React.FC<{ order: Order; courierName: string; onClose: () => 
           )}
 
           {/* Products */}
-          {(items.length > 0 || images.length > 0) && (
-            <div className="pt-2 border-t border-gray-200">
-              <div className="flex items-center gap-2 text-gray-700 font-semibold mb-2">
-                <Package className="w-4 h-4 text-gray-400" /> المنتجات
-              </div>
-              <div className="space-y-1.5">
-                {items.map((it: any, i: number) => (
-                  <div key={i} className="flex items-center justify-between text-xs bg-gray-50 rounded px-2 py-1.5">
-                    <span className="truncate">{it.title || it.name || it.sku || "منتج"}</span>
-                    <span className="text-gray-500 flex-shrink-0">× {it.quantity ?? it.qty ?? 1}</span>
+          {(items.length > 0 || images.length > 0) &&
+            (() => {
+              const imgByPid = new Map<string, string>()
+              for (const im of images) {
+                const u = imgSrc(im)
+                if (u && im?.product_id) imgByPid.set(String(im.product_id), u)
+              }
+              const looseImgs = images.map(imgSrc).filter(Boolean) as string[]
+              return (
+                <div className="pt-2 border-t border-gray-200">
+                  <div className="flex items-center gap-2 text-gray-700 font-semibold mb-2">
+                    <Package className="w-4 h-4 text-gray-400" /> المنتجات
                   </div>
-                ))}
-              </div>
-              {images.length > 0 && (
-                <div className="flex gap-2 flex-wrap mt-2">
-                  {images.slice(0, 6).map((src: any, i: number) => (
-                    <img key={i} src={typeof src === "string" ? src : src?.src} alt="" className="w-14 h-14 object-cover rounded border" />
-                  ))}
+                  {items.length > 0 ? (
+                    <div className="space-y-1.5">
+                      {items.map((it: any, i: number) => {
+                        const url = imgByPid.get(String(it.product_id)) || looseImgs[i] || null
+                        return (
+                          <div key={i} className="flex items-center gap-2 text-xs bg-gray-50 rounded px-2 py-1.5">
+                            {url ? (
+                              <a href={url} target="_blank" rel="noreferrer" className="flex-shrink-0">
+                                <img
+                                  src={url}
+                                  alt=""
+                                  className="w-12 h-12 object-cover rounded border hover:brightness-95 cursor-zoom-in"
+                                  onError={(e) => ((e.currentTarget.style.display = "none"))}
+                                />
+                              </a>
+                            ) : (
+                              <div className="w-12 h-12 rounded border bg-gray-100 flex-shrink-0" />
+                            )}
+                            <span className="flex-1 truncate">{it.title || it.name || it.sku || "منتج"}</span>
+                            <span className="text-gray-500 flex-shrink-0">× {it.quantity ?? it.qty ?? 1}</span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    <div className="flex gap-2 flex-wrap">
+                      {looseImgs.slice(0, 8).map((url, i) => (
+                        <a key={i} href={url} target="_blank" rel="noreferrer">
+                          <img src={url} alt="" className="w-16 h-16 object-cover rounded border hover:brightness-95 cursor-zoom-in" />
+                        </a>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          )}
+              )
+            })()}
 
           {/* Courier proof images */}
           {proofs.length > 0 && (
@@ -487,7 +521,9 @@ const OrderDetail: React.FC<{ order: Order; courierName: string; onClose: () => 
               <div className="text-gray-700 font-semibold mb-2">إثبات المندوب</div>
               <div className="flex gap-2 flex-wrap">
                 {proofs.map((p) => (
-                  <img key={p.id} src={p.image_data} alt="proof" className="w-20 h-20 object-cover rounded border" />
+                  <a key={p.id} href={p.image_data} target="_blank" rel="noreferrer">
+                    <img src={p.image_data} alt="proof" className="w-20 h-20 object-cover rounded border hover:brightness-95 cursor-zoom-in" />
+                  </a>
                 ))}
               </div>
             </div>
