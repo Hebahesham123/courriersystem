@@ -535,22 +535,65 @@ const OrderDetail: React.FC<{ order: Order; courierName: string; onClose: () => 
                     <div className="space-y-1.5">
                       {items.map((it: any, i: number) => {
                         const url = imgByPid.get(String(it.product_id)) || looseImgs[i] || null
+                        const qty = Number(it.quantity ?? it.current_quantity ?? it.qty ?? 1) || 1
+                        const price = parseFloat(it.price) || 0
+                        const variant =
+                          it.variant_title && it.variant_title !== "Default Title" ? it.variant_title : null
+                        const props = (Array.isArray(it.properties) ? it.properties : []).filter(
+                          (p: any) => p?.name && !String(p.name).startsWith("_") && p?.value,
+                        )
                         return (
-                          <div key={i} className="flex items-center gap-2 text-xs bg-gray-50 rounded px-2 py-1.5">
+                          <div key={i} className="flex items-start gap-2.5 text-xs bg-gray-50 rounded-lg px-2.5 py-2">
                             {url ? (
                               <a href={url} target="_blank" rel="noreferrer" className="flex-shrink-0">
                                 <img
                                   src={url}
                                   alt=""
-                                  className="w-12 h-12 object-cover rounded border hover:brightness-95 cursor-zoom-in"
+                                  className="w-14 h-14 object-cover rounded border hover:brightness-95 cursor-zoom-in"
                                   onError={(e) => ((e.currentTarget.style.display = "none"))}
                                 />
                               </a>
                             ) : (
-                              <div className="w-12 h-12 rounded border bg-gray-100 flex-shrink-0" />
+                              <div className="w-14 h-14 rounded border bg-gray-100 flex-shrink-0" />
                             )}
-                            <span className="flex-1 truncate">{it.title || it.name || it.sku || "منتج"}</span>
-                            <span className="text-gray-500 flex-shrink-0">× {it.quantity ?? it.qty ?? 1}</span>
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium text-gray-900 leading-snug">
+                                {it.title || it.name || "منتج"}
+                              </div>
+                              <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                                {variant && (
+                                  <span className="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-medium">
+                                    {variant}
+                                  </span>
+                                )}
+                                {it.vendor && (
+                                  <span className="px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 text-[10px]">
+                                    {it.vendor}
+                                  </span>
+                                )}
+                                {it.sku && (
+                                  <span dir="ltr" className="text-[10px] text-gray-400">
+                                    SKU: {it.sku}
+                                  </span>
+                                )}
+                              </div>
+                              {props.length > 0 && (
+                                <div className="mt-1 text-[10px] text-gray-500">
+                                  {props.map((p: any) => `${p.name}: ${p.value}`).join(" · ")}
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex-shrink-0 text-left">
+                              <div className="text-gray-500">× {qty}</div>
+                              <div className="font-semibold text-gray-900 whitespace-nowrap">
+                                {price.toLocaleString()} ج.م
+                              </div>
+                              {qty > 1 && (
+                                <div className="text-[10px] text-gray-400 whitespace-nowrap">
+                                  = {(price * qty).toLocaleString()}
+                                </div>
+                              )}
+                            </div>
                           </div>
                         )
                       })}
