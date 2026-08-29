@@ -13,7 +13,11 @@ const Header: React.FC = () => {
         <div className="flex items-center justify-between h-16">
           {/* Dashboard title */}
           <div className="text-lg font-semibold text-gray-900 whitespace-nowrap truncate">
-            {user?.role === 'admin' ? t('adminDashboard') : t('courierDashboard')}
+            {user?.role === 'admin'
+              ? t('adminDashboard')
+              : user?.role === 'warehouse'
+                ? t('warehouseDashboard')
+                : t('courierDashboard')}
           </div>
 
           {/* User actions - Language toggle removed, always Arabic */}

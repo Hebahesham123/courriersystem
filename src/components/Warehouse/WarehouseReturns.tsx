@@ -2,6 +2,7 @@
 
 import type React from "react"
 import { useEffect, useMemo, useState } from "react"
+import { createPortal } from "react-dom"
 import {
   RefreshCw,
   ChevronDown,
@@ -413,7 +414,7 @@ const OrderDetail: React.FC<{ order: Order; courierName: string; onClose: () => 
     order.address ||
     (typeof order.shipping_address === "string" ? order.shipping_address : JSON.stringify(order.shipping_address || ""))
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[88vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="bg-gradient-to-r from-slate-700 to-slate-900 text-white px-5 py-4 flex items-center justify-between">
@@ -500,7 +501,8 @@ const OrderDetail: React.FC<{ order: Order; courierName: string; onClose: () => 
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
