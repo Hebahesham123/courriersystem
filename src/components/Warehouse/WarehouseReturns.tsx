@@ -74,6 +74,7 @@ interface Order {
   total_order_fees?: number | null
   status: string
   assigned_courier_id?: string | null
+  assigned_at?: string | null
   receive_piece_or_exchange?: string | null
   line_items?: any
   product_images?: any
@@ -82,6 +83,7 @@ interface Order {
   warehouse_received?: boolean | null
   warehouse_received_at?: string | null
   warehouse_received_by?: string | null
+  warehouse_received_comment?: string | null
   created_at?: string | null
 }
 
@@ -112,7 +114,7 @@ const WarehouseReturns: React.FC = () => {
       const { data, error: err } = await supabase
         .from("orders")
         .select(
-          "id, order_id, shopify_order_name, customer_name, customer_phone, mobile_number, address, shipping_address, total_order_fees, status, assigned_courier_id, receive_piece_or_exchange, notes, order_note, warehouse_received, warehouse_received_at, warehouse_received_by, created_at",
+          "id, order_id, shopify_order_name, customer_name, customer_phone, mobile_number, address, shipping_address, total_order_fees, status, assigned_courier_id, assigned_at, receive_piece_or_exchange, notes, order_note, warehouse_received, warehouse_received_at, warehouse_received_by, warehouse_received_comment, created_at",
         )
         .or(
           "status.in.(partial,canceled,hand_to_hand,receiving_part),receive_piece_or_exchange.in.(receive_piece,exchange)",
@@ -133,7 +135,14 @@ const WarehouseReturns: React.FC = () => {
     fetchData()
   }, [])
 
-  const orderDay = (o: Order): string => (o.created_at || "").slice(0, 10) // YYYY-MM-DD
+  // The order's working day, in LOCAL time (matches the date presets below).
+  const orderDay = (o: Order): string => {
+    const iso = o.assigned_at || o.created_at
+    if (!iso) return ""
+    const d = new Date(iso)
+    if (isNaN(d.getTime())) return ""
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+  }
 
   const matchesFilters = (o: Order): boolean => {
     const cat = categoryOf(o)
@@ -435,18 +444,35 @@ const WarehouseReturns: React.FC = () => {
       </div>
 
       {detail && (
-        <OrderDetail order={detail} courierName={couriers.get(String(detail.assigned_courier_id)) || "—"} onClose={() => setDetail(null)} />
+        <OrderDetail
+          order={detail}
+          courierName={couriers.get(String(detail.assigned_courier_id)) || "—"}
+          onClose={() => setDetail(null)}
+          onSaveComment={async (comment) => {
+            const { error: err } = await supabase
+              .from("orders")
+              .update({ warehouse_received_comment: comment })
+              .eq("id", detail.id)
+            if (err) throw err
+            setOrders((prev) => prev.map((x) => (x.id === detail.id ? { ...x, warehouse_received_comment: comment } : x)))
+            setDetail((prev) => (prev ? { ...prev, warehouse_received_comment: comment } : prev))
+          }}
+        />
       )}
     </div>
   )
 }
 
 // ── Read-only order detail for the warehouse ────────────────────────────────
-const OrderDetail: React.FC<{ order: Order; courierName: string; onClose: () => void }> = ({
-  order,
-  courierName,
-  onClose,
-}) => {
+const OrderDetail: React.FC<{
+  order: Order
+  courierName: string
+  onClose: () => void
+  onSaveComment: (comment: string) => Promise<void>
+}> = ({ order, courierName, onClose, onSaveComment }) => {
+  const [comment, setComment] = useState(order.warehouse_received_comment || "")
+  const [savingComment, setSavingComment] = useState(false)
+  const [savedComment, setSavedComment] = useState(false)
   const [proofs, setProofs] = useState<{ id: string; image_data: string }[]>([])
   const [items, setItems] = useState<any[]>([])
   const [images, setImages] = useState<any[]>([])
@@ -516,6 +542,39 @@ const OrderDetail: React.FC<{ order: Order; courierName: string; onClose: () => 
               الإجمالي: <span className="font-semibold">{order.total_order_fees} ج.م</span>
             </div>
           )}
+
+          {/* Warehouse receipt comment (optional) */}
+          <div className="pt-2 border-t border-gray-200">
+            <label className="text-xs font-semibold text-gray-700 mb-1 block">ملاحظة الاستلام (اختياري)</label>
+            <textarea
+              value={comment}
+              onChange={(e) => {
+                setComment(e.target.value)
+                setSavedComment(false)
+              }}
+              rows={2}
+              placeholder="أضف ملاحظة عن استلام هذا الطلب..."
+              className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-slate-400"
+            />
+            <div className="flex items-center gap-2 mt-1">
+              <button
+                onClick={async () => {
+                  setSavingComment(true)
+                  try {
+                    await onSaveComment(comment.trim())
+                    setSavedComment(true)
+                  } finally {
+                    setSavingComment(false)
+                  }
+                }}
+                disabled={savingComment}
+                className="px-3 py-1 text-xs rounded-lg bg-slate-700 text-white hover:bg-slate-800 disabled:opacity-50"
+              >
+                {savingComment ? "جاري الحفظ..." : "حفظ الملاحظة"}
+              </button>
+              {savedComment && <span className="text-xs text-emerald-600">تم الحفظ ✓</span>}
+            </div>
+          </div>
 
           {/* Products */}
           {(items.length > 0 || images.length > 0) &&

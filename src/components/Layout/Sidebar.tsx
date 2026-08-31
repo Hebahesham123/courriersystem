@@ -152,7 +152,14 @@ const Sidebar: React.FC = () => {
       icon: Warehouse,
       label: "المرتجعات (المخزن)",
       color: "text-slate-300",
-      description: "مرتجع / ملغي / يد بيد / تبديل / استلام قطعة لكل مندوب",
+      description: "جزئي / ملغي / يد بيد / تبديل / استلام قطعة لكل مندوب",
+    },
+    {
+      path: "/admin/warehouse-tracking",
+      icon: Warehouse,
+      label: "مخزن",
+      color: "text-slate-400",
+      description: "تتبع استلام موظفي المخزن للمرتجعات",
     },
     {
       path: "/admin/analytics",

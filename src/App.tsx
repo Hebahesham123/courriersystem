@@ -31,6 +31,7 @@ import Calendar from "./components/Admin/Calendar"
 import ActivityLogs from "./components/Admin/ActivityLogs"
 import DailySettlement from "./components/Admin/DailySettlement"
 import WarehouseReturns from "./components/Warehouse/WarehouseReturns"
+import WarehouseTracking from "./components/Admin/WarehouseTracking"
 import { activateDueScheduledOrders } from "./lib/scheduling"
 
 // Landing route for a given role.
@@ -345,6 +346,16 @@ const AppRoutes: React.FC = () => {
               <ProtectedRoute allowedRoles={["warehouse", "admin"]}>
                 <AppLayout>
                   <WarehouseReturns />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/warehouse-tracking"
+            element={
+              <ProtectedRoute allowedRoles={["admin"]}>
+                <AppLayout>
+                  <WarehouseTracking />
                 </AppLayout>
               </ProtectedRoute>
             }
