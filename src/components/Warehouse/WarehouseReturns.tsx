@@ -20,14 +20,14 @@ import { supabase } from "../../lib/supabase"
 import { useAuth } from "../../contexts/AuthContext"
 
 // The five return categories the warehouse handles.
-type CatKey = "return" | "canceled" | "hand_to_hand" | "exchange" | "receive_piece"
+type CatKey = "partial" | "canceled" | "hand_to_hand" | "exchange" | "receive_piece"
 interface Cat {
   key: CatKey
   label: string
   chip: string
 }
 const CATEGORIES: Cat[] = [
-  { key: "return", label: "مرتجع", chip: "bg-orange-100 text-orange-800 border-orange-300" },
+  { key: "partial", label: "جزئي", chip: "bg-yellow-100 text-yellow-800 border-yellow-300" },
   { key: "canceled", label: "ملغي", chip: "bg-red-100 text-red-800 border-red-300" },
   { key: "hand_to_hand", label: "يد بيد", chip: "bg-purple-100 text-purple-800 border-purple-300" },
   { key: "exchange", label: "تبديل", chip: "bg-blue-100 text-blue-800 border-blue-300" },
@@ -41,7 +41,7 @@ const categoryOf = (o: any): CatKey | "other" => {
   if (o.receive_piece_or_exchange === "receive_piece" || o.status === "receiving_part") return "receive_piece"
   if (o.status === "hand_to_hand") return "hand_to_hand"
   if (o.status === "canceled") return "canceled"
-  if (o.status === "return") return "return"
+  if (o.status === "partial") return "partial"
   return "other"
 }
 
@@ -115,7 +115,7 @@ const WarehouseReturns: React.FC = () => {
           "id, order_id, shopify_order_name, customer_name, customer_phone, mobile_number, address, shipping_address, total_order_fees, status, assigned_courier_id, receive_piece_or_exchange, notes, order_note, warehouse_received, warehouse_received_at, warehouse_received_by, created_at",
         )
         .or(
-          "status.in.(return,canceled,hand_to_hand,receiving_part),receive_piece_or_exchange.in.(receive_piece,exchange)",
+          "status.in.(partial,canceled,hand_to_hand,receiving_part),receive_piece_or_exchange.in.(receive_piece,exchange)",
         )
         .not("assigned_courier_id", "is", null)
         .order("created_at", { ascending: false })
@@ -233,7 +233,7 @@ const WarehouseReturns: React.FC = () => {
           </div>
           <div>
             <h1 className="text-xl font-bold text-gray-900">المرتجعات — المخزن</h1>
-            <p className="text-sm text-gray-600">مرتجع · ملغي · يد بيد · تبديل · استلام قطعة — لكل مندوب</p>
+            <p className="text-sm text-gray-600">جزئي · ملغي · يد بيد · تبديل · استلام قطعة — لكل مندوب</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
