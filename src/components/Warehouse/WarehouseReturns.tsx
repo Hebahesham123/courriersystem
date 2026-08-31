@@ -15,6 +15,7 @@ import {
   Package,
   User as UserIcon,
   Warehouse,
+  MessageSquare,
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
 import { useAuth } from "../../contexts/AuthContext"
@@ -101,6 +102,32 @@ const WarehouseReturns: React.FC = () => {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [detail, setDetail] = useState<Order | null>(null)
   const [savingId, setSavingId] = useState<string | null>(null)
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
+  const [commentDraft, setCommentDraft] = useState("")
+  const [savingCommentId, setSavingCommentId] = useState<string | null>(null)
+
+  // Persist a receipt comment on an order (used inline in the list and in the modal).
+  const saveComment = async (orderId: string, text: string) => {
+    const { error: err } = await supabase
+      .from("orders")
+      .update({ warehouse_received_comment: text })
+      .eq("id", orderId)
+    if (err) throw err
+    setOrders((prev) => prev.map((x) => (x.id === orderId ? { ...x, warehouse_received_comment: text } : x)))
+    setDetail((prev) => (prev && prev.id === orderId ? { ...prev, warehouse_received_comment: text } : prev))
+  }
+
+  const submitInlineComment = async (o: Order) => {
+    setSavingCommentId(o.id)
+    try {
+      await saveComment(o.id, commentDraft.trim())
+      setEditingCommentId(null)
+    } catch (e: any) {
+      setError("تعذّر حفظ الملاحظة: " + (e?.message || ""))
+    } finally {
+      setSavingCommentId(null)
+    }
+  }
 
   const fetchData = async () => {
     setLoading(true)
@@ -395,13 +422,13 @@ const WarehouseReturns: React.FC = () => {
                     const c = CAT_BY_KEY[cat]
                     const rec = !!o.warehouse_received
                     return (
-                      <div key={o.id} className={`flex items-center gap-3 px-4 py-2.5 ${rec ? "bg-emerald-50/40" : ""}`}>
+                      <div key={o.id} className={`flex items-start gap-3 px-4 py-2.5 ${rec ? "bg-emerald-50/40" : ""}`}>
                         {/* Received checkmark */}
                         <button
                           onClick={() => toggleReceived(o)}
                           disabled={savingId === o.id}
                           title={rec ? "تم الاستلام — اضغط للإلغاء" : "تحديد كمُستلَم"}
-                          className="flex-shrink-0"
+                          className="flex-shrink-0 mt-0.5"
                         >
                           {savingId === o.id ? (
                             <RefreshCw className="w-6 h-6 text-gray-400 animate-spin" />
@@ -411,28 +438,83 @@ const WarehouseReturns: React.FC = () => {
                             <Circle className="w-6 h-6 text-gray-300 hover:text-gray-400" />
                           )}
                         </button>
-                        {/* Order summary — click to open details */}
-                        <button onClick={() => setDetail(o)} className="flex-1 min-w-0 text-right">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-semibold text-gray-900 text-sm">
-                              {o.shopify_order_name || o.order_id}
-                            </span>
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${c.chip}`}>
-                              {c.label}
-                            </span>
-                            {rec && o.warehouse_received_by && (
-                              <span className="text-[10px] text-emerald-700">✓ {o.warehouse_received_by}</span>
-                            )}
-                          </div>
-                          <div className="text-xs text-gray-600 truncate">
-                            {o.customer_name || "—"}
-                            {(o.customer_phone || o.mobile_number) && (
-                              <span dir="ltr" className="mx-1 text-gray-400">
-                                · {o.customer_phone || o.mobile_number}
+                        <div className="flex-1 min-w-0">
+                          {/* Order summary — click to open details */}
+                          <button onClick={() => setDetail(o)} className="w-full text-right">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-semibold text-gray-900 text-sm">
+                                {o.shopify_order_name || o.order_id}
                               </span>
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${c.chip}`}>
+                                {c.label}
+                              </span>
+                              {rec && o.warehouse_received_by && (
+                                <span className="text-[10px] text-emerald-700">✓ {o.warehouse_received_by}</span>
+                              )}
+                            </div>
+                            <div className="text-xs text-gray-600 truncate">
+                              {o.customer_name || "—"}
+                              {(o.customer_phone || o.mobile_number) && (
+                                <span dir="ltr" className="mx-1 text-gray-400">
+                                  · {o.customer_phone || o.mobile_number}
+                                </span>
+                              )}
+                            </div>
+                          </button>
+
+                          {/* Inline receipt comment — visible & editable on the row */}
+                          <div className="mt-1">
+                            {editingCommentId === o.id ? (
+                              <div className="flex items-center gap-1.5">
+                                <input
+                                  value={commentDraft}
+                                  onChange={(e) => setCommentDraft(e.target.value)}
+                                  autoFocus
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") submitInlineComment(o)
+                                    if (e.key === "Escape") setEditingCommentId(null)
+                                  }}
+                                  placeholder="ملاحظة الاستلام..."
+                                  className="flex-1 px-2 py-1 border border-slate-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-slate-400"
+                                />
+                                <button
+                                  onClick={() => submitInlineComment(o)}
+                                  disabled={savingCommentId === o.id}
+                                  className="text-xs px-2 py-1 rounded bg-slate-700 text-white hover:bg-slate-800 disabled:opacity-50"
+                                >
+                                  حفظ
+                                </button>
+                                <button
+                                  onClick={() => setEditingCommentId(null)}
+                                  className="text-gray-400 hover:text-gray-600"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            ) : o.warehouse_received_comment ? (
+                              <button
+                                onClick={() => {
+                                  setEditingCommentId(o.id)
+                                  setCommentDraft(o.warehouse_received_comment || "")
+                                }}
+                                className="flex items-center gap-1 text-[11px] text-slate-700 hover:text-slate-900 text-right max-w-full"
+                              >
+                                <MessageSquare className="w-3 h-3 text-slate-400 flex-shrink-0" />
+                                <span className="truncate">{o.warehouse_received_comment}</span>
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => {
+                                  setEditingCommentId(o.id)
+                                  setCommentDraft("")
+                                }}
+                                className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-slate-600"
+                              >
+                                <MessageSquare className="w-3 h-3" /> إضافة ملاحظة
+                              </button>
                             )}
                           </div>
-                        </button>
+                        </div>
                       </div>
                     )
                   })}
@@ -448,15 +530,7 @@ const WarehouseReturns: React.FC = () => {
           order={detail}
           courierName={couriers.get(String(detail.assigned_courier_id)) || "—"}
           onClose={() => setDetail(null)}
-          onSaveComment={async (comment) => {
-            const { error: err } = await supabase
-              .from("orders")
-              .update({ warehouse_received_comment: comment })
-              .eq("id", detail.id)
-            if (err) throw err
-            setOrders((prev) => prev.map((x) => (x.id === detail.id ? { ...x, warehouse_received_comment: comment } : x)))
-            setDetail((prev) => (prev ? { ...prev, warehouse_received_comment: comment } : prev))
-          }}
+          onSaveComment={(comment) => saveComment(detail.id, comment)}
         />
       )}
     </div>
