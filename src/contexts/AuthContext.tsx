@@ -284,19 +284,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return
       }
 
-      // No row (or a transient error). On initial load the auth token may not be
-      // attached yet, so the request hits RLS as anonymous and returns nothing
-      // even though the row exists — retry a few times before giving up.
-      if (attempt < 4) {
-        await new Promise((r) => setTimeout(r, 400))
+      // Retry ONLY the harmless RLS race (no error + no row = token not attached
+      // yet on first load), and only once. Do NOT retry when there's an error
+      // (401/429/network) — retrying would hit the token endpoint again and make
+      // an existing rate-limit (429) worse.
+      if (!error && !data && attempt < 1) {
+        await new Promise((r) => setTimeout(r, 600))
         return fetchUserProfile(authUser, attempt + 1)
       }
 
-      if (error) console.warn("Error loading profile after retries:", error)
+      if (error) console.warn("Error loading profile:", error?.message || error)
       else console.log("User not found in users table, using basic auth user")
-      // Don't wipe an already-resolved role for the same user on a transient
-      // failure (e.g. a rate-limited/expired token) — keep it to avoid a spurious
-      // logout / white page. Only fall back to "no role" when we truly have none.
+      // Keep an already-resolved role for the same user on a transient failure
+      // (rate-limited/expired token) so we don't cause a spurious logout / white page.
       setUser((prev) =>
         prev && prev.id === authUser.id && prev.role
           ? prev
@@ -305,11 +305,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLoading(false)
     } catch (err) {
       console.error("Profile fetch error:", err)
-      // A timeout or network error — retry a couple of times, then fall back.
-      if (attempt < 4) {
-        await new Promise((r) => setTimeout(r, 400))
-        return fetchUserProfile(authUser, attempt + 1)
-      }
+      // Do not retry on error/timeout — avoid hammering the token endpoint.
       setUser((prev) =>
         prev && prev.id === authUser.id && prev.role
           ? prev
