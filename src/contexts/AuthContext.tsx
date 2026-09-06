@@ -235,25 +235,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return
 
+      // Ignore pure token refreshes / user-metadata updates — the signed-in user
+      // hasn't changed, and re-fetching the profile here caused a refresh + render
+      // storm that tripped the auth rate limit (429).
+      if (event === "TOKEN_REFRESHED" || event === "USER_UPDATED") return
+
       if (session?.user) {
-        // Skip re-fetching the profile on token refreshes for the same user —
-        // only fetch when the signed-in user actually changes. This prevents a
-        // render/refresh loop that was tripping the auth rate limit (429).
+        // Only (re)load the profile when the signed-in user actually changes.
         if (handledUserIdRef.current === session.user.id) return
         handledUserIdRef.current = session.user.id
         setTimeout(() => fetchUserProfileWithRetry(session.user), 300)
-      } else {
+      } else if (event === "SIGNED_OUT") {
+        // Only clear on an explicit sign-out — not on a transient null session
+        // (e.g. a failed token refresh), which must NOT log the user out.
         handledUserIdRef.current = null
-        setUser((prev) => {
-          if (prev?.role === "courier") {
-            // Don't auto-logout courier
-            return prev
-          }
-          return null
-        })
+        setUser(null)
         setLoading(false)
       }
     })
@@ -295,7 +294,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (error) console.warn("Error loading profile after retries:", error)
       else console.log("User not found in users table, using basic auth user")
-      setUser({ ...authUser, role: undefined, name: authUser.email?.split("@")[0] })
+      // Don't wipe an already-resolved role for the same user on a transient
+      // failure (e.g. a rate-limited/expired token) — keep it to avoid a spurious
+      // logout / white page. Only fall back to "no role" when we truly have none.
+      setUser((prev) =>
+        prev && prev.id === authUser.id && prev.role
+          ? prev
+          : { ...authUser, role: undefined, name: authUser.email?.split("@")[0] },
+      )
       setLoading(false)
     } catch (err) {
       console.error("Profile fetch error:", err)
@@ -304,7 +310,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await new Promise((r) => setTimeout(r, 400))
         return fetchUserProfile(authUser, attempt + 1)
       }
-      setUser({ ...authUser, role: undefined, name: authUser.email?.split("@")[0] })
+      setUser((prev) =>
+        prev && prev.id === authUser.id && prev.role
+          ? prev
+          : { ...authUser, role: undefined, name: authUser.email?.split("@")[0] },
+      )
       setLoading(false)
     }
   }
