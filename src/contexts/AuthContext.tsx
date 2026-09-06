@@ -70,6 +70,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [soundEnabled, setSoundEnabled] = useState(true)
   const [showNotifications, setShowNotifications] = useState(false)
   const audioContextRef = useRef<AudioContext | null>(null)
+  // Tracks which auth user id we've already loaded a profile for, so we don't
+  // re-fetch (and re-render) on every token refresh — which was causing a
+  // subscribe/refresh loop that hit the auth rate limit (429).
+  const handledUserIdRef = useRef<string | null>(null)
 
   // Debug function (for console logging)
   const addDebugInfo = (info: string) => {
@@ -206,6 +210,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (!mounted) return
 
         if (session?.user) {
+          handledUserIdRef.current = session.user.id
           setTimeout(() => fetchUserProfileWithRetry(session.user), 300)
         } else {
           // Only log out if user is not a courier
@@ -234,8 +239,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!mounted) return
 
       if (session?.user) {
+        // Skip re-fetching the profile on token refreshes for the same user —
+        // only fetch when the signed-in user actually changes. This prevents a
+        // render/refresh loop that was tripping the auth rate limit (429).
+        if (handledUserIdRef.current === session.user.id) return
+        handledUserIdRef.current = session.user.id
         setTimeout(() => fetchUserProfileWithRetry(session.user), 300)
       } else {
+        handledUserIdRef.current = null
         setUser((prev) => {
           if (prev?.role === "courier") {
             // Don't auto-logout courier
@@ -329,10 +340,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null)
   }
 
+  // Keep the latest addNotification in a ref so the realtime subscription below
+  // doesn't need it as a dependency (which would re-subscribe every render).
+  const addNotificationRef = useRef(addNotification)
+  addNotificationRef.current = addNotification
+
   // Targeted subscription for important order changes only (for notifications)
   useEffect(() => {
-    if (!user) return // Only subscribe when user is logged in
-    
+    if (!user?.id) return // Only subscribe when user is logged in
+
     addDebugInfo("Setting up targeted order subscription for notifications")
 
     const globalSubscription = supabase
@@ -351,7 +367,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           try {
             // Only notify for new orders, not edits
-            await addNotification(
+            await addNotificationRef.current(
               `طلب جديد #${payload.new.order_id} - ${payload.new.customer_name}`,
               "new",
               payload.new.order_id,
@@ -383,7 +399,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (oldStatus !== newStatus) {
               const oldLabel = getStatusLabel(oldStatus || "غير محدد")
               const newLabel = getStatusLabel(newStatus)
-              await addNotification(
+              await addNotificationRef.current(
                 `تغيير حالة الطلب #${payload.new.order_id} من ${oldLabel} إلى ${newLabel}`,
                 "status_change",
                 payload.new.order_id,
@@ -404,7 +420,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       addDebugInfo("Unsubscribing from targeted order changes")
       globalSubscription.unsubscribe()
     }
-  }, [user, addNotification]) // Only re-subscribe when user changes or addNotification changes
+    // Only re-subscribe when the signed-in user actually changes (not on every render)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id])
 
   const contextValue: AuthContextType = {
     user,
