@@ -38,6 +38,35 @@ import { activateDueScheduledOrders } from "./lib/scheduling"
 const homeFor = (role?: string): string =>
   role === "admin" ? "/admin" : role === "warehouse" ? "/warehouse/returns" : "/courier"
 
+// Shown when the user is authenticated but their role could not be loaded yet
+// (e.g. a transient token/profile failure). Avoids an infinite redirect loop and
+// gives a way out.
+const ProfilePending: React.FC = () => {
+  const { signOut } = useAuth()
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-6 text-center">
+      <div className="text-gray-700 text-lg">جاري تحميل بيانات الحساب...</div>
+      <p className="text-sm text-gray-500 max-w-sm">
+        إذا استمرت هذه الشاشة، سجّل الخروج ثم الدخول مرة أخرى.
+      </p>
+      <div className="flex gap-2">
+        <button
+          onClick={() => window.location.reload()}
+          className="px-4 py-2 rounded-lg border border-gray-300 hover:bg-gray-50 text-sm"
+        >
+          إعادة المحاولة
+        </button>
+        <button
+          onClick={() => signOut()}
+          className="px-4 py-2 rounded-lg bg-gray-800 text-white hover:bg-gray-900 text-sm"
+        >
+          تسجيل الخروج
+        </button>
+      </div>
+    </div>
+  )
+}
+
 const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles?: string[] }> = ({
   children,
   allowedRoles,
@@ -54,8 +83,10 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles?: strin
 
   if (!user) return <Navigate to="/login" replace />
   if (allowedRoles && !allowedRoles.includes(user.role || "")) {
-    const redirectPath = homeFor(user.role)
-    return <Navigate to={redirectPath} replace />
+    // Role not resolved yet → show a recovery screen instead of redirecting to a
+    // role-home that would bounce right back here (infinite loop / white page).
+    if (!user.role) return <ProfilePending />
+    return <Navigate to={homeFor(user.role)} replace />
   }
   return <>{children}</>
 }

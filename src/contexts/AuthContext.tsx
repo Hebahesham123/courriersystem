@@ -345,8 +345,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }
 
   const signOut = async () => {
-    const { error } = await supabase.auth.signOut()
-    if (error) throw error
+    // Always clear locally, even if the server call fails (e.g. rate-limited),
+    // so logout never leaves the user stuck.
+    try {
+      await supabase.auth.signOut()
+    } catch (e) {
+      console.warn("signOut error (clearing locally anyway):", e)
+    }
+    handledUserIdRef.current = null
     setUser(null)
   }
 
