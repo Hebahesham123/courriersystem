@@ -253,54 +253,47 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [])
 
-  const fetchUserProfile = async (authUser: User) => {
+  const fetchUserProfile = async (authUser: User, attempt = 0) => {
     try {
-      console.log("Fetching profile for user:", authUser.id)
+      console.log("Fetching profile for user:", authUser.id, attempt ? `(retry ${attempt})` : "")
 
       // Add timeout to prevent hanging
       const timeoutPromise = new Promise((_, reject) =>
         setTimeout(() => reject(new Error("Profile fetch timeout")), 15000),
       )
 
-      const queryPromise = supabase.from("users").select("role, name").eq("id", authUser.id).single()
+      // maybeSingle() returns { data: null } for 0 rows instead of a 406 error.
+      const queryPromise = supabase.from("users").select("role, name").eq("id", authUser.id).maybeSingle()
 
       const { data, error } = (await Promise.race([queryPromise, timeoutPromise])) as any
 
-      if (error) {
-        console.warn("Error loading profile:", error)
-        // If user doesn't exist in users table, create a basic user object
-        if (error.code === "PGRST116") {
-          console.log("User not found in users table, using basic auth user")
-          setUser({
-            ...authUser,
-            role: undefined,
-            name: authUser.email?.split("@")[0],
-          })
-        } else {
-          // For other errors, still set the user but without profile data
-          setUser({
-            ...authUser,
-            role: undefined,
-            name: authUser.email?.split("@")[0],
-          })
-        }
-      } else {
+      if (!error && data) {
         console.log("Profile data:", data)
-        setUser({
-          ...authUser,
-          role: data?.role,
-          name: data?.name,
-        })
+        setUser({ ...authUser, role: data.role, name: data.name })
+        setLoading(false)
+        return
       }
+
+      // No row (or a transient error). On initial load the auth token may not be
+      // attached yet, so the request hits RLS as anonymous and returns nothing
+      // even though the row exists — retry a few times before giving up.
+      if (attempt < 4) {
+        await new Promise((r) => setTimeout(r, 400))
+        return fetchUserProfile(authUser, attempt + 1)
+      }
+
+      if (error) console.warn("Error loading profile after retries:", error)
+      else console.log("User not found in users table, using basic auth user")
+      setUser({ ...authUser, role: undefined, name: authUser.email?.split("@")[0] })
+      setLoading(false)
     } catch (err) {
       console.error("Profile fetch error:", err)
-      // Even if profile fetch fails, set the user with basic auth data
-      setUser({
-        ...authUser,
-        role: undefined,
-        name: authUser.email?.split("@")[0],
-      })
-    } finally {
+      // A timeout or network error — retry a couple of times, then fall back.
+      if (attempt < 4) {
+        await new Promise((r) => setTimeout(r, 400))
+        return fetchUserProfile(authUser, attempt + 1)
+      }
+      setUser({ ...authUser, role: undefined, name: authUser.email?.split("@")[0] })
       setLoading(false)
     }
   }
