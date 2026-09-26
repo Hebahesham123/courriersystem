@@ -209,13 +209,13 @@ const RequestsManagement: React.FC = () => {
       const filePath = `requests/${type}s/${fileName}`
 
       const { error: uploadError } = await supabase.storage
-        .from('uploads')
+        .from('files')
         .upload(filePath, file)
 
       if (uploadError) throw uploadError
 
       const { data: { publicUrl } } = supabase.storage
-        .from('uploads')
+        .from('files')
         .getPublicUrl(filePath)
 
       return publicUrl
@@ -238,13 +238,13 @@ const RequestsManagement: React.FC = () => {
       console.log('Uploading note image to path:', filePath)
 
       const { error: uploadError } = await supabase.storage
-        .from('uploads')
+        .from('files')
         .upload(filePath, file)
 
       if (uploadError) throw uploadError
 
       const { data: { publicUrl } } = supabase.storage
-        .from('uploads')
+        .from('files')
         .getPublicUrl(filePath)
 
       console.log('Note image uploaded successfully:', publicUrl)
