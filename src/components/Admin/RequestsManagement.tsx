@@ -107,13 +107,14 @@ const RequestsManagement: React.FC = () => {
 
   const assignees = ['Toka', 'Marina', 'Shrouq', 'Mariam', 'Amira', 'Salma']
   const statuses: { value: Request['status']; label: string; color: string; icon: React.ComponentType<{ className?: string }> }[] = [
-    { value: 'pending', label: 'Pending', color: 'text-yellow-500', icon: Clock },
-    { value: 'process', label: 'In Process', color: 'text-blue-500', icon: Play },
-    { value: 'approved', label: 'Approved', color: 'text-green-500', icon: CheckCircle },
-    { value: 'cancelled', label: 'Cancelled', color: 'text-red-500', icon: XCircle },
+    { value: 'pending', label: language === 'ar' ? 'قيد الانتظار' : 'Pending', color: 'text-yellow-500', icon: Clock },
+    { value: 'process', label: language === 'ar' ? 'قيد المعالجة' : 'In Process', color: 'text-blue-500', icon: Play },
+    { value: 'approved', label: language === 'ar' ? 'مقبول' : 'Approved', color: 'text-green-500', icon: CheckCircle },
+    { value: 'cancelled', label: language === 'ar' ? 'ملغي' : 'Cancelled', color: 'text-red-500', icon: XCircle },
   ]
 
-  const isRTL = false // Force English layout
+  const isRTL = language === 'ar'
+  const tl = (ar: string, en: string) => (language === 'ar' ? ar : en)
 
   useEffect(() => {
     fetchRequests()
@@ -183,17 +184,17 @@ const RequestsManagement: React.FC = () => {
     const allowedVideoTypes = ['video/mp4', 'video/webm', 'video/ogg', 'video/avi']
     
     if (file.size > maxSize) {
-      alert(`${type === 'image' ? 'Image' : 'Video'} file size must be less than ${type === 'image' ? '5MB' : '50MB'}`)
+      alert(tl(`يجب أن يكون حجم ${type === 'image' ? 'الصورة' : 'الفيديو'} أقل من ${type === 'image' ? '5MB' : '50MB'}`, `${type === 'image' ? 'Image' : 'Video'} file size must be less than ${type === 'image' ? '5MB' : '50MB'}`))
       return false
     }
     
     if (type === 'image' && !allowedImageTypes.includes(file.type)) {
-      alert('Please select a valid image file (JPEG, PNG, GIF, or WebP)')
+      alert(tl('يرجى اختيار ملف صورة صالح (JPEG, PNG, GIF, أو WebP)', 'Please select a valid image file (JPEG, PNG, GIF, or WebP)'))
       return false
     }
     
     if (type === 'video' && !allowedVideoTypes.includes(file.type)) {
-      alert('Please select a valid video file (MP4, WebM, OGG, or AVI)')
+      alert(tl('يرجى اختيار ملف فيديو صالح (MP4, WebM, OGG, أو AVI)', 'Please select a valid video file (MP4, WebM, OGG, or AVI)'))
       return false
     }
     
@@ -373,13 +374,13 @@ const RequestsManagement: React.FC = () => {
   const addNote = async () => {
     // Allow adding note with just image, just text, or both
     if (!selectedRequest) {
-      alert('Please select a request to add a note to.')
+      alert(tl('يرجى اختيار طلب لإضافة ملاحظة إليه.', 'Please select a request to add a note to.'))
       return
     }
 
     // Validate that at least note text or image is provided
     if (!newNote.trim() && !noteImageFile) {
-      alert('Please enter a note text or select an image to attach.')
+      alert(tl('يرجى إدخال نص ملاحظة أو اختيار صورة لإرفاقها.', 'Please enter a note text or select an image to attach.'))
       return
     }
 
@@ -392,7 +393,7 @@ const RequestsManagement: React.FC = () => {
         if (uploadedImageUrl) {
           noteImageUrl = uploadedImageUrl
         } else {
-          alert('Failed to upload image. Please try again.')
+          alert(tl('فشل رفع الصورة. يرجى المحاولة مرة أخرى.', 'Failed to upload image. Please try again.'))
           return
         }
       }
@@ -412,12 +413,12 @@ const RequestsManagement: React.FC = () => {
 
       if (error) {
         console.error('Error adding note:', error)
-        alert(`Failed to save note: ${error.message}`)
+        alert(tl(`فشل حفظ الملاحظة: ${error.message}`, `Failed to save note: ${error.message}`))
         throw error
       }
       
       console.log('Note saved successfully:', data)
-      alert('Note saved successfully!')
+      alert(tl('تم حفظ الملاحظة بنجاح!', 'Note saved successfully!'))
       
       // Refresh notes for the current request
       await fetchNotes()
@@ -438,7 +439,7 @@ const RequestsManagement: React.FC = () => {
   }
 
   const deleteRequest = async (requestId: string) => {
-    if (!confirm('Are you sure you want to delete this request? This action cannot be undone.')) {
+    if (!confirm(tl('هل أنت متأكد من حذف هذا الطلب؟ لا يمكن التراجع عن هذا الإجراء.', 'Are you sure you want to delete this request? This action cannot be undone.'))) {
       return
     }
 
@@ -483,7 +484,7 @@ const RequestsManagement: React.FC = () => {
       console.log('Request deleted successfully')
     } catch (error) {
       console.error('Error deleting request:', error)
-      alert('Failed to delete request. Please try again.')
+      alert(tl('فشل حذف الطلب. يرجى المحاولة مرة أخرى.', 'Failed to delete request. Please try again.'))
     }
   }
 
@@ -516,10 +517,10 @@ const RequestsManagement: React.FC = () => {
         throw error
       }
       
-      alert(`Updated ${requestIds.length} requests to ${bulkStatus}`)
+      alert(tl(`تم تحديث ${requestIds.length} طلب إلى ${bulkStatus}`, `Updated ${requestIds.length} requests to ${bulkStatus}`))
     } catch (error) {
       console.error('Error bulk updating status:', error)
-      alert('Failed to update requests. Please try again.')
+      alert(tl('فشل تحديث الطلبات. يرجى المحاولة مرة أخرى.', 'Failed to update requests. Please try again.'))
     }
   }
 
@@ -552,17 +553,17 @@ const RequestsManagement: React.FC = () => {
         throw error
       }
       
-      alert(`Assigned ${requestIds.length} requests to ${bulkAssignee}`)
+      alert(tl(`تم تعيين ${requestIds.length} طلب إلى ${bulkAssignee}`, `Assigned ${requestIds.length} requests to ${bulkAssignee}`))
     } catch (error) {
       console.error('Error bulk updating assignee:', error)
-      alert('Failed to update requests. Please try again.')
+      alert(tl('فشل تحديث الطلبات. يرجى المحاولة مرة أخرى.', 'Failed to update requests. Please try again.'))
     }
   }
 
   const bulkDeleteSelected = async () => {
     if (selectedRequests.size === 0) return
 
-    if (!confirm(`Are you sure you want to delete ${selectedRequests.size} selected request(s)? This action cannot be undone.`)) {
+    if (!confirm(tl(`هل أنت متأكد من حذف ${selectedRequests.size} طلب محدد؟ لا يمكن التراجع عن هذا الإجراء.`, `Are you sure you want to delete ${selectedRequests.size} selected request(s)? This action cannot be undone.`))) {
       return
     }
 
@@ -589,10 +590,10 @@ const RequestsManagement: React.FC = () => {
 
       await fetchRequests()
       setSelectedRequests(new Set())
-      alert(`Deleted ${requestIds.length} requests.`)
+      alert(tl(`تم حذف ${requestIds.length} طلب.`, `Deleted ${requestIds.length} requests.`))
     } catch (error) {
       console.error('Error bulk deleting requests:', error)
-      alert('Failed to delete requests. Please try again.')
+      alert(tl('فشل حذف الطلبات. يرجى المحاولة مرة أخرى.', 'Failed to delete requests. Please try again.'))
     }
   }
 
@@ -742,7 +743,7 @@ const RequestsManagement: React.FC = () => {
             <div className="p-1.5 bg-yellow-100 rounded-lg">
               <MessageSquare className="w-4 h-4 text-yellow-600" />
             </div>
-            <h1 className="text-base font-bold text-gray-900">Customer Requests</h1>
+            <h1 className="text-base font-bold text-gray-900">{tl('طلبات العملاء', 'Customer Requests')}</h1>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {statuses.map(status => {
@@ -766,7 +767,7 @@ const RequestsManagement: React.FC = () => {
             className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg flex items-center gap-1.5 text-sm transition-colors"
           >
             <Plus className="w-4 h-4" />
-            <span>Create New Request</span>
+            <span>{tl('طلب جديد', 'Create New Request')}</span>
           </button>
         </div>
 
@@ -777,7 +778,7 @@ const RequestsManagement: React.FC = () => {
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
               <input
                 type="text"
-                placeholder="Search by name, email, or phone..."
+                placeholder={tl('ابحث بالاسم أو البريد أو الهاتف...', 'Search by name, email, or phone...')}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -789,7 +790,7 @@ const RequestsManagement: React.FC = () => {
               onChange={(e) => setStatusFilter(e.target.value)}
               className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
-              <option value="all">All Statuses</option>
+              <option value="all">{tl('كل الحالات', 'All Statuses')}</option>
               {statuses.map(status => (
                 <option key={status.value} value={status.value}>
                   {status.label}
@@ -802,7 +803,7 @@ const RequestsManagement: React.FC = () => {
               onChange={(e) => setAssigneeFilter(e.target.value)}
               className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
-              <option value="all">All Assignees</option>
+              <option value="all">{tl('كل المسؤولين', 'All Assignees')}</option>
               {assignees.map(assignee => (
                 <option key={assignee} value={assignee}>
                   {assignee}
@@ -815,7 +816,7 @@ const RequestsManagement: React.FC = () => {
               value={dateFilter.startDate}
               onChange={(e) => setDateFilter({...dateFilter, startDate: e.target.value})}
               className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Start Date"
+              placeholder={tl('من تاريخ', 'Start Date')}
             />
 
             <input
@@ -823,11 +824,11 @@ const RequestsManagement: React.FC = () => {
               value={dateFilter.endDate}
               onChange={(e) => setDateFilter({...dateFilter, endDate: e.target.value})}
               className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="End Date"
+              placeholder={tl('إلى تاريخ', 'End Date')}
             />
 
             <div className="text-sm text-gray-600 flex items-center justify-center">
-              Total Requests: {filteredRequests.length}
+              {tl('إجمالي الطلبات:', 'Total Requests:')} {filteredRequests.length}
             </div>
           </div>
           
@@ -843,7 +844,7 @@ const RequestsManagement: React.FC = () => {
                  }}
                 className="text-sm text-gray-600 hover:text-gray-800 underline"
               >
-                Clear All Filters
+                {tl('مسح كل الفلاتر', 'Clear All Filters')}
               </button>
             </div>
             
@@ -853,7 +854,7 @@ const RequestsManagement: React.FC = () => {
                 className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
               >
                 <BarChart3 className="w-4 h-4" />
-                <span>Generate Report</span>
+                <span>{tl('إنشاء تقرير', 'Generate Report')}</span>
               </button>
             </div>
           </div>
@@ -864,11 +865,11 @@ const RequestsManagement: React.FC = () => {
            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
              <div className="flex items-center justify-between">
                <div className="text-blue-900">
-                 <strong>{selectedRequests.size}</strong> request(s) selected
+                 <strong>{selectedRequests.size}</strong> {tl('طلب محدد', 'request(s) selected')}
                </div>
                <div className="flex items-center space-x-4">
                  <div className="flex items-center space-x-2">
-                   <label className="text-sm font-medium text-blue-900">Status:</label>
+                   <label className="text-sm font-medium text-blue-900">{tl('الحالة:', 'Status:')}</label>
                    <select
                      value={bulkStatus}
                      onChange={(e) => setBulkStatus(e.target.value as Request['status'])}
@@ -884,17 +885,17 @@ const RequestsManagement: React.FC = () => {
                      onClick={bulkUpdateStatus}
                      className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm"
                    >
-                     Update Status
+                     {tl('تحديث الحالة', 'Update Status')}
                    </button>
                  </div>
                  <div className="flex items-center space-x-2">
-                   <label className="text-sm font-medium text-blue-900">Assignee:</label>
+                   <label className="text-sm font-medium text-blue-900">{tl('المسؤول:', 'Assignee:')}</label>
                    <select
                      value={bulkAssignee}
                      onChange={(e) => setBulkAssignee(e.target.value)}
                      className="text-sm border border-blue-300 rounded px-2 py-1"
                    >
-                     <option value="">Select Assignee</option>
+                     <option value="">{tl('اختر المسؤول', 'Select Assignee')}</option>
                      {assignees.map(assignee => (
                        <option key={assignee} value={assignee}>
                          {assignee}
@@ -906,7 +907,7 @@ const RequestsManagement: React.FC = () => {
                      disabled={!bulkAssignee}
                      className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white px-3 py-1 rounded text-sm"
                    >
-                     Assign
+                     {tl('تعيين', 'Assign')}
                    </button>
                  </div>
                  <button
@@ -914,13 +915,13 @@ const RequestsManagement: React.FC = () => {
                    disabled={selectedRequests.size === 0}
                    className="bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white px-3 py-1 rounded text-sm"
                  >
-                   Delete Selected ({selectedRequests.size})
+                   {tl('حذف المحدد', 'Delete Selected')} ({selectedRequests.size})
                  </button>
                  <button
                    onClick={() => setSelectedRequests(new Set())}
                    className="text-blue-600 hover:text-blue-800 text-sm"
                  >
-                   Clear Selection
+                   {tl('إلغاء التحديد', 'Clear Selection')}
                  </button>
                </div>
              </div>
@@ -953,28 +954,28 @@ const RequestsManagement: React.FC = () => {
                      />
                    </th>
                    <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                     Customer
+                     {tl('العميل', 'Customer')}
                    </th>
                    <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                     Order ID
+                     {tl('رقم الطلب', 'Order ID')}
                    </th>
                    <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                     Contact Info
+                     {tl('بيانات التواصل', 'Contact Info')}
                    </th>
                    <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                     Status
+                     {tl('الحالة', 'Status')}
                    </th>
                    <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                     Assignee
+                     {tl('المسؤول', 'Assignee')}
                    </th>
                    <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                     Date
+                     {tl('التاريخ', 'Date')}
                    </th>
                    <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                     Attachments
+                     {tl('المرفقات', 'Attachments')}
                    </th>
                    <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                     Actions
+                     {tl('إجراءات', 'Actions')}
                    </th>
                  </tr>
                </thead>
@@ -1012,7 +1013,7 @@ const RequestsManagement: React.FC = () => {
                             <span className="font-mono text-blue-600 text-xs truncate" title={request.order_id}>{request.order_id}</span>
                           </div>
                         ) : (
-                          <span className="text-gray-400 italic text-xs">No order ID</span>
+                          <span className="text-gray-400 italic text-xs">{tl('لا يوجد رقم طلب', 'No order ID')}</span>
                         )}
                       </div>
                     </td>
@@ -1061,7 +1062,7 @@ const RequestsManagement: React.FC = () => {
                            onChange={(e) => updateRequest(request.id, { assignee: e.target.value || null })}
                            className="w-full min-w-0 text-xs border border-gray-300 rounded px-1.5 py-1 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                          >
-                           <option value="">Unassigned</option>
+                           <option value="">{tl('غير مُعيّن', 'Unassigned')}</option>
                            {assignees.map(assignee => (
                              <option key={assignee} value={assignee}>
                                {assignee}
@@ -1108,7 +1109,7 @@ const RequestsManagement: React.FC = () => {
                            </div>
                          )}
                          {!request.image_url && !request.video_url && (
-                           <span className="text-xs text-gray-400 italic">None</span>
+                           <span className="text-xs text-gray-400 italic">{tl('لا يوجد', 'None')}</span>
                          )}
                        </div>
                      </td>
@@ -1122,7 +1123,7 @@ const RequestsManagement: React.FC = () => {
                              setShowDetailModal(true)
                            }}
                            className="text-blue-600 hover:text-blue-900 p-1"
-                           title="View Details"
+                           title={tl('عرض التفاصيل', 'View Details')}
                          >
                            <Eye className="w-4 h-4" />
                          </button>
@@ -1134,19 +1135,19 @@ const RequestsManagement: React.FC = () => {
                              setShowDetailModal(true)
                              // Focus on notes section
                              setTimeout(() => {
-                               const notesInput = document.querySelector('input[placeholder="Add note text (optional)..."]') as HTMLInputElement
+                               const notesInput = document.querySelector('input[data-note-input="1"]') as HTMLInputElement
                                if (notesInput) notesInput.focus()
                              }, 100)
                            }}
                            className="text-green-600 hover:text-green-900 p-1"
-                           title="Add Note"
+                           title={tl('إضافة ملاحظة', 'Add Note')}
                          >
                            <FileText className="w-4 h-4" />
                          </button>
                          <button
                            onClick={() => deleteRequest(request.id)}
                            className="text-red-600 hover:text-red-900 p-1"
-                           title="Delete Request"
+                           title={tl('حذف الطلب', 'Delete Request')}
                          >
                            <Trash2 className="w-4 h-4" />
                          </button>
@@ -1159,14 +1160,14 @@ const RequestsManagement: React.FC = () => {
           </div>
 
           {pagedRequests.length === 0 && (
-            <div className="py-12 text-center text-sm text-gray-500">No requests match the current filters</div>
+            <div className="py-12 text-center text-sm text-gray-500">{tl('لا توجد طلبات مطابقة للفلاتر الحالية', 'No requests match the current filters')}</div>
           )}
 
           {/* Pagination */}
           {filteredRequests.length > 0 && (
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t border-gray-100">
               <span className="text-xs text-gray-500">
-                Showing {pageStart}–{pageEnd} of {filteredRequests.length}
+                {tl('عرض', 'Showing')} {pageStart}–{pageEnd} {tl('من', 'of')} {filteredRequests.length}
               </span>
               <div className="flex items-center gap-1.5">
                 <button
@@ -1174,31 +1175,31 @@ const RequestsManagement: React.FC = () => {
                   disabled={safePage <= 1}
                   className="px-2.5 py-1.5 text-xs rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  « First
+                  « {tl('الأول', 'First')}
                 </button>
                 <button
                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                   disabled={safePage <= 1}
                   className="px-3 py-1.5 text-xs rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  ‹ Prev
+                  ‹ {tl('السابق', 'Prev')}
                 </button>
                 <span className="px-3 py-1.5 text-xs font-semibold text-gray-700">
-                  Page {safePage} / {totalPages}
+                  {tl('صفحة', 'Page')} {safePage} / {totalPages}
                 </span>
                 <button
                   onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                   disabled={safePage >= totalPages}
                   className="px-3 py-1.5 text-xs rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  Next ›
+                  {tl('التالي', 'Next')} ›
                 </button>
                 <button
                   onClick={() => setCurrentPage(totalPages)}
                   disabled={safePage >= totalPages}
                   className="px-2.5 py-1.5 text-xs rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  Last »
+                  {tl('الأخير', 'Last')} »
                 </button>
               </div>
             </div>
@@ -1212,21 +1213,21 @@ const RequestsManagement: React.FC = () => {
               <div className="p-6 border-b border-gray-200">
                 <div className="flex items-center justify-between">
                   <h2 className="text-xl font-bold text-gray-900">
-                    Request Details #{selectedRequest.id}
+                    {tl('تفاصيل الطلب', 'Request Details')} #{selectedRequest.id}
                   </h2>
                   <div className="flex items-center space-x-2">
                     <button
                       onClick={() => {
-                        if (confirm('Are you sure you want to delete this request? This action cannot be undone.')) {
+                        if (confirm(tl('هل أنت متأكد من حذف هذا الطلب؟ لا يمكن التراجع عن هذا الإجراء.', 'Are you sure you want to delete this request? This action cannot be undone.'))) {
                           deleteRequest(selectedRequest.id)
                           setShowDetailModal(false)
                         }
                       }}
                       className="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg text-sm flex items-center space-x-1"
-                      title="Delete Request"
+                      title={tl('حذف الطلب', 'Delete Request')}
                     >
                       <Trash2 className="w-4 h-4" />
-                      <span>Delete</span>
+                      <span>{tl('حذف', 'Delete')}</span>
                     </button>
                     <button
                       onClick={() => {
@@ -1246,10 +1247,10 @@ const RequestsManagement: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Request Details */}
                                      <div>
-                     <h3 className="text-lg font-semibold text-gray-900 mb-4">Request Information</h3>
+                     <h3 className="text-lg font-semibold text-gray-900 mb-4">{tl('بيانات الطلب', 'Request Information')}</h3>
                      <div className="space-y-4">
                        <div>
-                         <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                         <label className="block text-sm font-medium text-gray-700 mb-1">{tl('الاسم', 'Name')}</label>
                          <input
                            type="text"
                            value={selectedRequest.name}
@@ -1259,7 +1260,7 @@ const RequestsManagement: React.FC = () => {
                        </div>
                        
                        <div>
-                         <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                         <label className="block text-sm font-medium text-gray-700 mb-1">{tl('البريد الإلكتروني', 'Email')}</label>
                          <input
                            type="email"
                            value={selectedRequest.email}
@@ -1269,7 +1270,7 @@ const RequestsManagement: React.FC = () => {
                        </div>
                        
                        <div>
-                         <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                         <label className="block text-sm font-medium text-gray-700 mb-1">{tl('الهاتف', 'Phone')}</label>
                          <input
                            type="text"
                            value={selectedRequest.phone}
@@ -1279,18 +1280,18 @@ const RequestsManagement: React.FC = () => {
                        </div>
                        
                        <div>
-                         <label className="block text-sm font-medium text-gray-700 mb-1">Order ID</label>
+                         <label className="block text-sm font-medium text-gray-700 mb-1">{tl('رقم الطلب', 'Order ID')}</label>
                          <input
                            type="text"
                            value={selectedRequest.order_id || ''}
                            onChange={(e) => setSelectedRequest({...selectedRequest, order_id: e.target.value || null})}
-                           placeholder="Enter Shopify order ID"
+                           placeholder={tl('أدخل رقم طلب Shopify', 'Enter Shopify order ID')}
                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                          />
                        </div>
                        
                        <div>
-                         <label className="block text-sm font-medium text-gray-700 mb-1">Comment</label>
+                         <label className="block text-sm font-medium text-gray-700 mb-1">{tl('تعليق', 'Comment')}</label>
                          <textarea
                            value={selectedRequest.comment}
                            onChange={(e) => setSelectedRequest({...selectedRequest, comment: e.target.value})}
@@ -1303,10 +1304,10 @@ const RequestsManagement: React.FC = () => {
 
                   {/* Status and Assignment */}
                                      <div>
-                     <h3 className="text-lg font-semibold text-gray-900 mb-4">Status & Assignment</h3>
+                     <h3 className="text-lg font-semibold text-gray-900 mb-4">{tl('الحالة والتعيين', 'Status & Assignment')}</h3>
                      <div className="space-y-4">
                        <div>
-                         <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                         <label className="block text-sm font-medium text-gray-700 mb-1">{tl('الحالة', 'Status')}</label>
                          <select
                            value={selectedRequest.status}
                            onChange={(e) => setSelectedRequest({...selectedRequest, status: e.target.value as Request['status']})}
@@ -1321,13 +1322,13 @@ const RequestsManagement: React.FC = () => {
                        </div>
                        
                        <div>
-                         <label className="block text-sm font-medium text-gray-700 mb-1">Assignee</label>
+                         <label className="block text-sm font-medium text-gray-700 mb-1">{tl('المسؤول', 'Assignee')}</label>
                          <select
                            value={selectedRequest.assignee || ''}
                            onChange={(e) => setSelectedRequest({...selectedRequest, assignee: e.target.value || null})}
                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                          >
-                           <option value="">Select Assignee</option>
+                           <option value="">{tl('اختر المسؤول', 'Select Assignee')}</option>
                            {assignees.map(assignee => (
                              <option key={assignee} value={assignee}>
                                {assignee}
@@ -1338,7 +1339,7 @@ const RequestsManagement: React.FC = () => {
 
                                                {selectedRequest.image_url && (
                           <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Attached Image</label>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">{tl('صورة مرفقة', 'Attached Image')}</label>
                             <div className="relative group">
                               <img 
                                 src={selectedRequest.image_url} 
@@ -1356,7 +1357,7 @@ const RequestsManagement: React.FC = () => {
                                 className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm transition-colors flex items-center space-x-2"
                               >
                                 <Eye className="w-4 h-4" />
-                                <span>View Full Size</span>
+                                <span>{tl('عرض بالحجم الكامل', 'View Full Size')}</span>
                               </button>
                               <input
                                 type="file"
@@ -1376,7 +1377,7 @@ const RequestsManagement: React.FC = () => {
                                   type="button"
                                   onClick={() => removeFile('image')}
                                   className="text-red-600 hover:text-red-800"
-                                  title="Remove file"
+                                  title={tl('إزالة الملف', 'Remove file')}
                                 >
                                   <X className="w-4 h-4" />
                                 </button>
@@ -1387,14 +1388,14 @@ const RequestsManagement: React.FC = () => {
 
                         {selectedRequest.video_url && (
                           <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Attached Video</label>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">{tl('فيديو مرفق', 'Attached Video')}</label>
                             <div className="relative group">
                               <video 
                                 src={selectedRequest.video_url} 
                                 controls
                                 className="w-full h-32 rounded-lg border border-gray-300"
                               >
-                                Your browser does not support the video tag.
+                                {tl('متصفحك لا يدعم تشغيل الفيديو.', 'Your browser does not support the video tag.')}
                               </video>
                             </div>
                             <div className="mt-2 flex items-center space-x-2">
@@ -1403,7 +1404,7 @@ const RequestsManagement: React.FC = () => {
                                 className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm transition-colors flex items-center space-x-2"
                               >
                                 <Eye className="w-4 h-4" />
-                                <span>View Full Size</span>
+                                <span>{tl('عرض بالحجم الكامل', 'View Full Size')}</span>
                               </button>
                               <input
                                 type="file"
@@ -1423,7 +1424,7 @@ const RequestsManagement: React.FC = () => {
                                   type="button"
                                   onClick={() => removeFile('video')}
                                   className="text-red-600 hover:text-red-800"
-                                  title="Remove file"
+                                  title={tl('إزالة الملف', 'Remove file')}
                                 >
                                   <X className="w-4 h-4" />
                                 </button>
@@ -1443,7 +1444,8 @@ const RequestsManagement: React.FC = () => {
                        <div className="flex space-x-2">
                          <input
                            type="text"
-                           placeholder="Add note text (optional)..."
+                           data-note-input="1"
+                           placeholder={tl('أضف نص ملاحظة (اختياري)...', 'Add note text (optional)...')}
                            value={newNote}
                            onChange={(e) => setNewNote(e.target.value)}
                            onKeyDown={(e) => {
@@ -1459,7 +1461,7 @@ const RequestsManagement: React.FC = () => {
                            disabled={!newNote.trim() && !noteImageFile}
                            className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white px-4 py-2 rounded-lg transition-colors disabled:cursor-not-allowed"
                          >
-                           Add Note
+                           {tl('إضافة ملاحظة', 'Add Note')}
                          </button>
                        </div>
                        
@@ -1470,13 +1472,13 @@ const RequestsManagement: React.FC = () => {
                            accept="image/*"
                            onChange={(e) => setNoteImageFile(e.target.files?.[0] || null)}
                            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                           placeholder="Add image (optional)"
+                           placeholder={tl('أضف صورة (اختياري)', 'Add image (optional)')}
                          />
                          {noteImageFile && (
                            <button
                              onClick={removeNoteImage}
                              className="text-red-600 hover:text-red-800 p-2"
-                             title="Remove image"
+                             title={tl('إزالة الصورة', 'Remove image')}
                            >
                              <X className="w-4 h-4" />
                            </button>
@@ -1496,7 +1498,7 @@ const RequestsManagement: React.FC = () => {
                        
                        {/* Help Text */}
                        <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
-                         💡 <strong>Tip:</strong> You can add a note with text only, image only, or both text and image.
+                         💡 <strong>{tl('ملاحظة:', 'Tip:')}</strong> {tl('يمكنك إضافة ملاحظة بنص فقط أو صورة فقط أو الاثنين معًا.', 'You can add a note with text only, image only, or both text and image.')}
                        </div>
                      </div>
                      
@@ -1510,11 +1512,11 @@ const RequestsManagement: React.FC = () => {
                                  {note.note && note.note.trim() ? (
                                    <span className="text-sm text-gray-900">{note.note}</span>
                                  ) : (
-                                   <span className="text-sm text-gray-500 italic">Image attachment only</span>
+                                   <span className="text-sm text-gray-500 italic">{tl('صورة مرفقة فقط', 'Image attachment only')}</span>
                                  )}
                                  {note.image_url && (
                                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                     📷 Image
+                                     📷 {tl('صورة', 'Image')}
                                    </span>
                                  )}
                                </div>
@@ -1549,13 +1551,13 @@ const RequestsManagement: React.FC = () => {
                                    className="mt-2 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs transition-colors flex items-center space-x-1"
                                  >
                                    <Eye className="w-3 h-3" />
-                                   <span>View Full Size</span>
+                                   <span>{tl('عرض بالحجم الكامل', 'View Full Size')}</span>
                                  </button>
                                </div>
                              )}
                              
                              <div className="text-xs text-gray-500 mt-2">
-                               By: {note.author}
+                               {tl('بواسطة:', 'By:')} {note.author}
                              </div>
                            </div>
                          )
@@ -1574,7 +1576,7 @@ const RequestsManagement: React.FC = () => {
                    }}
                    className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
                  >
-                   Cancel
+                   {tl('إلغاء', 'Cancel')}
                  </button>
                  <button
                    onClick={() => {
@@ -1589,10 +1591,10 @@ const RequestsManagement: React.FC = () => {
                    {uploading ? (
                      <>
                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                       <span>Saving...</span>
+                       <span>{tl('جارٍ الحفظ...', 'Saving...')}</span>
                      </>
                    ) : (
-                     <span>Save Changes</span>
+                     <span>{tl('حفظ التغييرات', 'Save Changes')}</span>
                    )}
                  </button>
                </div>
@@ -1606,13 +1608,13 @@ const RequestsManagement: React.FC = () => {
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-xl max-w-2xl w-full">
                              <div className="p-6 border-b border-gray-200">
-                 <h2 className="text-xl font-bold text-gray-900">Create New Request</h2>
+                 <h2 className="text-xl font-bold text-gray-900">{tl('طلب جديد', 'Create New Request')}</h2>
                </div>
 
               <div className="p-6">
                 <div className="space-y-4">
                                      <div>
-                     <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+                     <label className="block text-sm font-medium text-gray-700 mb-1">{tl('الاسم *', 'Name *')}</label>
                      <input
                        type="text"
                        value={formData.name}
@@ -1623,7 +1625,7 @@ const RequestsManagement: React.FC = () => {
                    </div>
                    
                    <div>
-                     <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
+                     <label className="block text-sm font-medium text-gray-700 mb-1">{tl('البريد الإلكتروني *', 'Email *')}</label>
                      <input
                        type="email"
                        value={formData.email}
@@ -1634,7 +1636,7 @@ const RequestsManagement: React.FC = () => {
                    </div>
                    
                    <div>
-                     <label className="block text-sm font-medium text-gray-700 mb-1">Phone *</label>
+                     <label className="block text-sm font-medium text-gray-700 mb-1">{tl('الهاتف *', 'Phone *')}</label>
                      <input
                        type="text"
                        value={formData.phone}
@@ -1645,18 +1647,18 @@ const RequestsManagement: React.FC = () => {
                    </div>
                    
                    <div>
-                     <label className="block text-sm font-medium text-gray-700 mb-1">Order ID (Optional)</label>
+                     <label className="block text-sm font-medium text-gray-700 mb-1">{tl('رقم الطلب (اختياري)', 'Order ID (Optional)')}</label>
                      <input
                        type="text"
                        value={formData.order_id}
                        onChange={(e) => setFormData({...formData, order_id: e.target.value})}
-                       placeholder="Enter Shopify order ID"
+                       placeholder={tl('أدخل رقم طلب Shopify', 'Enter Shopify order ID')}
                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                      />
                    </div>
                    
                    <div>
-                     <label className="block text-sm font-medium text-gray-700 mb-1">Comment *</label>
+                     <label className="block text-sm font-medium text-gray-700 mb-1">{tl('تعليق *', 'Comment *')}</label>
                      <textarea
                        value={formData.comment}
                        onChange={(e) => setFormData({...formData, comment: e.target.value})}
@@ -1667,7 +1669,7 @@ const RequestsManagement: React.FC = () => {
                    </div>
                    
                                         <div>
-                       <label className="block text-sm font-medium text-gray-700 mb-1">Image Upload (Optional)</label>
+                       <label className="block text-sm font-medium text-gray-700 mb-1">{tl('رفع صورة (اختياري)', 'Image Upload (Optional)')}</label>
                        <div className="space-y-2">
                          <input
                            type="file"
@@ -1686,7 +1688,7 @@ const RequestsManagement: React.FC = () => {
                                type="button"
                                onClick={() => removeFile('image')}
                                className="text-red-600 hover:text-red-800"
-                               title="Remove file"
+                               title={tl('إزالة الملف', 'Remove file')}
                              >
                                <X className="w-4 h-4" />
                              </button>
@@ -1694,17 +1696,17 @@ const RequestsManagement: React.FC = () => {
                          )}
                          {formData.image_url && !imageFile && (
                            <div className="text-sm text-gray-600">
-                             Or use existing URL: {formData.image_url}
+                             {tl('أو استخدم الرابط الحالي:', 'Or use existing URL:')} {formData.image_url}
                            </div>
                          )}
                          <div className="text-xs text-gray-500">
-                           Supported formats: JPEG, PNG, GIF, WebP. Max size: 5MB
+                           {tl('الصيغ المدعومة: JPEG, PNG, GIF, WebP. الحد الأقصى: 5MB', 'Supported formats: JPEG, PNG, GIF, WebP. Max size: 5MB')}
                          </div>
                        </div>
                      </div>
                      
                      <div>
-                       <label className="block text-sm font-medium text-gray-700 mb-1">Video Upload (Optional)</label>
+                       <label className="block text-sm font-medium text-gray-700 mb-1">{tl('رفع فيديو (اختياري)', 'Video Upload (Optional)')}</label>
                        <div className="space-y-2">
                          <input
                            type="file"
@@ -1723,7 +1725,7 @@ const RequestsManagement: React.FC = () => {
                                type="button"
                                onClick={() => removeFile('video')}
                                className="text-red-600 hover:text-red-800"
-                               title="Remove file"
+                               title={tl('إزالة الملف', 'Remove file')}
                              >
                                <X className="w-4 h-4" />
                              </button>
@@ -1731,11 +1733,11 @@ const RequestsManagement: React.FC = () => {
                          )}
                          {formData.video_url && !videoFile && (
                            <div className="text-sm text-gray-600">
-                             Or use existing URL: {formData.video_url}
+                             {tl('أو استخدم الرابط الحالي:', 'Or use existing URL:')} {formData.video_url}
                            </div>
                          )}
                          <div className="text-xs text-gray-500">
-                           Supported formats: MP4, WebM, OGG, AVI. Max size: 50MB
+                           {tl('الصيغ المدعومة: MP4, WebM, OGG, AVI. الحد الأقصى: 50MB', 'Supported formats: MP4, WebM, OGG, AVI. Max size: 50MB')}
                          </div>
                        </div>
                      </div>
@@ -1747,7 +1749,7 @@ const RequestsManagement: React.FC = () => {
                    onClick={() => setShowCreateModal(false)}
                    className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
                  >
-                   Cancel
+                   {tl('إلغاء', 'Cancel')}
                  </button>
                  <button
                    onClick={createRequest}
@@ -1757,10 +1759,10 @@ const RequestsManagement: React.FC = () => {
                    {uploading ? (
                      <>
                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                       <span>Creating...</span>
+                       <span>{tl('جارٍ الإنشاء...', 'Creating...')}</span>
                      </>
                    ) : (
-                     <span>Create Request</span>
+                     <span>{tl('إنشاء الطلب', 'Create Request')}</span>
                    )}
                  </button>
                </div>
@@ -1777,8 +1779,8 @@ const RequestsManagement: React.FC = () => {
               <div className="bg-white border-b border-gray-200 p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h1 className="text-2xl font-bold text-gray-900">Generate Report</h1>
-                    <p className="text-gray-600 mt-1">Select statuses and generate detailed report</p>
+                    <h1 className="text-2xl font-bold text-gray-900">{tl('إنشاء تقرير', 'Generate Report')}</h1>
+                    <p className="text-gray-600 mt-1">{tl('اختر الحالات وأنشئ تقريرًا مفصلاً', 'Select statuses and generate detailed report')}</p>
                   </div>
                   <button
                     onClick={() => setShowReportPage(false)}
@@ -1792,7 +1794,7 @@ const RequestsManagement: React.FC = () => {
               {/* Status Selection */}
               <div className="p-6">
                 <div className="bg-white border border-gray-200 rounded-lg p-6 mb-6">
-                  <h2 className="text-lg font-semibold text-gray-900 mb-4">Select Statuses to Include</h2>
+                  <h2 className="text-lg font-semibold text-gray-900 mb-4">{tl('اختر الحالات المضمّنة', 'Select Statuses to Include')}</h2>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     {statuses.map(status => (
                       <label key={status.value} className="flex items-center space-x-3 cursor-pointer">
@@ -1828,13 +1830,13 @@ const RequestsManagement: React.FC = () => {
                       onClick={() => setSelectedStatuses(new Set(['pending', 'process', 'approved', 'cancelled']))}
                       className="text-sm text-blue-600 hover:text-blue-800 underline"
                     >
-                      Select All
+                      {tl('تحديد الكل', 'Select All')}
                     </button>
                     <button
                       onClick={() => setSelectedStatuses(new Set())}
                       className="text-sm text-red-600 hover:text-red-800 underline"
                     >
-                      Clear All
+                      {tl('مسح الكل', 'Clear All')}
                     </button>
                   </div>
                 </div>
@@ -1846,7 +1848,7 @@ const RequestsManagement: React.FC = () => {
                     disabled={selectedStatuses.size === 0}
                     className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white px-8 py-3 rounded-lg text-lg font-semibold transition-colors disabled:cursor-not-allowed"
                   >
-                    Generate Report ({reportRequests.length} requests)
+                    {tl('إنشاء تقرير', 'Generate Report')} ({reportRequests.length} {tl('طلب', 'requests')})
                   </button>
                 </div>
 
@@ -1856,14 +1858,14 @@ const RequestsManagement: React.FC = () => {
                     <div className="p-6 border-b border-gray-200">
                       <div className="flex items-center justify-between">
                         <h3 className="text-lg font-semibold text-gray-900">
-                          Report Results ({reportRequests.length} requests)
+                          {tl('نتائج التقرير', 'Report Results')} ({reportRequests.length} {tl('طلب', 'requests')})
                         </h3>
                         <button
                           onClick={exportReportToExcel}
                           className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center space-x-2"
                         >
                           <FileText className="w-4 h-4" />
-                          <span>Export to Excel</span>
+                          <span>{tl('تصدير إلى Excel', 'Export to Excel')}</span>
                         </button>
                       </div>
                     </div>
@@ -1874,25 +1876,25 @@ const RequestsManagement: React.FC = () => {
                         <thead className="bg-gray-50">
                           <tr>
                             <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                              Customer
+                              {tl('العميل', 'Customer')}
                             </th>
                             <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                              Contact Info
+                              {tl('بيانات التواصل', 'Contact Info')}
                             </th>
                             <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                              Status
+                              {tl('الحالة', 'Status')}
                             </th>
                             <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                              Assignee
+                              {tl('المسؤول', 'Assignee')}
                             </th>
                             <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                              Dates
+                              {tl('التواريخ', 'Dates')}
                             </th>
                             <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                              Comment
+                              {tl('تعليق', 'Comment')}
                             </th>
                             <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                              Attachments
+                              {tl('المرفقات', 'Attachments')}
                             </th>
                           </tr>
                         </thead>
@@ -1911,7 +1913,7 @@ const RequestsManagement: React.FC = () => {
                                       {request.name}
                                     </div>
                                     <div className="text-sm text-gray-500">
-                                      ID: {request.id}
+                                      {tl('المعرّف:', 'ID:')} {request.id}
                                     </div>
                                   </div>
                                 </div>
@@ -1936,18 +1938,18 @@ const RequestsManagement: React.FC = () => {
                                     request.status === 'approved' ? 'bg-green-400' :
                                     'bg-red-400'
                                   }`}></div>
-                                  <span className="text-sm text-gray-900 capitalize">{request.status}</span>
+                                  <span className="text-sm text-gray-900 capitalize">{getStatusLabel(request.status)}</span>
                                 </div>
                               </td>
                               <td className="px-3 py-3 align-top">
                                 <div className="text-sm text-gray-900">
-                                  {request.assignee || 'Unassigned'}
+                                  {request.assignee || tl('غير مُعيّن', 'Unassigned')}
                                 </div>
                               </td>
                               <td className="px-3 py-3 align-top">
                                 <div className="text-sm text-gray-900">
-                                  <div>Created: {new Date(request.created_at).toLocaleDateString()}</div>
-                                  <div className="text-gray-500">Updated: {new Date(request.updated_at).toLocaleDateString()}</div>
+                                  <div>{tl('تاريخ الإنشاء:', 'Created:')} {new Date(request.created_at).toLocaleDateString()}</div>
+                                  <div className="text-gray-500">{tl('تاريخ التحديث:', 'Updated:')} {new Date(request.updated_at).toLocaleDateString()}</div>
                                 </div>
                               </td>
                               <td className="px-6 py-4">
@@ -1959,16 +1961,16 @@ const RequestsManagement: React.FC = () => {
                                 <div className="text-sm text-gray-900">
                                   {request.image_url && (
                                     <div className="mb-1">
-                                      <span className="text-blue-600">📷 Image</span>
+                                      <span className="text-blue-600">📷 {tl('صورة', 'Image')}</span>
                                     </div>
                                   )}
                                   {request.video_url && (
                                     <div>
-                                      <span className="text-purple-600">🎥 Video</span>
+                                      <span className="text-purple-600">🎥 {tl('فيديو', 'Video')}</span>
                                     </div>
                                   )}
                                   {!request.image_url && !request.video_url && (
-                                    <span className="text-gray-400">None</span>
+                                    <span className="text-gray-400">{tl('لا يوجد', 'None')}</span>
                                   )}
                                 </div>
                               </td>
@@ -2010,14 +2012,14 @@ const RequestsManagement: React.FC = () => {
                     autoPlay
                     className="max-w-full max-h-full rounded-lg"
                   >
-                    Your browser does not support the video tag.
+                    {tl('متصفحك لا يدعم تشغيل الفيديو.', 'Your browser does not support the video tag.')}
                   </video>
                 )}
               </div>
               
               <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-black bg-opacity-50 text-white px-4 py-2 rounded-lg">
                 <span className="text-sm">
-                  {mediaType === 'image' ? '📷 Image' : '🎥 Video'} - Click outside or press ESC to close
+                  {mediaType === 'image' ? tl('📷 صورة', '📷 Image') : tl('🎥 فيديو', '🎥 Video')} - {tl('انقر خارجًا أو اضغط ESC للإغلاق', 'Click outside or press ESC to close')}
                 </span>
               </div>
             </div>
