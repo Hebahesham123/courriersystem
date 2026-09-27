@@ -91,15 +91,21 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles?: strin
   return <>{children}</>
 }
 
-const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <div className="flex min-h-screen bg-gray-50 w-full overflow-x-hidden">
-    <Sidebar />
-    <div className="flex-1 flex flex-col min-w-0 w-full">
-      <Header />
-      <main className="flex-1">{children}</main>
+const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { language } = useLanguage()
+  return (
+    // Container is hard-coded RTL so the sidebar is ALWAYS on the right,
+    // regardless of the app language or a refresh. The content area follows the
+    // selected language for its own text direction.
+    <div dir="rtl" className="flex min-h-screen bg-gray-50 w-full overflow-x-hidden">
+      <Sidebar />
+      <div dir={language === "ar" ? "rtl" : "ltr"} className="flex-1 flex flex-col min-w-0 w-full">
+        <Header />
+        <main className="flex-1">{children}</main>
+      </div>
     </div>
-  </div>
-)
+  )
+}
 
 const AppRoutes: React.FC = () => {
   const { user, loading } = useAuth()
