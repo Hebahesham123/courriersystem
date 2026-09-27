@@ -65,6 +65,8 @@ const RequestsManagement: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [assigneeFilter, setAssigneeFilter] = useState<string>('all')
+  const [currentPage, setCurrentPage] = useState(1)
+  const PAGE_SIZE = 50
   const [dateFilter, setDateFilter] = useState({
     startDate: '',
     endDate: ''
@@ -638,6 +640,18 @@ const RequestsManagement: React.FC = () => {
     return matchesSearch && matchesStatus && matchesAssignee && matchesDate
   })
 
+  // Pagination (50 per page)
+  const totalPages = Math.max(1, Math.ceil(filteredRequests.length / PAGE_SIZE))
+  const safePage = Math.min(currentPage, totalPages)
+  const pagedRequests = filteredRequests.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
+  const pageStart = filteredRequests.length === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1
+  const pageEnd = Math.min(safePage * PAGE_SIZE, filteredRequests.length)
+
+  // Reset to the first page whenever the filters change.
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchTerm, statusFilter, assigneeFilter, dateFilter.startDate, dateFilter.endDate])
+
   const getStatusIcon = (status: Request['status']) => {
     const statusObj = statuses.find(s => s.value === status)
     const Icon = statusObj?.icon || Clock
@@ -723,47 +737,42 @@ const RequestsManagement: React.FC = () => {
     <div className="min-h-screen bg-gray-50 p-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <div className="p-3 bg-yellow-100 rounded-xl">
-                <MessageSquare className="w-8 h-8 text-yellow-600" />
+        <div className="bg-white rounded-xl shadow-sm p-4 mb-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-yellow-100 rounded-lg">
+                <MessageSquare className="w-5 h-5 text-yellow-600" />
               </div>
               <div>
-                                 <h1 className="text-2xl font-bold text-gray-900">
-                   Customer Requests
-                 </h1>
-                 <p className="text-gray-600">
-                   Manage customer general requests
-                 </p>
+                <h1 className="text-lg font-bold text-gray-900">Customer Requests</h1>
+                <p className="text-xs text-gray-500">Manage customer general requests</p>
               </div>
             </div>
-                         <button
-               onClick={() => setShowCreateModal(true)}
-               className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
-             >
-               <Plus className="w-5 h-5" />
-               <span>Create New Request</span>
-             </button>
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg flex items-center gap-2 text-sm transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Create New Request</span>
+            </button>
           </div>
         </div>
 
                  {/* Status Summary */}
-         <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
-           <h3 className="text-lg font-semibold text-gray-900 mb-4">Request Summary</h3>
-           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+         <div className="bg-white rounded-xl shadow-sm p-4 mb-4">
+           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
              {statuses.map(status => {
                const count = requests.filter(r => r.status === status.value).length
                return (
-                 <div key={status.value} className="text-center p-4 rounded-lg bg-gray-50">
-                   <div className={`w-4 h-4 rounded-full mx-auto mb-2 ${
+                 <div key={status.value} className="flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-gray-50">
+                   <span className={`w-2.5 h-2.5 rounded-full ${
                      status.value === 'pending' ? 'bg-yellow-400' :
                      status.value === 'process' ? 'bg-blue-400' :
                      status.value === 'approved' ? 'bg-green-400' :
                      'bg-red-400'
-                   }`}></div>
-                   <div className="text-2xl font-bold text-gray-900">{count}</div>
-                   <div className="text-sm text-gray-600">{status.label}</div>
+                   }`}></span>
+                   <span className="text-lg font-bold text-gray-900">{count}</span>
+                   <span className="text-xs text-gray-500">{status.label}</span>
                  </div>
                )
              })}
@@ -771,7 +780,7 @@ const RequestsManagement: React.FC = () => {
          </div>
 
          {/* Filters and Search */}
-         <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
+         <div className="bg-white rounded-xl shadow-sm p-4 mb-4">
            <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
@@ -929,7 +938,7 @@ const RequestsManagement: React.FC = () => {
 
          {/* Requests List */}
          <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-           <div className="overflow-x-auto">
+           <div className="w-full">
             <table className="w-full">
                              <thead className="bg-gray-50">
                  <tr>
@@ -968,9 +977,9 @@ const RequestsManagement: React.FC = () => {
                  </tr>
                </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                                 {filteredRequests.map((request) => (
+                                 {pagedRequests.map((request) => (
                    <tr key={request.id} className="hover:bg-gray-50">
-                     <td className="px-6 py-4 whitespace-nowrap">
+                     <td className="px-4 py-4 align-top">
                        <input
                          type="checkbox"
                          checked={selectedRequests.has(request.id)}
@@ -978,7 +987,7 @@ const RequestsManagement: React.FC = () => {
                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                        />
                      </td>
-                     <td className="px-6 py-4 whitespace-nowrap">
+                     <td className="px-4 py-4 align-top">
                       <div className="flex items-center">
                         <div className="flex-shrink-0 h-10 w-10">
                           <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
@@ -998,7 +1007,7 @@ const RequestsManagement: React.FC = () => {
                          </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-4 py-4 align-top">
                       <div className="text-sm text-gray-900">
                         {request.order_id ? (
                           <div className="flex items-center space-x-2">
@@ -1010,19 +1019,19 @@ const RequestsManagement: React.FC = () => {
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">
-                        <div className="flex items-center space-x-2">
-                          <Mail className="w-4 h-4 text-gray-400" />
-                          <span>{request.email}</span>
+                    <td className="px-4 py-4 align-top">
+                      <div className="text-sm text-gray-900 min-w-0">
+                        <div className="flex items-start gap-2">
+                          <Mail className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
+                          <span className="break-all">{request.email}</span>
                         </div>
-                        <div className="flex items-center space-x-2 mt-1">
-                          <Phone className="w-4 h-4 text-gray-400" />
-                          <span>{request.phone}</span>
+                        <div className="flex items-start gap-2 mt-1">
+                          <Phone className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
+                          <span className="break-all">{request.phone}</span>
                         </div>
                       </div>
                     </td>
-                                         <td className="px-6 py-4 whitespace-nowrap">
+                                         <td className="px-4 py-4 align-top">
                        <div className="flex items-center space-x-2">
                          <div className={`w-3 h-3 rounded-full ${
                            request.status === 'pending' ? 'bg-yellow-400' :
@@ -1048,7 +1057,7 @@ const RequestsManagement: React.FC = () => {
                          </select>
                        </div>
                      </td>
-                                         <td className="px-6 py-4 whitespace-nowrap">
+                                         <td className="px-4 py-4 align-top">
                        <div className="flex items-center space-x-2">
                          <select
                            value={request.assignee || ''}
@@ -1064,7 +1073,7 @@ const RequestsManagement: React.FC = () => {
                          </select>
                        </div>
                      </td>
-                                         <td className="px-6 py-4 whitespace-nowrap">
+                                         <td className="px-4 py-4 align-top">
                        <div className="text-sm text-gray-900">
                          {new Date(request.created_at).toLocaleDateString('en-US')}
                        </div>
@@ -1072,7 +1081,7 @@ const RequestsManagement: React.FC = () => {
                          {new Date(request.created_at).toLocaleTimeString('en-US')}
                        </div>
                      </td>
-                     <td className="px-6 py-4 whitespace-nowrap">
+                     <td className="px-4 py-4 align-top">
                        <div className="flex items-center space-x-2">
                          {request.image_url && (
                            <div className="relative group">
@@ -1106,7 +1115,7 @@ const RequestsManagement: React.FC = () => {
                          )}
                        </div>
                      </td>
-                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                     <td className="px-4 py-4 align-top text-sm font-medium">
                        <div className="flex space-x-2">
                          <button
                            onClick={() => {
@@ -1151,6 +1160,52 @@ const RequestsManagement: React.FC = () => {
               </tbody>
             </table>
           </div>
+
+          {pagedRequests.length === 0 && (
+            <div className="py-12 text-center text-sm text-gray-500">No requests match the current filters</div>
+          )}
+
+          {/* Pagination */}
+          {filteredRequests.length > 0 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t border-gray-100">
+              <span className="text-xs text-gray-500">
+                Showing {pageStart}–{pageEnd} of {filteredRequests.length}
+              </span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setCurrentPage(1)}
+                  disabled={safePage <= 1}
+                  className="px-2.5 py-1.5 text-xs rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  « First
+                </button>
+                <button
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={safePage <= 1}
+                  className="px-3 py-1.5 text-xs rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  ‹ Prev
+                </button>
+                <span className="px-3 py-1.5 text-xs font-semibold text-gray-700">
+                  Page {safePage} / {totalPages}
+                </span>
+                <button
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={safePage >= totalPages}
+                  className="px-3 py-1.5 text-xs rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Next ›
+                </button>
+                <button
+                  onClick={() => setCurrentPage(totalPages)}
+                  disabled={safePage >= totalPages}
+                  className="px-2.5 py-1.5 text-xs rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Last »
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Detail Modal */}
@@ -1847,7 +1902,7 @@ const RequestsManagement: React.FC = () => {
                         <tbody className="bg-white divide-y divide-gray-200">
                           {reportRequests.map((request) => (
                             <tr key={request.id} className="hover:bg-gray-50">
-                              <td className="px-6 py-4 whitespace-nowrap">
+                              <td className="px-4 py-4 align-top">
                                 <div className="flex items-center">
                                   <div className="flex-shrink-0 h-10 w-10">
                                     <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
@@ -1864,7 +1919,7 @@ const RequestsManagement: React.FC = () => {
                                   </div>
                                 </div>
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
+                              <td className="px-4 py-4 align-top">
                                 <div className="text-sm text-gray-900">
                                   <div className="flex items-center space-x-2">
                                     <Mail className="w-4 h-4 text-gray-400" />
@@ -1876,7 +1931,7 @@ const RequestsManagement: React.FC = () => {
                                   </div>
                                 </div>
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
+                              <td className="px-4 py-4 align-top">
                                 <div className="flex items-center space-x-2">
                                   <div className={`w-3 h-3 rounded-full ${
                                     request.status === 'pending' ? 'bg-yellow-400' :
@@ -1887,12 +1942,12 @@ const RequestsManagement: React.FC = () => {
                                   <span className="text-sm text-gray-900 capitalize">{request.status}</span>
                                 </div>
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
+                              <td className="px-4 py-4 align-top">
                                 <div className="text-sm text-gray-900">
                                   {request.assignee || 'Unassigned'}
                                 </div>
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
+                              <td className="px-4 py-4 align-top">
                                 <div className="text-sm text-gray-900">
                                   <div>Created: {new Date(request.created_at).toLocaleDateString()}</div>
                                   <div className="text-gray-500">Updated: {new Date(request.updated_at).toLocaleDateString()}</div>
@@ -1903,7 +1958,7 @@ const RequestsManagement: React.FC = () => {
                                   {request.comment}
                                 </div>
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
+                              <td className="px-4 py-4 align-top">
                                 <div className="text-sm text-gray-900">
                                   {request.image_url && (
                                     <div className="mb-1">
