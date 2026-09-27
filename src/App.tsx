@@ -94,12 +94,15 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles?: strin
 const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { language } = useLanguage()
   return (
-    // Container is hard-coded RTL so the sidebar is ALWAYS on the right,
-    // regardless of the app language or a refresh. The content area follows the
-    // selected language for its own text direction.
-    <div dir="rtl" className="flex min-h-screen bg-gray-50 w-full overflow-x-hidden">
+    // The sidebar is fixed to the physical RIGHT (see Sidebar.tsx), so it never
+    // moves with language or route changes. The content reserves room for it on
+    // desktop via padding-right = the sidebar width (published as --sidebar-w).
+    <div className="min-h-screen bg-gray-50 w-full overflow-x-hidden">
       <Sidebar />
-      <div dir={language === "ar" ? "rtl" : "ltr"} className="flex-1 flex flex-col min-w-0 w-full">
+      <div
+        dir={language === "ar" ? "rtl" : "ltr"}
+        className="flex flex-col min-h-screen min-w-0 transition-[padding] duration-300 lg:pr-[var(--sidebar-w)]"
+      >
         <Header />
         <main className="flex-1">{children}</main>
       </div>
