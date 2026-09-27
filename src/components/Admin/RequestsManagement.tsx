@@ -734,62 +734,53 @@ const RequestsManagement: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6" dir={isRTL ? 'rtl' : 'ltr'}>
+    <div className="min-h-screen bg-gray-50 p-3" dir={isRTL ? 'rtl' : 'ltr'}>
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="bg-white rounded-xl shadow-sm p-4 mb-4">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-yellow-100 rounded-lg">
-                <MessageSquare className="w-5 h-5 text-yellow-600" />
-              </div>
-              <div>
-                <h1 className="text-lg font-bold text-gray-900">Customer Requests</h1>
-                <p className="text-xs text-gray-500">Manage customer general requests</p>
-              </div>
+        {/* Header + summary (one slim bar) */}
+        <div className="bg-white rounded-xl shadow-sm px-3 py-2 mb-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+          <div className="flex items-center gap-2 mr-auto">
+            <div className="p-1.5 bg-yellow-100 rounded-lg">
+              <MessageSquare className="w-4 h-4 text-yellow-600" />
             </div>
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg flex items-center gap-2 text-sm transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Create New Request</span>
-            </button>
+            <h1 className="text-base font-bold text-gray-900">Customer Requests</h1>
           </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {statuses.map(status => {
+              const count = requests.filter(r => r.status === status.value).length
+              return (
+                <span key={status.value} className="inline-flex items-center gap-1.5 py-1 px-2.5 rounded-full bg-gray-50 border border-gray-100 text-sm">
+                  <span className={`w-2 h-2 rounded-full ${
+                    status.value === 'pending' ? 'bg-yellow-400' :
+                    status.value === 'process' ? 'bg-blue-400' :
+                    status.value === 'approved' ? 'bg-green-400' :
+                    'bg-red-400'
+                  }`}></span>
+                  <span className="font-bold text-gray-900">{count}</span>
+                  <span className="text-xs text-gray-500">{status.label}</span>
+                </span>
+              )
+            })}
+          </div>
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg flex items-center gap-1.5 text-sm transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Create New Request</span>
+          </button>
         </div>
 
-                 {/* Status Summary */}
-         <div className="bg-white rounded-xl shadow-sm p-4 mb-4">
-           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-             {statuses.map(status => {
-               const count = requests.filter(r => r.status === status.value).length
-               return (
-                 <div key={status.value} className="flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-gray-50">
-                   <span className={`w-2.5 h-2.5 rounded-full ${
-                     status.value === 'pending' ? 'bg-yellow-400' :
-                     status.value === 'process' ? 'bg-blue-400' :
-                     status.value === 'approved' ? 'bg-green-400' :
-                     'bg-red-400'
-                   }`}></span>
-                   <span className="text-lg font-bold text-gray-900">{count}</span>
-                   <span className="text-xs text-gray-500">{status.label}</span>
-                 </div>
-               )
-             })}
-           </div>
-         </div>
-
          {/* Filters and Search */}
-         <div className="bg-white rounded-xl shadow-sm p-4 mb-4">
-           <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+         <div className="bg-white rounded-xl shadow-sm p-3 mb-2">
+           <div className="flex flex-wrap items-center gap-2">
+            <div className="relative flex-1 min-w-[180px]">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
               <input
                 type="text"
                 placeholder="Search by name, email, or phone..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
             
@@ -939,10 +930,21 @@ const RequestsManagement: React.FC = () => {
          {/* Requests List */}
          <div className="bg-white rounded-xl shadow-sm overflow-hidden">
            <div className="w-full">
-            <table className="w-full">
+            <table className="w-full table-fixed">
+              <colgroup>
+                <col className="w-10" />
+                <col className="w-[23%]" />
+                <col className="w-[9%]" />
+                <col className="w-[15%]" />
+                <col className="w-[12%]" />
+                <col className="w-[12%]" />
+                <col className="w-[10%]" />
+                <col className="w-[10%]" />
+                <col className="w-[9%]" />
+              </colgroup>
                              <thead className="bg-gray-50">
                  <tr>
-                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                   <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                      <input
                        type="checkbox"
                        checked={selectedRequests.size === filteredRequests.length && filteredRequests.length > 0}
@@ -950,28 +952,28 @@ const RequestsManagement: React.FC = () => {
                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                      />
                    </th>
-                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                   <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                      Customer
                    </th>
-                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                   <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                      Order ID
                    </th>
-                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                   <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                      Contact Info
                    </th>
-                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                   <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                      Status
                    </th>
-                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                   <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                      Assignee
                    </th>
-                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                   <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                      Date
                    </th>
-                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                   <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                      Attachments
                    </th>
-                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                   <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                      Actions
                    </th>
                  </tr>
@@ -979,7 +981,7 @@ const RequestsManagement: React.FC = () => {
               <tbody className="bg-white divide-y divide-gray-200">
                                  {pagedRequests.map((request) => (
                    <tr key={request.id} className="hover:bg-gray-50">
-                     <td className="px-4 py-4 align-top">
+                     <td className="px-3 py-3 align-top">
                        <input
                          type="checkbox"
                          checked={selectedRequests.has(request.id)}
@@ -987,53 +989,48 @@ const RequestsManagement: React.FC = () => {
                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                        />
                      </td>
-                     <td className="px-4 py-4 align-top">
-                      <div className="flex items-center">
-                        <div className="flex-shrink-0 h-10 w-10">
-                          <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
-                            <User className="w-5 h-5 text-blue-600" />
+                     <td className="px-3 py-3 align-top">
+                      <div className="flex items-start gap-2 min-w-0">
+                        <div className="flex-shrink-0 h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center">
+                          <User className="w-4 h-4 text-blue-600" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium text-gray-900 truncate">
+                            {request.name}
+                          </div>
+                          <div className="text-xs text-gray-500 truncate cursor-help" title={request.comment}>
+                            {request.comment}
                           </div>
                         </div>
-                                                 <div className="ml-4">
-                           <div className="text-sm font-medium text-gray-900">
-                             {request.name}
-                           </div>
-                           <div className="text-sm text-gray-500">
-                             {request.comment.length > 50 
-                               ? `${request.comment.substring(0, 50)}...` 
-                               : request.comment
-                             }
-                           </div>
-                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-4 align-top">
-                      <div className="text-sm text-gray-900">
+                    <td className="px-3 py-3 align-top">
+                      <div className="text-sm text-gray-900 min-w-0">
                         {request.order_id ? (
-                          <div className="flex items-center space-x-2">
-                            <Hash className="w-4 h-4 text-gray-400" />
-                            <span className="font-mono text-blue-600">{request.order_id}</span>
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <Hash className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                            <span className="font-mono text-blue-600 text-xs truncate" title={request.order_id}>{request.order_id}</span>
                           </div>
                         ) : (
-                          <span className="text-gray-400 italic">No order ID</span>
+                          <span className="text-gray-400 italic text-xs">No order ID</span>
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-4 align-top">
+                    <td className="px-3 py-3 align-top">
                       <div className="text-sm text-gray-900 min-w-0">
-                        <div className="flex items-start gap-2">
-                          <Mail className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
-                          <span className="break-all">{request.email}</span>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <Mail className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                          <span className="truncate text-xs" title={request.email}>{request.email}</span>
                         </div>
-                        <div className="flex items-start gap-2 mt-1">
-                          <Phone className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
-                          <span className="break-all">{request.phone}</span>
+                        <div className="flex items-center gap-1.5 mt-1 min-w-0">
+                          <Phone className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                          <span className="truncate text-xs" title={request.phone}>{request.phone}</span>
                         </div>
                       </div>
                     </td>
-                                         <td className="px-4 py-4 align-top">
-                       <div className="flex items-center space-x-2">
-                         <div className={`w-3 h-3 rounded-full ${
+                                         <td className="px-3 py-3 align-top">
+                       <div className="flex items-center gap-1.5 min-w-0">
+                         <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
                            request.status === 'pending' ? 'bg-yellow-400' :
                            request.status === 'process' ? 'bg-blue-400' :
                            request.status === 'approved' ? 'bg-green-400' :
@@ -1042,7 +1039,7 @@ const RequestsManagement: React.FC = () => {
                          <select
                            value={request.status}
                            onChange={(e) => updateRequest(request.id, { status: e.target.value as Request['status'] })}
-                           className={`text-sm border border-gray-300 rounded px-2 py-1 focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                           className={`w-full min-w-0 text-xs border border-gray-300 rounded px-1.5 py-1 focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
                              request.status === 'pending' ? 'text-yellow-600' :
                              request.status === 'process' ? 'text-blue-600' :
                              request.status === 'approved' ? 'text-green-600' :
@@ -1057,12 +1054,12 @@ const RequestsManagement: React.FC = () => {
                          </select>
                        </div>
                      </td>
-                                         <td className="px-4 py-4 align-top">
-                       <div className="flex items-center space-x-2">
+                                         <td className="px-3 py-3 align-top">
+                       <div className="flex items-center gap-1.5 min-w-0">
                          <select
                            value={request.assignee || ''}
                            onChange={(e) => updateRequest(request.id, { assignee: e.target.value || null })}
-                           className="text-sm border border-gray-300 rounded px-2 py-1 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                           className="w-full min-w-0 text-xs border border-gray-300 rounded px-1.5 py-1 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                          >
                            <option value="">Unassigned</option>
                            {assignees.map(assignee => (
@@ -1073,22 +1070,22 @@ const RequestsManagement: React.FC = () => {
                          </select>
                        </div>
                      </td>
-                                         <td className="px-4 py-4 align-top">
-                       <div className="text-sm text-gray-900">
+                                         <td className="px-3 py-3 align-top">
+                       <div className="text-xs text-gray-900 whitespace-nowrap">
                          {new Date(request.created_at).toLocaleDateString('en-US')}
                        </div>
-                       <div className="text-sm text-gray-500">
-                         {new Date(request.created_at).toLocaleTimeString('en-US')}
+                       <div className="text-xs text-gray-500 whitespace-nowrap">
+                         {new Date(request.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                        </div>
                      </td>
-                     <td className="px-4 py-4 align-top">
-                       <div className="flex items-center space-x-2">
+                     <td className="px-3 py-3 align-top">
+                       <div className="flex items-center gap-1.5">
                          {request.image_url && (
                            <div className="relative group">
-                             <img 
-                               src={request.image_url} 
-                               alt="Request attachment" 
-                               className="w-12 h-12 object-cover rounded-lg border border-gray-300 cursor-pointer hover:opacity-80 transition-opacity"
+                             <img
+                               src={request.image_url}
+                               alt="Request attachment"
+                               className="w-10 h-10 object-cover rounded-lg border border-gray-300 cursor-pointer hover:opacity-80 transition-opacity"
                                onClick={() => request.image_url && openMediaModal(request.image_url, 'image')}
                              />
                              <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all rounded-lg flex items-center justify-center">
@@ -1098,8 +1095,8 @@ const RequestsManagement: React.FC = () => {
                          )}
                          {request.video_url && (
                            <div className="relative group">
-                             <div className="w-12 h-12 bg-gray-100 rounded-lg border border-gray-300 cursor-pointer hover:opacity-80 transition-opacity flex items-center justify-center">
-                               <Play className="w-6 h-6 text-gray-600" />
+                             <div className="w-10 h-10 bg-gray-100 rounded-lg border border-gray-300 cursor-pointer hover:opacity-80 transition-opacity flex items-center justify-center">
+                               <Play className="w-5 h-5 text-gray-600" />
                              </div>
                              <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all rounded-lg flex items-center justify-center">
                                <Eye className="w-4 h-4 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -1115,8 +1112,8 @@ const RequestsManagement: React.FC = () => {
                          )}
                        </div>
                      </td>
-                     <td className="px-4 py-4 align-top text-sm font-medium">
-                       <div className="flex space-x-2">
+                     <td className="px-3 py-3 align-top text-sm font-medium">
+                       <div className="flex items-center gap-0.5">
                          <button
                            onClick={() => {
                              setNewNote('')
@@ -1876,25 +1873,25 @@ const RequestsManagement: React.FC = () => {
                       <table className="w-full">
                         <thead className="bg-gray-50">
                           <tr>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                               Customer
                             </th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                               Contact Info
                             </th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                               Status
                             </th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                               Assignee
                             </th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                               Dates
                             </th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                               Comment
                             </th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                               Attachments
                             </th>
                           </tr>
@@ -1902,7 +1899,7 @@ const RequestsManagement: React.FC = () => {
                         <tbody className="bg-white divide-y divide-gray-200">
                           {reportRequests.map((request) => (
                             <tr key={request.id} className="hover:bg-gray-50">
-                              <td className="px-4 py-4 align-top">
+                              <td className="px-3 py-3 align-top">
                                 <div className="flex items-center">
                                   <div className="flex-shrink-0 h-10 w-10">
                                     <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
@@ -1919,7 +1916,7 @@ const RequestsManagement: React.FC = () => {
                                   </div>
                                 </div>
                               </td>
-                              <td className="px-4 py-4 align-top">
+                              <td className="px-3 py-3 align-top">
                                 <div className="text-sm text-gray-900">
                                   <div className="flex items-center space-x-2">
                                     <Mail className="w-4 h-4 text-gray-400" />
@@ -1931,7 +1928,7 @@ const RequestsManagement: React.FC = () => {
                                   </div>
                                 </div>
                               </td>
-                              <td className="px-4 py-4 align-top">
+                              <td className="px-3 py-3 align-top">
                                 <div className="flex items-center space-x-2">
                                   <div className={`w-3 h-3 rounded-full ${
                                     request.status === 'pending' ? 'bg-yellow-400' :
@@ -1942,12 +1939,12 @@ const RequestsManagement: React.FC = () => {
                                   <span className="text-sm text-gray-900 capitalize">{request.status}</span>
                                 </div>
                               </td>
-                              <td className="px-4 py-4 align-top">
+                              <td className="px-3 py-3 align-top">
                                 <div className="text-sm text-gray-900">
                                   {request.assignee || 'Unassigned'}
                                 </div>
                               </td>
-                              <td className="px-4 py-4 align-top">
+                              <td className="px-3 py-3 align-top">
                                 <div className="text-sm text-gray-900">
                                   <div>Created: {new Date(request.created_at).toLocaleDateString()}</div>
                                   <div className="text-gray-500">Updated: {new Date(request.updated_at).toLocaleDateString()}</div>
@@ -1958,7 +1955,7 @@ const RequestsManagement: React.FC = () => {
                                   {request.comment}
                                 </div>
                               </td>
-                              <td className="px-4 py-4 align-top">
+                              <td className="px-3 py-3 align-top">
                                 <div className="text-sm text-gray-900">
                                   {request.image_url && (
                                     <div className="mb-1">
