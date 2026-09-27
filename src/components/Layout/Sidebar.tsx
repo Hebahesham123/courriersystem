@@ -90,118 +90,121 @@ const Sidebar: React.FC = () => {
     return () => document.removeEventListener("keydown", handleEscape)
   }, [])
 
+  // Pick the text for the current language.
+  const tl = (ar: string, en: string) => (language === "ar" ? ar : en)
+
   const adminMenuItems: MenuItem[] = [
     {
       path: "/admin",
       icon: Home,
-      label: t("dashboard") || "Dashboard",
+      label: tl("لوحة التحكم", "Dashboard"),
       color: "text-blue-400",
-      description: "نظرة عامة على النظام",
+      description: tl("نظرة عامة على النظام", "System overview"),
     },
     {
       path: "/admin/orders",
       icon: Package,
-      label: t("orders") || "Orders",
+      label: tl("الطلبات", "Orders"),
       color: "text-green-400",
-      description: "إدارة ومتابعة الطلبات",
+      description: tl("إدارة ومتابعة الطلبات", "Manage & track orders"),
     },
     {
       path: "/admin/couriers",
       icon: Users,
-      label: t("couriers") || "Couriers",
+      label: tl("المناديب", "Couriers"),
       color: "text-orange-400",
-      description: "إدارة المندوبين",
+      description: tl("إدارة المندوبين", "Manage couriers"),
     },
     {
       path: "/admin/trach",
       icon: Monitor,
-      label: "Trach",
+      label: tl("المتابعة المباشرة", "Live Tracking"),
       color: "text-cyan-400",
-      description: "تتبع مباشر وتحليلات للمندوبين",
+      description: tl("تتبع مباشر وتحليلات للمندوبين", "Live tracking & analytics"),
     },
     {
       path: "/admin/courier-fees",
       icon: DollarSign,
-      label: t("courierFees") || "Courier Fees",
+      label: tl("رسوم المندوبين", "Courier Fees"),
       color: "text-green-600",
-      description: "إدارة الرسوم اليومية لكل مندوب",
+      description: tl("إدارة الرسوم اليومية لكل مندوب", "Daily fees per courier"),
     },
     {
       path: "/admin/couriers-sheet",
       icon: FileText,
-      label: t("couriersSheet") || "Couriers Sheet",
+      label: tl("جداول المندوبين", "Couriers Sheet"),
       color: "text-indigo-400",
-      description: "عرض جداول الطلبات لكل مندوب",
+      description: tl("عرض جداول الطلبات لكل مندوب", "Order sheets per courier"),
     },
     {
       path: "/admin/reports",
       icon: FileText,
-      label: t("reports") || "Reports",
+      label: tl("التقارير", "Reports"),
       color: "text-pink-400",
-      description: "تقارير الأداء والإحصائيات",
+      description: tl("تقارير الأداء والإحصائيات", "Performance reports & stats"),
     },
     {
       path: "/admin/settlement",
       icon: DollarSign,
-      label: "المحاسبة اليومية",
+      label: tl("المحاسبة اليومية", "Daily Settlement"),
       color: "text-emerald-400",
-      description: "تحصيل كل مندوب يومياً حسب طريقة الدفع (Excel)",
+      description: tl("تحصيل كل مندوب يومياً حسب طريقة الدفع", "Daily collection per courier by method"),
     },
     {
       path: "/warehouse/returns",
       icon: Warehouse,
-      label: "المرتجعات (المخزن)",
+      label: tl("المرتجعات (المخزن)", "Returns (Warehouse)"),
       color: "text-slate-300",
-      description: "جزئي / ملغي / يد بيد / تبديل / استلام قطعة لكل مندوب",
+      description: tl("جزئي / ملغي / يد بيد / تبديل / استلام قطعة لكل مندوب", "Partial / canceled / exchange / receive per courier"),
     },
     {
       path: "/admin/warehouse-tracking",
       icon: Warehouse,
-      label: "مخزن",
+      label: tl("المخزن", "Warehouse"),
       color: "text-slate-400",
-      description: "تتبع استلام موظفي المخزن للمرتجعات",
+      description: tl("تتبع استلام موظفي المخزن للمرتجعات", "Warehouse staff receipt tracking"),
     },
     {
       path: "/admin/analytics",
       icon: BarChart3,
-      label: "Analytics",
+      label: tl("التحليلات", "Analytics"),
       color: "text-orange-400",
-      description: "تحليلات مفصلة لجميع المندوبين",
+      description: tl("تحليلات مفصلة لجميع المندوبين", "Detailed analytics for all couriers"),
     },
     {
       path: "/admin/requests",
       icon: MessageSquare,
-      label: "Customer Requests",
+      label: tl("طلبات العملاء", "Customer Requests"),
       color: "text-yellow-400",
-      description: "Manage customer general requests",
+      description: tl("إدارة طلبات العملاء العامة", "Manage customer requests"),
     },
     {
       path: "/admin/upload",
       icon: Upload,
-      label: t("uploadOrders") || "Upload Orders",
+      label: tl("رفع الطلبات", "Upload Orders"),
       color: "text-purple-400",
-      description: "رفع ملفات الطلبات",
+      description: tl("رفع ملفات الطلبات", "Upload order files"),
     },
     {
       path: "/admin/receive-piece-exchange",
       icon: RefreshCw,
-      label: "استلام قطعه أو تبديل",
+      label: tl("استلام قطعة أو تبديل", "Receive / Exchange"),
       color: "text-purple-600",
-      description: "إدارة طلبات الاستلام والتبديل",
+      description: tl("إدارة طلبات الاستلام والتبديل", "Manage receive & exchange"),
     },
     {
       path: "/admin/calendar",
       icon: Calendar,
-      label: "تقويم العملاء",
+      label: tl("تقويم العملاء", "Customer Calendar"),
       color: "text-indigo-400",
-      description: "مواعيد التسليم المؤكدة من واتساب",
+      description: tl("مواعيد التسليم المؤكدة من واتساب", "Confirmed delivery dates from WhatsApp"),
     },
     {
       path: "/admin/logs",
       icon: History,
-      label: t("logs") || "Logs",
+      label: tl("السجلات", "Logs"),
       color: "text-rose-400",
-      description: "سجل التعديلات لكل المستخدمين",
+      description: tl("سجل التعديلات لكل المستخدمين", "Change log for all users"),
     },
   ]
 
@@ -209,37 +212,37 @@ const Sidebar: React.FC = () => {
     {
       path: "/courier",
       icon: Home,
-      label: t("لوحه التحكم") || "Dashboard",
+      label: tl("لوحة التحكم", "Dashboard"),
       color: "text-blue-400",
-      description: "نظرة عامة على طلباتي",
+      description: tl("نظرة عامة على طلباتي", "Overview of my orders"),
     },
     {
       path: "/courier/orders",
       icon: Truck,
-      label: t("طلباطي") || "Orders",
+      label: tl("طلباتي", "Orders"),
       color: "text-green-400",
-      description: "طلبات التوصيل المخصصة لي",
+      description: tl("طلبات التوصيل المخصصة لي", "My assigned deliveries"),
     },
     {
       path: "/courier/maps",
       icon: MapIcon,
-      label: "خريطة الطريق",
+      label: tl("خريطة الطريق", "Route Map"),
       color: "text-teal-400",
-      description: "ترتيب الطلبات حسب الأقرب والتنقّل",
+      description: tl("ترتيب الطلبات حسب الأقرب والتنقّل", "Nearest-first ordering & navigation"),
     },
     {
       path: "/courier/yoursheet",
       icon: FileText,
-      label: t("ورقة الطلبات") || "My Sheet",
+      label: tl("ورقة الطلبات", "My Sheet"),
       color: "text-purple-400",
-      description: "جدول الطلبات الخاص بي",
+      description: tl("جدول الطلبات الخاص بي", "My orders sheet"),
     },
     {
       path: "/courier/analytics",
       icon: BarChart3,
-      label: "Analytics",
+      label: tl("التحليلات", "Analytics"),
       color: "text-orange-400",
-      description: "تحليلات مفصلة لأداء التوصيل",
+      description: tl("تحليلات مفصلة لأداء التوصيل", "Detailed delivery analytics"),
     },
   ]
 
@@ -247,9 +250,9 @@ const Sidebar: React.FC = () => {
     {
       path: "/warehouse/returns",
       icon: Warehouse,
-      label: "المرتجعات",
+      label: tl("المرتجعات", "Returns"),
       color: "text-slate-300",
-      description: "استلام المرتجعات لكل مندوب",
+      description: tl("استلام المرتجعات لكل مندوب", "Receive returns per courier"),
     },
   ]
 
@@ -267,12 +270,13 @@ const Sidebar: React.FC = () => {
   }
 
   const getUserRole = (): string => {
-    const roleTranslations = {
-      admin: "مدير النظام",
-      courier: "مندوب توصيل",
-      warehouse: "المخزن",
+    const roleTranslations: Record<string, { ar: string; en: string }> = {
+      admin: { ar: "مدير النظام", en: "System Admin" },
+      courier: { ar: "مندوب توصيل", en: "Delivery Courier" },
+      warehouse: { ar: "المخزن", en: "Warehouse" },
     }
-    return roleTranslations[user?.role as keyof typeof roleTranslations] || user?.role || "مستخدم"
+    const r = roleTranslations[user?.role as string]
+    return r ? (language === "ar" ? r.ar : r.en) : user?.role || (language === "ar" ? "مستخدم" : "User")
   }
 
   const toggleSidebar = () => {
@@ -352,7 +356,7 @@ const Sidebar: React.FC = () => {
                   <h1 className="text-lg font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
                     CourierPro
                   </h1>
-                  <p className="text-xs text-gray-400 mt-0.5">نظام إدارة التوصيل</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{language === "ar" ? "نظام إدارة التوصيل" : "Delivery Management System"}</p>
                 </div>
               )}
             </div>
