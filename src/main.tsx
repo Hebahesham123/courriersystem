@@ -21,8 +21,6 @@ localStorage.setItem('language', language)
 // Apply language and direction to document root (always LTR - left to right)
 document.documentElement.lang = language
 document.documentElement.dir = 'ltr'
-// Default sidebar width (the fixed right sidebar publishes the live value).
-document.documentElement.style.setProperty('--sidebar-w', '20rem')
 
 // Add font class based on language
 const rootElement = document.getElementById('root')

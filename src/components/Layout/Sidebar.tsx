@@ -61,12 +61,6 @@ const Sidebar: React.FC = () => {
     setSidebarOpen(false)
   }, [location.pathname])
 
-  // Publish the sidebar width so the content area can reserve room for it on
-  // desktop (the sidebar is fixed to the right, out of normal flow).
-  useEffect(() => {
-    document.documentElement.style.setProperty("--sidebar-w", isCollapsed ? "5rem" : "20rem")
-  }, [isCollapsed])
-
   // Always keep sidebar visible (desktop) by default for all users
   useEffect(() => {
     // On desktop (lg breakpoint), sidebar should always be visible
@@ -315,7 +309,7 @@ const Sidebar: React.FC = () => {
           isCollapsed ? "w-20" : "w-72 sm:w-80"
         } ${
           sidebarOpen ? "translate-x-0" : "translate-x-full"
-        } lg:translate-x-0 lg:block`}
+        } lg:translate-x-0 lg:static lg:block`}
         dir="ltr"
         role="navigation"
         aria-label={language === "ar" ? "القائمة الرئيسية" : "Main Menu"}
