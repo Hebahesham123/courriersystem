@@ -77,6 +77,7 @@ interface Order {
   assigned_courier_id?: string | null
   assigned_at?: string | null
   receive_piece_or_exchange?: string | null
+  admin_prepaid_amount?: number | null
   line_items?: any
   product_images?: any
   notes?: string | null
@@ -97,6 +98,7 @@ const WarehouseReturns: React.FC = () => {
   const [search, setSearch] = useState("")
   const [catFilter, setCatFilter] = useState<CatKey | "all">("all")
   const [receivedFilter, setReceivedFilter] = useState<"all" | "received" | "pending">("all")
+  const [depositFilter, setDepositFilter] = useState<"all" | "with" | "without">("all")
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -141,7 +143,7 @@ const WarehouseReturns: React.FC = () => {
       const { data, error: err } = await supabase
         .from("orders")
         .select(
-          "id, order_id, shopify_order_name, customer_name, customer_phone, mobile_number, address, shipping_address, total_order_fees, status, assigned_courier_id, assigned_at, receive_piece_or_exchange, notes, order_note, warehouse_received, warehouse_received_at, warehouse_received_by, warehouse_received_comment, created_at",
+          "id, order_id, shopify_order_name, customer_name, customer_phone, mobile_number, address, shipping_address, total_order_fees, status, assigned_courier_id, assigned_at, receive_piece_or_exchange, admin_prepaid_amount, notes, order_note, warehouse_received, warehouse_received_at, warehouse_received_by, warehouse_received_comment, created_at",
         )
         .or(
           "status.in.(partial,canceled,hand_to_hand,receiving_part),receive_piece_or_exchange.in.(receive_piece,exchange)",
@@ -177,6 +179,9 @@ const WarehouseReturns: React.FC = () => {
     if (catFilter !== "all" && cat !== catFilter) return false
     if (receivedFilter === "received" && !o.warehouse_received) return false
     if (receivedFilter === "pending" && o.warehouse_received) return false
+    const hasDeposit = (Number(o.admin_prepaid_amount) || 0) > 0
+    if (depositFilter === "with" && !hasDeposit) return false
+    if (depositFilter === "without" && hasDeposit) return false
     const day = orderDay(o)
     if (dateFrom && day < dateFrom) return false
     if (dateTo && day > dateTo) return false
@@ -204,7 +209,7 @@ const WarehouseReturns: React.FC = () => {
       (couriers.get(a[0]) || "").localeCompare(couriers.get(b[0]) || ""),
     )
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orders, couriers, search, catFilter, receivedFilter, dateFrom, dateTo])
+  }, [orders, couriers, search, catFilter, receivedFilter, depositFilter, dateFrom, dateTo])
 
   const totals = useMemo(() => {
     let total = 0
@@ -315,6 +320,16 @@ const WarehouseReturns: React.FC = () => {
             {r === "all" ? "الحالة: الكل" : r === "pending" ? "لم يُستلم" : "تم الاستلام"}
           </button>
         ))}
+        <span className="mx-1 h-4 w-px bg-gray-300" />
+        {(["all", "with", "without"] as const).map((d) => (
+          <button
+            key={d}
+            onClick={() => setDepositFilter(d)}
+            className={`text-xs px-3 py-1 rounded-full border ${depositFilter === d ? "bg-purple-600 text-white border-purple-600" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"}`}
+          >
+            {d === "all" ? "المقدم: الكل" : d === "with" ? "بمقدم" : "بدون مقدم"}
+          </button>
+        ))}
       </div>
 
       {/* Date filter */}
@@ -335,29 +350,26 @@ const WarehouseReturns: React.FC = () => {
         />
         {(() => {
           const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
-          const preset = (days: number | null) => {
-            if (days === null) {
-              setDateFrom("")
-              setDateTo("")
-              return
-            }
-            const now = new Date()
-            setDateTo(iso(now))
-            setDateFrom(iso(new Date(now.getFullYear(), now.getMonth(), now.getDate() - days)))
+          const now = new Date()
+          const dayOffset = (n: number) => iso(new Date(now.getFullYear(), now.getMonth(), now.getDate() - n))
+          const setRange = (from: string, to: string) => {
+            setDateFrom(from)
+            setDateTo(to)
           }
-          const presets: [string, number | null][] = [
-            ["اليوم", 0],
-            ["٧ أيام", 7],
-            ["٣٠ يوم", 30],
-            ["الكل", null],
+          const buttons: { label: string; on: () => void }[] = [
+            { label: "اليوم", on: () => setRange(dayOffset(0), dayOffset(0)) },
+            { label: "أمس", on: () => setRange(dayOffset(1), dayOffset(1)) },
+            { label: "٧ أيام", on: () => setRange(dayOffset(7), dayOffset(0)) },
+            { label: "٣٠ يوم", on: () => setRange(dayOffset(30), dayOffset(0)) },
+            { label: "الكل", on: () => setRange("", "") },
           ]
-          return presets.map(([label, days]) => (
+          return buttons.map((b) => (
             <button
-              key={label}
-              onClick={() => preset(days)}
+              key={b.label}
+              onClick={b.on}
               className="text-xs px-2.5 py-1 rounded-full border bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
             >
-              {label}
+              {b.label}
             </button>
           ))
         })()}
