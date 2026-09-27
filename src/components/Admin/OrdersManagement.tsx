@@ -4309,7 +4309,7 @@ const OrdersManagement: React.FC = () => {
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50 sticky top-0 z-10">
                   <tr>
-                    <th className="sticky left-0 z-20 bg-gray-50 px-3 py-2 text-right border-r border-gray-200">
+                    <th className="sticky right-0 z-20 bg-gray-50 px-3 py-2 text-right border-l border-gray-200">
                       <input
                         type="checkbox"
                         ref={(el) => {
@@ -4326,7 +4326,7 @@ const OrdersManagement: React.FC = () => {
                       />
                     </th>
                     <th
-                      className="sticky left-8 z-20 bg-gray-50 px-3 py-2 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider border-r border-gray-200 min-w-[130px] cursor-pointer hover:bg-gray-100 transition-colors"
+                      className="sticky right-8 z-20 bg-gray-50 px-3 py-2 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider border-l border-gray-200 min-w-[130px] cursor-pointer hover:bg-gray-100 transition-colors"
                       onClick={() => handleSort('order_id')}
                     >
                       <div className="flex items-center justify-end gap-1">
@@ -4402,7 +4402,7 @@ const OrdersManagement: React.FC = () => {
                         }`}
                       >
                         <td
-                          className={`sticky left-0 z-10 px-3 py-2.5 border-r border-gray-200 ${
+                          className={`sticky right-0 z-10 px-3 py-2.5 border-l border-gray-200 ${
                             isCanceled ? "bg-red-50/70" : hasComment ? "bg-purple-200" : isSpecial ? "bg-green-100" : assigned ? "bg-green-50/50" : "bg-white"
                           }`}
                         >
@@ -4414,7 +4414,7 @@ const OrdersManagement: React.FC = () => {
                           />
                         </td>
                         <td
-                          className={`sticky left-8 z-10 px-3 py-2 border-r border-gray-200 ${
+                          className={`sticky right-8 z-10 px-3 py-2 border-l border-gray-200 ${
                             isCanceled ? "bg-red-50/70" : hasComment ? "bg-purple-200" : isSpecial ? "bg-green-100" : assigned ? "bg-green-50/50" : "bg-white"
                           }`}
                         >
