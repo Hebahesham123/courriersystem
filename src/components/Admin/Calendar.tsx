@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight, ChevronDown, RefreshCw, Calendar as CalIcon,
 import { whatsappSupabase, type WhatsAppOrder } from "../../lib/whatsappSupabase"
 import { supabase } from "../../lib/supabase"
 import { assignmentStatusFor } from "../../lib/scheduling"
+import { useLanguage } from "../../contexts/LanguageContext"
 
 interface Courier {
   id: string
@@ -14,6 +15,8 @@ interface Courier {
 
 const MONTHS_AR = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"]
 const WEEKDAYS_AR = ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"]
+const MONTHS_EN = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+const WEEKDAYS_EN = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 const MONTHS_EN_SHORT: Record<string, number> = {
   jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
   jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
@@ -150,8 +153,8 @@ const detectCity = (
   return null
 }
 
-const cityLabelAr = (c: "cairo" | "giza" | null): string =>
-  c === "cairo" ? "القاهرة" : c === "giza" ? "الجيزة" : "—"
+const cityLabelAr = (c: "cairo" | "giza" | null, lang: "en" | "ar" = "ar"): string =>
+  c === "cairo" ? (lang === "ar" ? "القاهرة" : "Cairo") : c === "giza" ? (lang === "ar" ? "الجيزة" : "Giza") : "—"
 
 const cityClasses = (c: "cairo" | "giza" | null): string =>
   c === "cairo"
@@ -281,6 +284,10 @@ const bucketForTime = (t?: string | null): string | null => {
 }
 
 const Calendar: React.FC = () => {
+  const { language } = useLanguage()
+  const tl = (ar: string, en: string) => (language === "ar" ? ar : en)
+  const MONTHS = language === "ar" ? MONTHS_AR : MONTHS_EN
+  const WEEKDAYS = language === "ar" ? WEEKDAYS_AR : WEEKDAYS_EN
   const today = new Date()
   const [cursor, setCursor] = useState(new Date(today.getFullYear(), today.getMonth(), 1))
   const [waOrders, setWaOrders] = useState<WhatsAppOrder[]>([])
@@ -468,7 +475,7 @@ const Calendar: React.FC = () => {
         } catch {}
       }
     } catch (e: any) {
-      setError(e?.message || "Failed to fetch WhatsApp orders")
+      setError(e?.message || tl("فشل تحميل طلبات واتساب", "Failed to fetch WhatsApp orders"))
     } finally {
       setLoading(false)
     }
@@ -638,7 +645,7 @@ const Calendar: React.FC = () => {
       setEditingTimeId(null)
     } catch (e: any) {
       console.error("Failed to update delivery_time", e)
-      alert("فشل تحديث الوقت: " + (e?.message || "خطأ غير معروف"))
+      alert(tl("فشل تحديث الوقت: ", "Failed to update time: ") + (e?.message || tl("خطأ غير معروف", "Unknown error")))
     } finally {
       setSavingTimeId(null)
     }
@@ -707,7 +714,7 @@ const Calendar: React.FC = () => {
           .select("*")
           .eq("id", order.id)
           .single()
-        if (!full) throw new Error("Order not found")
+        if (!full) throw new Error(tl("لم يتم العثور على الطلب", "Order not found"))
 
         const newOrderData: any = {
           order_id: newOrderId,
@@ -809,7 +816,7 @@ const Calendar: React.FC = () => {
   // Single-order assign (from the detail modal).
   const doAssign = async () => {
     if (!matchedOrder || !chosenCourier) {
-      setAssignError("اختر مندوب")
+      setAssignError(tl("اختر مندوب", "Choose a courier"))
       return
     }
     setAssigning(true)
@@ -817,10 +824,10 @@ const Calendar: React.FC = () => {
     setAssignSuccess(null)
     try {
       await assignOrderRow(matchedOrder, chosenCourier, ymdToDate(chosenDate))
-      setAssignSuccess("تم التعيين بنجاح")
+      setAssignSuccess(tl("تم التعيين بنجاح", "Assigned successfully"))
       setTimeout(() => closeModal(), 1200)
     } catch (e: any) {
-      setAssignError(e?.message || "فشل التعيين")
+      setAssignError(e?.message || tl("فشل التعيين", "Assignment failed"))
     } finally {
       setAssigning(false)
     }
@@ -830,7 +837,7 @@ const Calendar: React.FC = () => {
   // assign them all to the chosen courier for the chosen date.
   const assignMany = async () => {
     if (selectedIds.size === 0 || !bulkCourier) {
-      setBulkError("اختر مندوب وطلب واحد على الأقل")
+      setBulkError(tl("اختر مندوب وطلب واحد على الأقل", "Choose a courier and at least one order"))
       return
     }
     setBulkAssigning(true)
@@ -855,11 +862,13 @@ const Calendar: React.FC = () => {
         }
       }
       setBulkSuccess(
-        `تم تعيين ${ok} طلب${failed.length ? ` — تعذّر ${failed.length}: ${failed.join("، ")}` : ""}`,
+        language === "ar"
+          ? `تم تعيين ${ok} طلب${failed.length ? ` — تعذّر ${failed.length}: ${failed.join("، ")}` : ""}`
+          : `Assigned ${ok} order(s)${failed.length ? ` — failed ${failed.length}: ${failed.join(", ")}` : ""}`,
       )
       if (ok > 0) setSelectedIds(new Set())
     } catch (e: any) {
-      setBulkError(e?.message || "فشل التعيين")
+      setBulkError(e?.message || tl("فشل التعيين", "Assignment failed"))
     } finally {
       setBulkAssigning(false)
     }
@@ -875,7 +884,7 @@ const Calendar: React.FC = () => {
     setBulkSuccess(null)
     setDayList({
       key,
-      label: `${WEEKDAYS_AR[d.getDay()]} ${d.getDate()} ${MONTHS_AR[d.getMonth()]} ${d.getFullYear()}`,
+      label: `${WEEKDAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`,
       orders,
     })
   }
@@ -885,7 +894,7 @@ const Calendar: React.FC = () => {
   const goToday = () => setCursor(new Date(today.getFullYear(), today.getMonth(), 1))
 
   return (
-    <div className="p-4 md:p-6" dir="rtl">
+    <div className="p-4 md:p-6" dir={language === "ar" ? "rtl" : "ltr"}>
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
         <div className="flex items-center gap-3">
@@ -893,35 +902,35 @@ const Calendar: React.FC = () => {
             <CalIcon className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-gray-900">تقويم تأكيدات العملاء</h1>
-            <p className="text-sm text-gray-600">من نظام واتساب — مواعيد التسليم المؤكدة</p>
+            <h1 className="text-xl font-bold text-gray-900">{tl("تقويم تأكيدات العملاء", "Customer Confirmations Calendar")}</h1>
+            <p className="text-sm text-gray-600">{tl("من نظام واتساب — مواعيد التسليم المؤكدة", "From WhatsApp — confirmed delivery dates")}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={goPrev}
             className="p-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
-            title="الشهر السابق"
+            title={tl("الشهر السابق", "Previous month")}
           >
             <ChevronRight className="w-4 h-4" />
           </button>
           <button onClick={goToday} className="px-3 py-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-sm">
-            اليوم
+            {tl("اليوم", "Today")}
           </button>
           <button
             onClick={goNext}
             className="p-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
-            title="الشهر التالي"
+            title={tl("الشهر التالي", "Next month")}
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
           <span className="px-3 py-2 rounded-lg bg-indigo-50 text-indigo-800 font-semibold text-sm">
-            {MONTHS_AR[cursor.getMonth()]} {cursor.getFullYear()}
+            {MONTHS[cursor.getMonth()]} {cursor.getFullYear()}
           </span>
           <button
             onClick={fetchData}
             className="p-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
-            title="تحديث"
+            title={tl("تحديث", "Refresh")}
           >
             <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
           </button>
@@ -930,12 +939,12 @@ const Calendar: React.FC = () => {
 
       {/* Zone filter */}
       <div className="mb-3 flex items-center gap-2 flex-wrap">
-        <span className="text-xs font-semibold text-gray-700">المنطقة:</span>
+        <span className="text-xs font-semibold text-gray-700">{tl("المنطقة:", "Zone:")}</span>
         {([
-          { key: "all", label: "الكل", classes: "bg-gray-100 text-gray-800 border-gray-300" },
-          { key: "cairo", label: "القاهرة", classes: "bg-blue-100 text-blue-800 border-blue-300" },
-          { key: "giza", label: "الجيزة", classes: "bg-amber-100 text-amber-800 border-amber-300" },
-          { key: "unknown", label: "غير محدد", classes: "bg-rose-100 text-rose-800 border-rose-300" },
+          { key: "all", label: tl("الكل", "All"), classes: "bg-gray-100 text-gray-800 border-gray-300" },
+          { key: "cairo", label: tl("القاهرة", "Cairo"), classes: "bg-blue-100 text-blue-800 border-blue-300" },
+          { key: "giza", label: tl("الجيزة", "Giza"), classes: "bg-amber-100 text-amber-800 border-amber-300" },
+          { key: "unknown", label: tl("غير محدد", "Unspecified"), classes: "bg-rose-100 text-rose-800 border-rose-300" },
         ] as const).map((opt) => {
           const active = zoneFilter === opt.key
           return (
@@ -954,11 +963,11 @@ const Calendar: React.FC = () => {
 
       {/* Deposit filter */}
       <div className="mb-3 flex items-center gap-2 flex-wrap">
-        <span className="text-xs font-semibold text-gray-700">المقدم:</span>
+        <span className="text-xs font-semibold text-gray-700">{tl("المقدم:", "Deposit:")}</span>
         {([
-          { key: "all", label: "الكل", classes: "bg-gray-100 text-gray-800 border-gray-300" },
-          { key: "with", label: "💰 بمقدم", classes: "bg-purple-100 text-purple-800 border-purple-400" },
-          { key: "without", label: "بدون مقدم", classes: "bg-gray-100 text-gray-700 border-gray-300" },
+          { key: "all", label: tl("الكل", "All"), classes: "bg-gray-100 text-gray-800 border-gray-300" },
+          { key: "with", label: tl("💰 بمقدم", "💰 With deposit"), classes: "bg-purple-100 text-purple-800 border-purple-400" },
+          { key: "without", label: tl("بدون مقدم", "Without deposit"), classes: "bg-gray-100 text-gray-700 border-gray-300" },
         ] as const).map((opt) => {
           const active = depositFilter === opt.key
           return (
@@ -977,7 +986,7 @@ const Calendar: React.FC = () => {
 
       {/* Zone (tag) filter — from order_tags, each zone its own color */}
       <div className="mb-3 flex items-center gap-2 flex-wrap">
-        <span className="text-xs font-semibold text-gray-700">المنطقة (الوسوم):</span>
+        <span className="text-xs font-semibold text-gray-700">{tl("المنطقة (الوسوم):", "Zone (tags):")}</span>
         <button
           onClick={() => setZoneTagFilter("all")}
           className={`text-xs px-3 py-1 rounded-full border transition ${
@@ -986,7 +995,7 @@ const Calendar: React.FC = () => {
               : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
           }`}
         >
-          الكل
+          {tl("الكل", "All")}
         </button>
         {ZONE_DEFS.map((z) => {
           const active = zoneTagFilter === z.key
@@ -1007,7 +1016,7 @@ const Calendar: React.FC = () => {
 
       {/* Time-bucket filter — 9-3 / 3-6 / 6-9 (by delivery time start) */}
       <div className="mb-3 flex items-center gap-2 flex-wrap">
-        <span className="text-xs font-semibold text-gray-700">الوقت:</span>
+        <span className="text-xs font-semibold text-gray-700">{tl("الوقت:", "Time:")}</span>
         <button
           onClick={() => setTimeFilter("all")}
           className={`text-xs px-3 py-1 rounded-full border transition ${
@@ -1016,7 +1025,7 @@ const Calendar: React.FC = () => {
               : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
           }`}
         >
-          الكل
+          {tl("الكل", "All")}
         </button>
         {TIME_BUCKETS.map((b) => {
           const active = timeFilter === b.key
@@ -1038,7 +1047,7 @@ const Calendar: React.FC = () => {
 
       {/* Customer filter — green (paid online / has deposit) vs red (COD, no deposit) */}
       <div className="mb-3 flex items-center gap-2 flex-wrap">
-        <span className="text-xs font-semibold text-gray-700">العميل:</span>
+        <span className="text-xs font-semibold text-gray-700">{tl("العميل:", "Customer:")}</span>
         <button
           onClick={() => setCustomerFilter("all")}
           className={`text-xs px-3 py-1 rounded-full border transition ${
@@ -1047,7 +1056,7 @@ const Calendar: React.FC = () => {
               : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
           }`}
         >
-          الكل
+          {tl("الكل", "All")}
         </button>
         <button
           onClick={() => setCustomerFilter("green")}
@@ -1058,7 +1067,7 @@ const Calendar: React.FC = () => {
           }`}
         >
           <span className="inline-block w-2 h-2 rounded-full bg-green-500" />
-          عميل أخضر (أونلاين / مقدم)
+          {tl("عميل أخضر (أونلاين / مقدم)", "Green customer (online / deposit)")}
         </button>
         <button
           onClick={() => setCustomerFilter("red")}
@@ -1069,7 +1078,7 @@ const Calendar: React.FC = () => {
           }`}
         >
           <span className="inline-block w-2 h-2 rounded-full bg-red-500" />
-          عميل أحمر (كاش بدون مقدم)
+          {tl("عميل أحمر (كاش بدون مقدم)", "Red customer (cash, no deposit)")}
         </button>
       </div>
 
@@ -1080,14 +1089,14 @@ const Calendar: React.FC = () => {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="ابحث برقم الطلب أو اسم العميل أو الهاتف أو العنوان..."
+            placeholder={tl("ابحث برقم الطلب أو اسم العميل أو الهاتف أو العنوان...", "Search by order number, customer, phone, or address...")}
             className="w-full ps-3 pe-8 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
           />
           {search && (
             <button
               onClick={() => setSearch("")}
               className="absolute inset-y-0 left-2 flex items-center text-gray-400 hover:text-gray-600"
-              title="مسح البحث"
+              title={tl("مسح البحث", "Clear search")}
             >
               <X className="w-4 h-4" />
             </button>
@@ -1095,7 +1104,7 @@ const Calendar: React.FC = () => {
         </div>
         {search && (
           <span className="text-xs text-gray-500">
-            {Array.from(ordersByDay.values()).reduce((n, arr) => n + arr.length, 0)} نتيجة
+            {Array.from(ordersByDay.values()).reduce((n, arr) => n + arr.length, 0)} {tl("نتيجة", "results")}
           </span>
         )}
       </div>
@@ -1109,11 +1118,11 @@ const Calendar: React.FC = () => {
       {search.trim() && (
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-4">
           <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-            <span className="text-sm font-semibold text-gray-800">نتائج البحث</span>
-            <span className="text-xs text-gray-500">{searchResults.length} طلب</span>
+            <span className="text-sm font-semibold text-gray-800">{tl("نتائج البحث", "Search results")}</span>
+            <span className="text-xs text-gray-500">{searchResults.length} {tl("طلب", "orders")}</span>
           </div>
           {searchResults.length === 0 ? (
-            <div className="p-6 text-center text-sm text-gray-500">لا توجد نتائج مطابقة</div>
+            <div className="p-6 text-center text-sm text-gray-500">{tl("لا توجد نتائج مطابقة", "No matching results")}</div>
           ) : (
             <div className="max-h-[65vh] overflow-y-auto divide-y divide-gray-100">
               {searchResults.map((o) => {
@@ -1135,7 +1144,7 @@ const Calendar: React.FC = () => {
                           className={`inline-block w-2 h-2 rounded-full ${
                             customerClass(o) === "green" ? "bg-green-500" : "bg-red-500"
                           }`}
-                          title={customerClass(o) === "green" ? "عميل أخضر" : "عميل أحمر"}
+                          title={customerClass(o) === "green" ? tl("عميل أخضر", "Green customer") : tl("عميل أحمر", "Red customer")}
                         />
                         <span className="font-semibold text-gray-900 text-sm">{o.order_name || o.order_id}</span>
                         {zone && (
@@ -1145,7 +1154,7 @@ const Calendar: React.FC = () => {
                         )}
                         {!o.delivery_time && (
                           <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300 font-medium">
-                            بدون وقت
+                            {tl("بدون وقت", "No time")}
                           </span>
                         )}
                       </div>
@@ -1155,7 +1164,7 @@ const Calendar: React.FC = () => {
                       </div>
                       <div className="text-[11px] text-gray-500 mt-0.5 flex items-center gap-1">
                         <CalIcon className="w-3 h-3 flex-shrink-0" />
-                        <span>{d ? o.delivery_date : "بدون تاريخ"}</span>
+                        <span>{d ? o.delivery_date : tl("بدون تاريخ", "No date")}</span>
                         {addr && (
                           <>
                             <MapPin className="w-3 h-3 flex-shrink-0 ms-2" />
@@ -1175,7 +1184,7 @@ const Calendar: React.FC = () => {
                             onChange={(e) => updateDeliveryTime(o, e.target.value)}
                             className="text-xs border border-indigo-300 rounded px-1.5 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400"
                           >
-                            <option value="" disabled>اختر الوقت</option>
+                            <option value="" disabled>{tl("اختر الوقت", "Choose time")}</option>
                             {TIME_WINDOW_OPTIONS.map((w) => (
                               <option key={w} value={w}>{w}</option>
                             ))}
@@ -1187,7 +1196,7 @@ const Calendar: React.FC = () => {
                             onClick={() => setEditingTimeId(null)}
                             disabled={isSaving}
                             className="p-1 text-gray-400 hover:text-gray-600"
-                            title="إلغاء"
+                            title={tl("إلغاء", "Cancel")}
                           >
                             {isSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
                           </button>
@@ -1201,7 +1210,7 @@ const Calendar: React.FC = () => {
                           <button
                             onClick={() => setEditingTimeId(o.id)}
                             className="p-1 text-gray-400 hover:text-indigo-600"
-                            title="تعديل الوقت"
+                            title={tl("تعديل الوقت", "Edit time")}
                           >
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
@@ -1210,10 +1219,10 @@ const Calendar: React.FC = () => {
                         <button
                           onClick={() => setEditingTimeId(o.id)}
                           className="flex items-center gap-1 text-xs font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 rounded px-2 py-1 hover:bg-indigo-100"
-                          title="إضافة وقت"
+                          title={tl("إضافة وقت", "Add time")}
                         >
                           <Clock className="w-3 h-3" />
-                          إضافة وقت
+                          {tl("إضافة وقت", "Add time")}
                         </button>
                       )}
                     </div>
@@ -1229,7 +1238,7 @@ const Calendar: React.FC = () => {
       {!search.trim() && (
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <div className="grid grid-cols-7 bg-gray-50 border-b border-gray-200">
-          {WEEKDAYS_AR.map((d) => (
+          {WEEKDAYS.map((d) => (
             <div key={d} className="px-2 py-2 text-center text-xs font-bold text-gray-700">
               {d}
             </div>
@@ -1260,9 +1269,9 @@ const Calendar: React.FC = () => {
                     <button
                       onClick={() => openDayList(d, key, dayOrders)}
                       className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-100"
-                      title="عرض كل الطلبات وتعيين متعدد"
+                      title={tl("عرض كل الطلبات وتعيين متعدد", "View all orders and bulk assign")}
                     >
-                      {dayOrders.length} · تعيين
+                      {dayOrders.length} · {tl("تعيين", "Assign")}
                     </button>
                   )}
                 </div>
@@ -1286,7 +1295,7 @@ const Calendar: React.FC = () => {
                         key={o.id}
                         onClick={() => openOrder(o)}
                         className={`text-right truncate text-[11px] px-1.5 py-1 rounded border hover:brightness-95 ${klass}`}
-                        title={`${o.customer_name || ""} ${o.delivery_time || ""} ${zone ? zoneDef(zone)?.label : cityLabelAr(city)}${dep > 0 ? ` · مقدم ${dep}` : ""}`}
+                        title={`${o.customer_name || ""} ${o.delivery_time || ""} ${zone ? zoneDef(zone)?.label : cityLabelAr(city, language)}${dep > 0 ? ` · ${tl("مقدم", "Deposit")} ${dep}` : ""}`}
                       >
                         <span
                           className={`inline-block w-1.5 h-1.5 rounded-full me-1 align-middle ${
@@ -1299,7 +1308,7 @@ const Calendar: React.FC = () => {
                         {dep > 0 ? (
                           <span className="opacity-90 font-semibold"> · 💰{dep}</span>
                         ) : (
-                          !zone && city && <span className="opacity-80"> · {cityLabelAr(city)}</span>
+                          !zone && city && <span className="opacity-80"> · {cityLabelAr(city, language)}</span>
                         )}
                       </button>
                     )
@@ -1309,7 +1318,7 @@ const Calendar: React.FC = () => {
                       onClick={() => openDayList(d, key, dayOrders)}
                       className="text-[10px] text-indigo-700 hover:underline text-right"
                     >
-                      +{dayOrders.length - 3} أخرى
+                      +{dayOrders.length - 3} {tl("أخرى", "more")}
                     </button>
                   )}
                 </div>
@@ -1333,7 +1342,7 @@ const Calendar: React.FC = () => {
             <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-5 py-4 flex items-center justify-between">
               <div>
                 <h3 className="font-semibold">{dayList.label}</h3>
-                <p className="text-xs text-indigo-100">{dayList.orders.length} طلب مؤكد</p>
+                <p className="text-xs text-indigo-100">{dayList.orders.length} {tl("طلب مؤكد", "confirmed orders")}</p>
               </div>
               <button onClick={() => setDayList(null)} className="p-1 rounded-full hover:bg-white/20">
                 <X className="w-5 h-5" />
@@ -1344,7 +1353,7 @@ const Calendar: React.FC = () => {
                 // Group the day's orders by their delivery time slot, ordered chronologically.
                 const groups = new Map<string, WhatsAppOrder[]>()
                 for (const o of dayList.orders) {
-                  const slot = timeSlotLabel(o.delivery_time) || "بدون وقت"
+                  const slot = timeSlotLabel(o.delivery_time) || tl("بدون وقت", "No time")
                   if (!groups.has(slot)) groups.set(slot, [])
                   groups.get(slot)!.push(o)
                 }
@@ -1371,7 +1380,7 @@ const Calendar: React.FC = () => {
                         checked={allSelected}
                         onChange={toggleSlotSelection}
                         className="w-4 h-4 accent-indigo-600 cursor-pointer flex-shrink-0"
-                        title="تحديد كل الطلبات في هذا الوقت"
+                        title={tl("تحديد كل الطلبات في هذا الوقت", "Select all orders in this time slot")}
                       />
                       <button
                         onClick={() => toggleSlot(slot)}
@@ -1411,7 +1420,7 @@ const Calendar: React.FC = () => {
                             checked={isChecked}
                             onChange={() => toggleSelected(o.id)}
                             className="w-4 h-4 accent-indigo-600 cursor-pointer flex-shrink-0"
-                            title="تحديد للتعيين الجماعي"
+                            title={tl("تحديد للتعيين الجماعي", "Select for bulk assign")}
                           />
                           <button
                             onClick={() => {
@@ -1425,14 +1434,14 @@ const Calendar: React.FC = () => {
                                 className={`inline-block w-2 h-2 rounded-full ${
                                   customerClass(o) === "green" ? "bg-green-500" : "bg-red-500"
                                 }`}
-                                title={customerClass(o) === "green" ? "عميل أخضر" : "عميل أحمر"}
+                                title={customerClass(o) === "green" ? tl("عميل أخضر", "Green customer") : tl("عميل أحمر", "Red customer")}
                               />
                               <span className="font-semibold text-gray-900 text-sm">
                                 {o.order_name || o.order_id}
                               </span>
                               {dep > 0 && (
                                 <span className="text-[10px] px-1.5 py-0.5 rounded border font-semibold bg-purple-100 text-purple-800 border-purple-400">
-                                  💰 مقدم {dep}
+                                  💰 {tl("مقدم", "Deposit")} {dep}
                                 </span>
                               )}
                               {zone && (
@@ -1442,7 +1451,7 @@ const Calendar: React.FC = () => {
                               )}
                               {city && (
                                 <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${cityClasses(city)}`}>
-                                  {cityLabelAr(city)}
+                                  {cityLabelAr(city, language)}
                                 </span>
                               )}
                               {o.status && (
@@ -1478,7 +1487,7 @@ const Calendar: React.FC = () => {
                                   onChange={(e) => updateDeliveryTime(o, e.target.value)}
                                   className="text-xs border border-indigo-300 rounded px-1.5 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400"
                                 >
-                                  <option value="" disabled>اختر الوقت</option>
+                                  <option value="" disabled>{tl("اختر الوقت", "Choose time")}</option>
                                   {TIME_WINDOW_OPTIONS.map((w) => (
                                     <option key={w} value={w}>{w}</option>
                                   ))}
@@ -1490,7 +1499,7 @@ const Calendar: React.FC = () => {
                                   onClick={() => setEditingTimeId(null)}
                                   disabled={isSaving}
                                   className="p-1 text-gray-400 hover:text-gray-600"
-                                  title="إلغاء"
+                                  title={tl("إلغاء", "Cancel")}
                                 >
                                   {isSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
                                 </button>
@@ -1506,7 +1515,7 @@ const Calendar: React.FC = () => {
                                 <button
                                   onClick={() => setEditingTimeId(o.id)}
                                   className="p-1 text-gray-400 hover:text-indigo-600"
-                                  title="تعديل الوقت"
+                                  title={tl("تعديل الوقت", "Edit time")}
                                 >
                                   <Pencil className="w-3.5 h-3.5" />
                                 </button>
@@ -1537,14 +1546,14 @@ const Calendar: React.FC = () => {
                 )}
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-xs font-semibold text-gray-700 whitespace-nowrap">
-                    محدد: {selectedIds.size}
+                    {tl("محدد:", "Selected:")} {selectedIds.size}
                   </span>
                   <select
                     value={bulkCourier}
                     onChange={(e) => setBulkCourier(e.target.value)}
                     className="flex-1 min-w-[140px] px-3 py-2 border border-gray-300 rounded-lg text-sm"
                   >
-                    <option value="">اختر المندوب</option>
+                    <option value="">{tl("اختر المندوب", "Choose courier")}</option>
                     {couriers.map((c) => (
                       <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
@@ -1553,7 +1562,7 @@ const Calendar: React.FC = () => {
                     type="date"
                     value={bulkDate}
                     onChange={(e) => setBulkDate(e.target.value)}
-                    title="اترك التاريخ فارغاً للتعيين اليوم؛ اختر يوماً قادماً للجدولة"
+                    title={tl("اترك التاريخ فارغاً للتعيين اليوم؛ اختر يوماً قادماً للجدولة", "Leave the date empty to assign today; pick a future day to schedule")}
                     className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
                   />
                   <button
@@ -1566,7 +1575,7 @@ const Calendar: React.FC = () => {
                     ) : (
                       <UserPlus className="w-4 h-4" />
                     )}
-                    تعيين المحدد
+                    {tl("تعيين المحدد", "Assign selected")}
                   </button>
                 </div>
               </div>
@@ -1587,7 +1596,7 @@ const Calendar: React.FC = () => {
           >
             <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-5 py-4 flex items-center justify-between">
               <div>
-                <h3 className="font-semibold">{selected.customer_name || "عميل"}</h3>
+                <h3 className="font-semibold">{selected.customer_name || tl("عميل", "Customer")}</h3>
                 <p className="text-xs text-indigo-100">
                   {selected.order_name || selected.order_id}
                 </p>
@@ -1655,7 +1664,7 @@ const Calendar: React.FC = () => {
                         </a>
                         {city && (
                           <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${cityClasses(city)}`}>
-                            {cityLabelAr(city)}
+                            {cityLabelAr(city, language)}
                           </span>
                         )}
                       </div>
@@ -1671,7 +1680,7 @@ const Calendar: React.FC = () => {
                 return dep > 0 ? (
                   <div className="flex items-center gap-2">
                     <span className="text-[11px] px-2 py-1 rounded border font-semibold bg-purple-100 text-purple-800 border-purple-400">
-                      💰 مقدم: {dep} ج.م
+                      💰 {tl("مقدم:", "Deposit:")} {dep} {tl("ج.م", "EGP")}
                     </span>
                   </div>
                 ) : null
@@ -1687,13 +1696,13 @@ const Calendar: React.FC = () => {
               {/* Assign section */}
               <div className="mt-4 pt-4 border-t border-gray-200">
                 {matching ? (
-                  <p className="text-xs text-gray-500">جاري البحث عن الطلب...</p>
+                  <p className="text-xs text-gray-500">{tl("جاري البحث عن الطلب...", "Searching for the order...")}</p>
                 ) : matchedOrder ? (
                   <>
                     <div className="text-xs text-gray-600 mb-2">
-                      تم العثور على الطلب: <span className="font-semibold">{matchedOrder.order_id}</span>
+                      {tl("تم العثور على الطلب:", "Order found:")} <span className="font-semibold">{matchedOrder.order_id}</span>
                       {matchedOrder.assigned_courier_id && (
-                        <span className="mx-1 text-orange-600">(معيّن لمندوب حالياً)</span>
+                        <span className="mx-1 text-orange-600">{tl("(معيّن لمندوب حالياً)", "(currently assigned to a courier)")}</span>
                       )}
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1702,7 +1711,7 @@ const Calendar: React.FC = () => {
                         onChange={(e) => setChosenCourier(e.target.value)}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
                       >
-                        <option value="">اختر المندوب</option>
+                        <option value="">{tl("اختر المندوب", "Choose courier")}</option>
                         {couriers.map((c) => (
                           <option key={c.id} value={c.id}>{c.name}</option>
                         ))}
@@ -1729,7 +1738,7 @@ const Calendar: React.FC = () => {
                         onClick={closeModal}
                         className="px-3 py-2 text-sm rounded-lg border border-gray-300 hover:bg-gray-50"
                       >
-                        إلغاء
+                        {tl("إلغاء", "Cancel")}
                       </button>
                       <button
                         onClick={doAssign}
@@ -1741,13 +1750,13 @@ const Calendar: React.FC = () => {
                         ) : (
                           <UserPlus className="w-4 h-4" />
                         )}
-                        تعيين
+                        {tl("تعيين", "Assign")}
                       </button>
                     </div>
                   </>
                 ) : (
                   <p className="text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded px-2 py-1">
-                    لم يتم العثور على هذا الطلب في النظام (order_id: {selected.order_id}). تأكد من مزامنة Shopify.
+                    {tl("لم يتم العثور على هذا الطلب في النظام", "This order was not found in the system")} (order_id: {selected.order_id}). {tl("تأكد من مزامنة Shopify.", "Make sure Shopify is synced.")}
                   </p>
                 )}
               </div>

@@ -19,20 +19,22 @@ import {
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
 import { useAuth } from "../../contexts/AuthContext"
+import { useLanguage } from "../../contexts/LanguageContext"
 
 // The five return categories the warehouse handles.
 type CatKey = "partial" | "canceled" | "hand_to_hand" | "exchange" | "receive_piece"
 interface Cat {
   key: CatKey
   label: string
+  en: string
   chip: string
 }
 const CATEGORIES: Cat[] = [
-  { key: "partial", label: "جزئي", chip: "bg-yellow-100 text-yellow-800 border-yellow-300" },
-  { key: "canceled", label: "ملغي", chip: "bg-red-100 text-red-800 border-red-300" },
-  { key: "hand_to_hand", label: "يد بيد", chip: "bg-purple-100 text-purple-800 border-purple-300" },
-  { key: "exchange", label: "تبديل", chip: "bg-blue-100 text-blue-800 border-blue-300" },
-  { key: "receive_piece", label: "استلام قطعة", chip: "bg-teal-100 text-teal-800 border-teal-300" },
+  { key: "partial", label: "جزئي", en: "Partial", chip: "bg-yellow-100 text-yellow-800 border-yellow-300" },
+  { key: "canceled", label: "ملغي", en: "Canceled", chip: "bg-red-100 text-red-800 border-red-300" },
+  { key: "hand_to_hand", label: "يد بيد", en: "Hand to Hand", chip: "bg-purple-100 text-purple-800 border-purple-300" },
+  { key: "exchange", label: "تبديل", en: "Exchange", chip: "bg-blue-100 text-blue-800 border-blue-300" },
+  { key: "receive_piece", label: "استلام قطعة", en: "Receive Piece", chip: "bg-teal-100 text-teal-800 border-teal-300" },
 ]
 const CAT_BY_KEY: Record<CatKey, Cat> = CATEGORIES.reduce((a, c) => ({ ...a, [c.key]: c }), {} as any)
 
@@ -92,6 +94,8 @@ interface Order {
 
 const WarehouseReturns: React.FC = () => {
   const { user } = useAuth()
+  const { language } = useLanguage()
+  const tl = (ar: string, en: string) => (language === 'ar' ? ar : en)
   const [orders, setOrders] = useState<Order[]>([])
   const [couriers, setCouriers] = useState<Map<string, string>>(new Map())
   const [loading, setLoading] = useState(true)
@@ -126,7 +130,7 @@ const WarehouseReturns: React.FC = () => {
       await saveComment(o.id, commentDraft.trim())
       setEditingCommentId(null)
     } catch (e: any) {
-      setError("تعذّر حفظ الملاحظة: " + (e?.message || ""))
+      setError(tl("تعذّر حفظ الملاحظة: ", "Failed to save note: ") + (e?.message || ""))
     } finally {
       setSavingCommentId(null)
     }
@@ -155,7 +159,7 @@ const WarehouseReturns: React.FC = () => {
       if (err) throw err
       setOrders((data || []) as Order[])
     } catch (e: any) {
-      setError(e?.message || "فشل تحميل البيانات")
+      setError(e?.message || tl("فشل تحميل البيانات", "Failed to load data"))
     } finally {
       setLoading(false)
     }
@@ -263,7 +267,7 @@ const WarehouseReturns: React.FC = () => {
     } catch (e: any) {
       // revert on failure
       setOrders((prev) => prev.map((x) => (x.id === o.id ? { ...x, warehouse_received: o.warehouse_received } : x)))
-      setError("تعذّر حفظ الاستلام: " + (e?.message || ""))
+      setError(tl("تعذّر حفظ الاستلام: ", "Failed to save receipt: ") + (e?.message || ""))
     } finally {
       setSavingId(null)
     }
@@ -277,7 +281,7 @@ const WarehouseReturns: React.FC = () => {
     })
 
   return (
-    <div className="p-4 md:p-6" dir="rtl">
+    <div className="p-4 md:p-6" dir={language === 'ar' ? 'rtl' : 'ltr'}>
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
         <div className="flex items-center gap-3">
@@ -285,14 +289,14 @@ const WarehouseReturns: React.FC = () => {
             <Warehouse className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-gray-900">المرتجعات — المخزن</h1>
-            <p className="text-sm text-gray-600">جزئي · ملغي · يد بيد · تبديل · استلام قطعة — لكل مندوب</p>
+            <h1 className="text-xl font-bold text-gray-900">{tl("المرتجعات — المخزن", "Returns — Warehouse")}</h1>
+            <p className="text-sm text-gray-600">{tl("جزئي · ملغي · يد بيد · تبديل · استلام قطعة — لكل مندوب", "Partial · Canceled · Hand to Hand · Exchange · Receive Piece — per courier")}</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
           <div className="text-sm">
             <span className="font-bold text-emerald-700">{totals.received}</span>
-            <span className="text-gray-400"> / {totals.total} تم استلامه</span>
+            <span className="text-gray-400"> / {totals.total} {tl("تم استلامه", "received")}</span>
           </div>
           <button
             onClick={fetchData}
@@ -300,7 +304,7 @@ const WarehouseReturns: React.FC = () => {
             className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-50"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-            تحديث
+            {tl("تحديث", "Refresh")}
           </button>
         </div>
       </div>
@@ -311,7 +315,7 @@ const WarehouseReturns: React.FC = () => {
           onClick={() => setCatFilter("all")}
           className={`text-xs px-3 py-1 rounded-full border ${catFilter === "all" ? "bg-gray-800 text-white border-gray-800" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"}`}
         >
-          الكل
+          {tl("الكل", "All")}
         </button>
         {CATEGORIES.map((c) => (
           <button
@@ -319,7 +323,7 @@ const WarehouseReturns: React.FC = () => {
             onClick={() => setCatFilter(c.key)}
             className={`text-xs px-3 py-1 rounded-full border ${catFilter === c.key ? c.chip + " ring-2 ring-offset-1 ring-gray-400 font-semibold" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"}`}
           >
-            {c.label}
+            {tl(c.label, c.en)}
           </button>
         ))}
         <span className="mx-1 h-4 w-px bg-gray-300" />
@@ -329,7 +333,7 @@ const WarehouseReturns: React.FC = () => {
             onClick={() => setReceivedFilter(r)}
             className={`text-xs px-3 py-1 rounded-full border ${receivedFilter === r ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"}`}
           >
-            {r === "all" ? "الحالة: الكل" : r === "pending" ? "لم يُستلم" : "تم الاستلام"}
+            {r === "all" ? tl("الحالة: الكل", "Status: All") : r === "pending" ? tl("لم يُستلم", "Not received") : tl("تم الاستلام", "Received")}
           </button>
         ))}
         <span className="mx-1 h-4 w-px bg-gray-300" />
@@ -339,14 +343,14 @@ const WarehouseReturns: React.FC = () => {
             onClick={() => setDepositFilter(d)}
             className={`text-xs px-3 py-1 rounded-full border ${depositFilter === d ? "bg-purple-600 text-white border-purple-600" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"}`}
           >
-            {d === "all" ? "المقدم: الكل" : d === "with" ? "بمقدم" : "بدون مقدم"}
+            {d === "all" ? tl("المقدم: الكل", "Deposit: All") : d === "with" ? tl("بمقدم", "With deposit") : tl("بدون مقدم", "Without deposit")}
           </button>
         ))}
       </div>
 
       {/* Date filter */}
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <span className="text-xs font-semibold text-gray-700">التاريخ:</span>
+        <span className="text-xs font-semibold text-gray-700">{tl("التاريخ:", "Date:")}</span>
         <input
           type="date"
           value={dateFrom}
@@ -369,11 +373,11 @@ const WarehouseReturns: React.FC = () => {
             setDateTo(to)
           }
           const buttons: { label: string; on: () => void }[] = [
-            { label: "اليوم", on: () => setRange(dayOffset(0), dayOffset(0)) },
-            { label: "أمس", on: () => setRange(dayOffset(1), dayOffset(1)) },
-            { label: "٧ أيام", on: () => setRange(dayOffset(7), dayOffset(0)) },
-            { label: "٣٠ يوم", on: () => setRange(dayOffset(30), dayOffset(0)) },
-            { label: "الكل", on: () => setRange("", "") },
+            { label: tl("اليوم", "Today"), on: () => setRange(dayOffset(0), dayOffset(0)) },
+            { label: tl("أمس", "Yesterday"), on: () => setRange(dayOffset(1), dayOffset(1)) },
+            { label: tl("7 أيام", "7 days"), on: () => setRange(dayOffset(7), dayOffset(0)) },
+            { label: tl("30 يوم", "30 days"), on: () => setRange(dayOffset(30), dayOffset(0)) },
+            { label: tl("الكل", "All"), on: () => setRange("", "") },
           ]
           return buttons.map((b) => (
             <button
@@ -393,7 +397,7 @@ const WarehouseReturns: React.FC = () => {
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="ابحث برقم الطلب أو اسم العميل أو الهاتف..."
+          placeholder={tl("ابحث برقم الطلب أو اسم العميل أو الهاتف...", "Search by order number, customer name, or phone...")}
           className="w-full pr-9 pl-8 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
         />
         {search && (
@@ -405,11 +409,11 @@ const WarehouseReturns: React.FC = () => {
 
       {error && <div className="mb-3 p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg">{error}</div>}
 
-      {loading && <div className="p-6 text-center text-sm text-gray-500">جاري التحميل...</div>}
+      {loading && <div className="p-6 text-center text-sm text-gray-500">{tl("جاري التحميل...", "Loading...")}</div>}
 
       {!loading && byCourier.length === 0 && (
         <div className="p-6 text-center text-sm text-gray-500 bg-white rounded-xl border border-gray-200">
-          لا توجد طلبات مطابقة
+          {tl("لا توجد طلبات مطابقة", "No matching orders")}
         </div>
       )}
 
@@ -432,9 +436,9 @@ const WarehouseReturns: React.FC = () => {
                   <span className="font-semibold text-gray-900">{couriers.get(cid) || cid.slice(0, 8)}</span>
                 </div>
                 <div className="flex items-center gap-3 text-xs">
-                  <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">{list.length} طلب</span>
+                  <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">{list.length} {tl("طلب", "orders")}</span>
                   <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                    {received} مستلم
+                    {received} {tl("مستلم", "received")}
                   </span>
                 </div>
               </button>
@@ -451,7 +455,7 @@ const WarehouseReturns: React.FC = () => {
                         <button
                           onClick={() => toggleReceived(o)}
                           disabled={savingId === o.id}
-                          title={rec ? "تم الاستلام — اضغط للإلغاء" : "تحديد كمُستلَم"}
+                          title={rec ? tl("تم الاستلام — اضغط للإلغاء", "Received — click to undo") : tl("تحديد كمُستلَم", "Mark as received")}
                           className="flex-shrink-0 mt-0.5"
                         >
                           {savingId === o.id ? (
@@ -470,7 +474,7 @@ const WarehouseReturns: React.FC = () => {
                                 {o.shopify_order_name || o.order_id}
                               </span>
                               <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${c.chip}`}>
-                                {c.label}
+                                {tl(c.label, c.en)}
                               </span>
                               {rec && o.warehouse_received_by && (
                                 <span className="text-[10px] text-emerald-700">✓ {o.warehouse_received_by}</span>
@@ -498,7 +502,7 @@ const WarehouseReturns: React.FC = () => {
                                     if (e.key === "Enter") submitInlineComment(o)
                                     if (e.key === "Escape") setEditingCommentId(null)
                                   }}
-                                  placeholder="ملاحظة الاستلام..."
+                                  placeholder={tl("ملاحظة الاستلام...", "Receipt note...")}
                                   className="flex-1 px-2 py-1 border border-slate-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-slate-400"
                                 />
                                 <button
@@ -506,7 +510,7 @@ const WarehouseReturns: React.FC = () => {
                                   disabled={savingCommentId === o.id}
                                   className="text-xs px-2 py-1 rounded bg-slate-700 text-white hover:bg-slate-800 disabled:opacity-50"
                                 >
-                                  حفظ
+                                  {tl("حفظ", "Save")}
                                 </button>
                                 <button
                                   onClick={() => setEditingCommentId(null)}
@@ -534,7 +538,7 @@ const WarehouseReturns: React.FC = () => {
                                 }}
                                 className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-slate-600"
                               >
-                                <MessageSquare className="w-3 h-3" /> إضافة ملاحظة
+                                <MessageSquare className="w-3 h-3" /> {tl("إضافة ملاحظة", "Add note")}
                               </button>
                             )}
                           </div>
@@ -568,6 +572,8 @@ const OrderDetail: React.FC<{
   onClose: () => void
   onSaveComment: (comment: string) => Promise<void>
 }> = ({ order, courierName, onClose, onSaveComment }) => {
+  const { language } = useLanguage()
+  const tl = (ar: string, en: string) => (language === 'ar' ? ar : en)
   const [comment, setComment] = useState(order.warehouse_received_comment || "")
   const [savingComment, setSavingComment] = useState(false)
   const [savedComment, setSavedComment] = useState(false)
@@ -604,7 +610,7 @@ const OrderDetail: React.FC<{
         <div className="bg-gradient-to-r from-slate-700 to-slate-900 text-white px-5 py-4 flex items-center justify-between">
           <div>
             <h3 className="font-semibold">{order.shopify_order_name || order.order_id}</h3>
-            <p className="text-xs text-slate-200">{order.customer_name || "عميل"}</p>
+            <p className="text-xs text-slate-200">{order.customer_name || tl("عميل", "Customer")}</p>
           </div>
           <button onClick={onClose} className="p-1 rounded-full hover:bg-white/20">
             <X className="w-5 h-5" />
@@ -612,16 +618,16 @@ const OrderDetail: React.FC<{
         </div>
         <div className="p-5 space-y-3 text-sm overflow-y-auto">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className={`text-xs px-2 py-1 rounded border font-semibold ${c?.chip}`}>{c?.label || order.status}</span>
+            <span className={`text-xs px-2 py-1 rounded border font-semibold ${c?.chip}`}>{c ? tl(c.label, c.en) : order.status}</span>
             {order.warehouse_received && (
               <span className="text-xs px-2 py-1 rounded border font-semibold bg-emerald-100 text-emerald-800 border-emerald-300">
-                ✓ تم الاستلام {order.warehouse_received_by ? `— ${order.warehouse_received_by}` : ""}
+                ✓ {tl("تم الاستلام", "Received")} {order.warehouse_received_by ? `— ${order.warehouse_received_by}` : ""}
               </span>
             )}
           </div>
           <div className="flex items-center gap-2 text-gray-700">
             <UserIcon className="w-4 h-4 text-gray-400" />
-            <span>المندوب: {courierName}</span>
+            <span>{tl("المندوب", "Courier")}: {courierName}</span>
           </div>
           {(order.customer_phone || order.mobile_number) && (
             <div className="flex items-center gap-2 text-gray-700">
@@ -637,13 +643,13 @@ const OrderDetail: React.FC<{
           )}
           {typeof order.total_order_fees === "number" && (
             <div className="text-gray-700">
-              الإجمالي: <span className="font-semibold">{order.total_order_fees} ج.م</span>
+              {tl("الإجمالي", "Total")}: <span className="font-semibold">{order.total_order_fees} {tl("ج.م", "EGP")}</span>
             </div>
           )}
 
           {/* Warehouse receipt comment (optional) */}
           <div className="pt-2 border-t border-gray-200">
-            <label className="text-xs font-semibold text-gray-700 mb-1 block">ملاحظة الاستلام (اختياري)</label>
+            <label className="text-xs font-semibold text-gray-700 mb-1 block">{tl("ملاحظة الاستلام (اختياري)", "Receipt note (optional)")}</label>
             <textarea
               value={comment}
               onChange={(e) => {
@@ -651,7 +657,7 @@ const OrderDetail: React.FC<{
                 setSavedComment(false)
               }}
               rows={2}
-              placeholder="أضف ملاحظة عن استلام هذا الطلب..."
+              placeholder={tl("أضف ملاحظة عن استلام هذا الطلب...", "Add a note about receiving this order...")}
               className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-slate-400"
             />
             <div className="flex items-center gap-2 mt-1">
@@ -668,9 +674,9 @@ const OrderDetail: React.FC<{
                 disabled={savingComment}
                 className="px-3 py-1 text-xs rounded-lg bg-slate-700 text-white hover:bg-slate-800 disabled:opacity-50"
               >
-                {savingComment ? "جاري الحفظ..." : "حفظ الملاحظة"}
+                {savingComment ? tl("جاري الحفظ...", "Saving...") : tl("حفظ الملاحظة", "Save note")}
               </button>
-              {savedComment && <span className="text-xs text-emerald-600">تم الحفظ ✓</span>}
+              {savedComment && <span className="text-xs text-emerald-600">{tl("تم الحفظ", "Saved")} ✓</span>}
             </div>
           </div>
 
@@ -686,7 +692,7 @@ const OrderDetail: React.FC<{
               return (
                 <div className="pt-2 border-t border-gray-200">
                   <div className="flex items-center gap-2 text-gray-700 font-semibold mb-2">
-                    <Package className="w-4 h-4 text-gray-400" /> المنتجات
+                    <Package className="w-4 h-4 text-gray-400" /> {tl("المنتجات", "Products")}
                   </div>
                   {items.length > 0 ? (
                     <div className="space-y-1.5">
@@ -715,7 +721,7 @@ const OrderDetail: React.FC<{
                             )}
                             <div className="flex-1 min-w-0">
                               <div className="font-medium text-gray-900 leading-snug">
-                                {it.title || it.name || "منتج"}
+                                {it.title || it.name || tl("منتج", "Product")}
                               </div>
                               <div className="flex flex-wrap items-center gap-1.5 mt-1">
                                 {variant && (
@@ -743,7 +749,7 @@ const OrderDetail: React.FC<{
                             <div className="flex-shrink-0 text-left">
                               <div className="text-gray-500">× {qty}</div>
                               <div className="font-semibold text-gray-900 whitespace-nowrap">
-                                {price.toLocaleString()} ج.م
+                                {price.toLocaleString()} {tl("ج.م", "EGP")}
                               </div>
                               {qty > 1 && (
                                 <div className="text-[10px] text-gray-400 whitespace-nowrap">
@@ -771,7 +777,7 @@ const OrderDetail: React.FC<{
           {/* Courier proof images */}
           {proofs.length > 0 && (
             <div className="pt-2 border-t border-gray-200">
-              <div className="text-gray-700 font-semibold mb-2">إثبات المندوب</div>
+              <div className="text-gray-700 font-semibold mb-2">{tl("إثبات المندوب", "Courier proof")}</div>
               <div className="flex gap-2 flex-wrap">
                 {proofs.map((p) => (
                   <a key={p.id} href={p.image_data} target="_blank" rel="noreferrer">
@@ -784,7 +790,7 @@ const OrderDetail: React.FC<{
 
           {(order.notes || order.order_note) && (
             <div className="pt-2 border-t border-gray-200 text-xs text-gray-600">
-              <span className="font-semibold text-gray-700">ملاحظات: </span>
+              <span className="font-semibold text-gray-700">{tl("ملاحظات: ", "Notes: ")}</span>
               {order.notes || order.order_note}
             </div>
           )}

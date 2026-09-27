@@ -6,6 +6,7 @@ import { Calendar, ClipboardList, RefreshCw, Truck } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import { supabase } from "../../lib/supabase"
 import { useAuth } from "../../contexts/AuthContext"
+import { useLanguage } from "../../contexts/LanguageContext"
 
 interface Courier {
   id: string
@@ -33,6 +34,8 @@ interface AssignedOrder {
 
 const CourierTracking: React.FC = () => {
   const { user } = useAuth()
+  const { language } = useLanguage()
+  const tl = (ar: string, en: string) => (language === 'ar' ? ar : en)
   const navigate = useNavigate()
   const [couriers, setCouriers] = useState<Courier[]>([])
   const [assignedOrders, setAssignedOrders] = useState<AssignedOrder[]>([])
@@ -120,15 +123,15 @@ const CourierTracking: React.FC = () => {
   const formatNumber = (value: number) => new Intl.NumberFormat("en-US").format(value || 0)
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-4 md:p-6 lg:p-8" dir="rtl">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-4 md:p-6 lg:p-8" dir={language === 'ar' ? 'rtl' : 'ltr'}>
       <div className="max-w-6xl mx-auto">
         <div className="bg-white rounded-xl shadow-lg p-6 mb-6 flex items-center justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-3xl font-bold text-gray-800 mb-2 flex items-center gap-2">
               <ClipboardList className="w-7 h-7 text-blue-600" />
-              تتبع المندوبين
+              {tl('تتبع المندوبين', 'Courier Tracking')}
             </h1>
-            <p className="text-gray-600">عرض عدد الطلبات المسندة لكل مندوب في يوم محدد</p>
+            <p className="text-gray-600">{tl('عرض عدد الطلبات المسندة لكل مندوب في يوم محدد', 'View the number of orders assigned to each courier on a specific day')}</p>
           </div>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
@@ -145,7 +148,7 @@ const CourierTracking: React.FC = () => {
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
             >
               <RefreshCw className="w-4 h-4" />
-              تحديث
+              {tl('تحديث', 'Refresh')}
             </button>
           </div>
         </div>
@@ -153,7 +156,7 @@ const CourierTracking: React.FC = () => {
         {loading ? (
           <div className="flex items-center justify-center py-16">
             <RefreshCw className="w-8 h-8 text-blue-600 animate-spin" />
-            <span className="mr-3 text-gray-600">جاري التحميل...</span>
+            <span className="mr-3 text-gray-600">{tl('جاري التحميل...', 'Loading...')}</span>
           </div>
         ) : (
           <>
@@ -161,14 +164,14 @@ const CourierTracking: React.FC = () => {
               <div className="flex items-center gap-3">
                 <Truck className="w-6 h-6 text-green-600" />
                 <div>
-                  <p className="text-sm text-gray-600">إجمالي الطلبات المسندة في اليوم</p>
+                  <p className="text-sm text-gray-600">{tl('إجمالي الطلبات المسندة في اليوم', 'Total orders assigned today')}</p>
                   <p className="text-2xl font-bold text-green-700">{formatNumber(totalAssigned)}</p>
                 </div>
               </div>
               <div className="flex items-center gap-3">
                 <ClipboardList className="w-6 h-6 text-blue-600" />
                 <div>
-                  <p className="text-sm text-gray-600">عدد المندوبين الذين لديهم مهام</p>
+                  <p className="text-sm text-gray-600">{tl('عدد المندوبين الذين لديهم مهام', 'Couriers with tasks')}</p>
                   <p className="text-2xl font-bold text-blue-700">
                     {formatNumber(courierStats.grouped.filter((c) => c.count > 0).length)}
                   </p>
@@ -193,12 +196,12 @@ const CourierTracking: React.FC = () => {
                   >
                     <div className="flex items-center justify-between mb-3">
                       <div>
-                        <p className="text-sm text-gray-500">المندوب</p>
+                        <p className="text-sm text-gray-500">{tl('المندوب', 'Courier')}</p>
                         <p className="text-lg font-bold text-gray-800">{courier.name}</p>
                         <p className="text-xs text-gray-500">{courier.email}</p>
                       </div>
                       <div className="flex flex-col items-end">
-                        <span className="text-sm text-gray-500">طلبات اليوم</span>
+                        <span className="text-sm text-gray-500">{tl('طلبات اليوم', "Today's orders")}</span>
                         <span
                           className={`text-3xl font-extrabold ${
                             hasOrders ? "text-blue-600" : "text-gray-400"
@@ -210,7 +213,7 @@ const CourierTracking: React.FC = () => {
                     </div>
                     {hasOrders && (
                       <div className="space-y-2">
-                        <p className="text-sm font-semibold text-gray-700">أرقام الطلبات:</p>
+                        <p className="text-sm font-semibold text-gray-700">{tl('أرقام الطلبات:', 'Order numbers:')}</p>
                         <div className="flex flex-wrap gap-2">
                           {orders.slice(0, 6).map((order) => (
                             <span
@@ -222,11 +225,11 @@ const CourierTracking: React.FC = () => {
                           ))}
                           {orders.length > 6 && (
                             <span className="text-xs text-gray-500">
-                              +{formatNumber(orders.length - 6)} أخرى
+                              +{formatNumber(orders.length - 6)} {tl('أخرى', 'more')}
                             </span>
                           )}
                         </div>
-                        <p className="text-xs text-blue-600 font-semibold">اضغط لعرض تفاصيل الطلبات</p>
+                        <p className="text-xs text-blue-600 font-semibold">{tl('اضغط لعرض تفاصيل الطلبات', 'Click to view order details')}</p>
                       </div>
                     )}
                   </button>
@@ -236,7 +239,7 @@ const CourierTracking: React.FC = () => {
 
             {courierStats.unknownCourierOrders.length > 0 && (
               <div className="mt-6 bg-yellow-50 border border-yellow-200 rounded-xl p-4">
-                <p className="font-semibold text-yellow-800 mb-2">طلبات بدون مندوب معروف</p>
+                <p className="font-semibold text-yellow-800 mb-2">{tl('طلبات بدون مندوب معروف', 'Orders without a known courier')}</p>
                 <div className="flex flex-wrap gap-2">
                   {courierStats.unknownCourierOrders.map((order) => (
                     <span
@@ -252,7 +255,7 @@ const CourierTracking: React.FC = () => {
 
             {!loading && totalAssigned === 0 && (
               <div className="mt-6 bg-white border border-dashed border-gray-300 rounded-xl p-6 text-center text-gray-600">
-                لا توجد طلبات مسندة في هذا اليوم.
+                {tl('لا توجد طلبات مسندة في هذا اليوم.', 'No orders assigned on this day.')}
               </div>
             )}
           </>

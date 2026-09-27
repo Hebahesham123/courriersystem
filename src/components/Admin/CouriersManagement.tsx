@@ -1,23 +1,13 @@
 import React, { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Pencil, Save } from 'lucide-react'
+import { useLanguage } from '../../contexts/LanguageContext'
 
 const CouriersManagement: React.FC = () => {
   const [couriers, setCouriers] = useState<any[]>([])
   const [editMode, setEditMode] = useState<{ [id: string]: boolean }>({})
-
-  // Simple bilingual translation function
-  const translate = (key: string) => {
-    const translations: Record<string, string> = {
-      manageCouriers: 'Manage Couriers / إدارة المندوبين',
-      name: 'Name / الاسم',
-      email: 'Email / البريد الإلكتروني',
-      actions: 'Actions / الإجراءات',
-      edit: 'Edit / تعديل',
-      save: 'Save / حفظ',
-    }
-    return translations[key] || key
-  }
+  const { language } = useLanguage()
+  const tl = (ar: string, en: string) => (language === 'ar' ? ar : en)
 
   useEffect(() => {
     fetchCouriers()
@@ -54,14 +44,14 @@ const CouriersManagement: React.FC = () => {
   }
 
   return (
-    <div className="p-6 max-w-5xl mx-auto" dir="ltr" lang="en">
-      <h2 className="text-2xl font-bold mb-4">{translate('manageCouriers')}</h2>
+    <div className="p-6 max-w-5xl mx-auto" dir={language === 'ar' ? 'rtl' : 'ltr'} lang={language}>
+      <h2 className="text-2xl font-bold mb-4">{tl('إدارة المناديب', 'Manage Couriers')}</h2>
       <table className="w-full table-auto border border-collapse text-left">
         <thead className="bg-gray-100">
           <tr>
-            <th className="p-2 border">{translate('name')}</th>
-            <th className="p-2 border">{translate('email')}</th>
-            <th className="p-2 border">{translate('actions')}</th>
+            <th className="p-2 border">{tl('الاسم', 'Name')}</th>
+            <th className="p-2 border">{tl('البريد الإلكتروني', 'Email')}</th>
+            <th className="p-2 border">{tl('إجراءات', 'Actions')}</th>
           </tr>
         </thead>
         <tbody>
@@ -73,7 +63,7 @@ const CouriersManagement: React.FC = () => {
                     value={courier.name}
                     onChange={e => handleChange(courier.id, 'name', e.target.value)}
                     className="border p-1 w-full rounded"
-                    aria-label={`${translate('name')} - ${courier.name}`}
+                    aria-label={`${tl('الاسم', 'Name')} - ${courier.name}`}
                   />
                 ) : (
                   courier.name
@@ -85,7 +75,7 @@ const CouriersManagement: React.FC = () => {
                     value={courier.email}
                     onChange={e => handleChange(courier.id, 'email', e.target.value)}
                     className="border p-1 w-full rounded"
-                    aria-label={`${translate('email')} - ${courier.email}`}
+                    aria-label={`${tl('البريد الإلكتروني', 'Email')} - ${courier.email}`}
                   />
                 ) : (
                   courier.email
@@ -96,19 +86,19 @@ const CouriersManagement: React.FC = () => {
                   <button
                     onClick={() => saveChanges(courier)}
                     className="bg-green-600 text-white px-3 py-1 rounded flex items-center gap-1 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-400"
-                    aria-label={`${translate('save')} ${courier.name}`}
+                    aria-label={`${tl('حفظ', 'Save')} ${courier.name}`}
                   >
                     <Save className="w-4 h-4" />
-                    {translate('save')}
+                    {tl('حفظ', 'Save')}
                   </button>
                 ) : (
                   <button
                     onClick={() => setEditMode(prev => ({ ...prev, [courier.id]: true }))}
                     className="bg-yellow-500 text-white px-3 py-1 rounded flex items-center gap-1 hover:bg-yellow-600 focus:outline-none focus:ring-2 focus:ring-yellow-400"
-                    aria-label={`${translate('edit')} ${courier.name}`}
+                    aria-label={`${tl('تعديل', 'Edit')} ${courier.name}`}
                   >
                     <Pencil className="w-4 h-4" />
-                    {translate('edit')}
+                    {tl('تعديل', 'Edit')}
                   </button>
                 )}
               </td>

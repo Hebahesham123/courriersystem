@@ -289,11 +289,11 @@ const Sidebar: React.FC = () => {
 
   return (
     <>
-      {/* Mobile Menu Toggle Button - on the right (sidebar side) */}
+      {/* Mobile Menu Toggle Button - on the sidebar side (follows language) */}
       <button
-        className="fixed top-4 right-4 z-50 p-3 bg-gray-900 hover:bg-gray-800 text-white rounded-xl shadow-lg transition-all duration-200 lg:hidden"
+        className={`fixed top-4 ${language === "ar" ? "right-4" : "left-4"} z-50 p-3 bg-gray-900 hover:bg-gray-800 text-white rounded-xl shadow-lg transition-all duration-200 lg:hidden`}
         onClick={toggleSidebar}
-        aria-label="فتح القائمة الجانبية"
+        aria-label={language === "ar" ? "فتح القائمة الجانبية" : "Open menu"}
       >
         <Menu className="w-5 h-5" />
       </button>
@@ -309,10 +309,10 @@ const Sidebar: React.FC = () => {
 
       {/* Sidebar Container - Always on the RIGHT side, always visible on desktop */}
       <aside
-        className={`fixed top-0 right-0 z-50 h-full bg-gradient-to-b from-gray-900 via-gray-800 to-gray-900 text-white shadow-2xl transition-all duration-300 ease-in-out ${
+        className={`fixed top-0 ${language === "ar" ? "right-0" : "left-0"} z-50 h-full bg-gradient-to-b from-gray-900 via-gray-800 to-gray-900 text-white shadow-2xl transition-all duration-300 ease-in-out ${
           isCollapsed ? "w-20" : "w-72 sm:w-80"
         } ${
-          sidebarOpen ? "translate-x-0" : "translate-x-full"
+          sidebarOpen ? "translate-x-0" : language === "ar" ? "translate-x-full" : "-translate-x-full"
         } lg:translate-x-0 lg:static lg:block`}
         dir="ltr"
         role="navigation"
@@ -323,10 +323,19 @@ const Sidebar: React.FC = () => {
           {/* Collapse Button */}
           <button
             onClick={toggleCollapse}
-            className="absolute -left-4 top-8 bg-gray-800 hover:bg-gray-700 text-white rounded-full p-2 shadow-lg border border-gray-600 z-10 transition-all duration-200 hidden lg:flex items-center justify-center"
-            aria-label={isCollapsed ? "توسيع القائمة" : "طي القائمة"}
+            className={`absolute ${language === "ar" ? "-left-4" : "-right-4"} top-8 bg-gray-800 hover:bg-gray-700 text-white rounded-full p-2 shadow-lg border border-gray-600 z-10 transition-all duration-200 hidden lg:flex items-center justify-center`}
+            aria-label={
+              isCollapsed
+                ? language === "ar"
+                  ? "توسيع القائمة"
+                  : "Expand menu"
+                : language === "ar"
+                ? "طي القائمة"
+                : "Collapse menu"
+            }
           >
-            {isCollapsed ? (
+            {/* Chevron points toward the content side so it reads as "collapse" */}
+            {(language === "ar" ? !isCollapsed : isCollapsed) ? (
               <ChevronRight className="w-4 h-4" />
             ) : (
               <ChevronLeft className="w-4 h-4" />
@@ -360,6 +369,46 @@ const Sidebar: React.FC = () => {
                 </div>
               )}
             </div>
+
+            {/* Language Switch (header) */}
+            {!isCollapsed ? (
+              <div className="mt-3 flex items-center gap-1 p-1 rounded-lg bg-gray-800/70 border border-gray-700/60">
+                <button
+                  onClick={() => setLanguage("en")}
+                  aria-pressed={language === "en"}
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 ${
+                    language === "en"
+                      ? "bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg shadow-blue-500/30"
+                      : "text-gray-300 hover:text-white hover:bg-gray-700/60"
+                  }`}
+                >
+                  <Globe className="w-3.5 h-3.5" />
+                  English
+                </button>
+                <button
+                  onClick={() => setLanguage("ar")}
+                  aria-pressed={language === "ar"}
+                  className={`flex-1 flex items-center justify-center px-2 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 ${
+                    language === "ar"
+                      ? "bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg shadow-blue-500/30"
+                      : "text-gray-300 hover:text-white hover:bg-gray-700/60"
+                  }`}
+                >
+                  العربية
+                </button>
+              </div>
+            ) : (
+              <div className="mt-3 flex justify-center">
+                <button
+                  onClick={() => setLanguage(language === "en" ? "ar" : "en")}
+                  className="p-2 rounded-lg bg-gray-800/70 border border-gray-700/60 text-gray-300 hover:text-white hover:bg-gray-700/60 transition-all duration-200"
+                  title={language === "en" ? "العربية" : "English"}
+                  aria-label={language === "en" ? "التبديل إلى العربية" : "Switch to English"}
+                >
+                  <Globe className="w-4 h-4" />
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Profile Section - Enhanced */}
@@ -450,35 +499,6 @@ const Sidebar: React.FC = () => {
 
         {/* Footer Section - Enhanced */}
         <div className="p-3 border-t border-gray-700/50 bg-gradient-to-r from-gray-800/30 to-gray-900/30 space-y-2">
-          {/* Language Toggle Button - Always visible */}
-          <button
-            onClick={() => setLanguage(language === "en" ? "ar" : "en")}
-            className={`w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg transition-all duration-200 ${
-              isCollapsed 
-                ? "justify-center" 
-                : "justify-between"
-            } ${
-              language === "ar"
-                ? "bg-gradient-to-r from-blue-600 via-blue-500 to-purple-600 text-white shadow-lg shadow-blue-500/30"
-                : "bg-gray-800/60 hover:bg-gray-700/60 text-gray-300 hover:text-white border border-gray-700/50"
-            }`}
-            title={isCollapsed ? (language === "en" ? "العربية" : "English") : undefined}
-          >
-            <div className="flex items-center gap-2">
-              <Globe className="w-4 h-4" />
-              {!isCollapsed && (
-                <span className="text-sm font-medium">
-                  {language === "en" ? "العربية" : "English"}
-                </span>
-              )}
-            </div>
-            {!isCollapsed && (
-              <span className="text-xs font-semibold px-2 py-0.5 rounded bg-white/20">
-                {language === "en" ? "EN" : "AR"}
-              </span>
-            )}
-          </button>
-
           {!isCollapsed && (
             <div className="p-2.5 bg-gradient-to-r from-gray-800/60 to-gray-700/60 rounded-lg border border-gray-700/50">
               <div className="text-xs text-gray-400 mb-1.5 font-medium">

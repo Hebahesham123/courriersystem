@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../contexts/AuthContext";
+import { useLanguage } from "../../contexts/LanguageContext";
 
 interface Courier {
   id: string;
@@ -26,6 +27,8 @@ const LOCAL_STORAGE_KEY = "courier-orders-sorting";
 
 const AdminCouriersSheet: React.FC = () => {
   const { user } = useAuth();
+  const { language } = useLanguage();
+  const tl = (ar: string, en: string) => (language === 'ar' ? ar : en);
   const [couriers, setCouriers] = useState<Courier[]>([]);
   const [selectedCourier, setSelectedCourier] = useState<Courier | null>(null);
   const [date, setDate] = useState(getToday());
@@ -149,10 +152,10 @@ const AdminCouriersSheet: React.FC = () => {
 
   return (
     <div className="p-2 sm:p-4 max-w-3xl mx-auto">
-      <h2 className="text-xl sm:text-2xl font-bold mb-4 text-center text-blue-700">ورقة الطلبات لكل مندوب</h2>
+      <h2 className="text-xl sm:text-2xl font-bold mb-4 text-center text-blue-700">{tl('ورقة الطلبات لكل مندوب', 'Orders Sheet per Courier')}</h2>
       {!selectedCourier ? (
         <div>
-          <h3 className="text-lg font-semibold mb-2 text-gray-700">اختر اسم المندوب لعرض طلباته:</h3>
+          <h3 className="text-lg font-semibold mb-2 text-gray-700">{tl('اختر اسم المندوب لعرض طلباته:', 'Select a courier to view their orders:')}</h3>
           <ul className="space-y-2">
             {couriers.map((courier) => (
               <li key={courier.id}>
@@ -173,13 +176,13 @@ const AdminCouriersSheet: React.FC = () => {
               className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold"
               onClick={() => setSelectedCourier(null)}
             >
-              &larr; عودة
+              &larr; {tl('عودة', 'Back')}
             </button>
             <span className="font-bold text-blue-700">{selectedCourier.name}</span>
             <span className="text-xs text-gray-500">({selectedCourier.email})</span>
           </div>
           <div className="flex flex-col sm:flex-row items-center gap-2 mb-4">
-            <label htmlFor="admin-date-filter" className="text-sm font-medium text-gray-700">تصفية بالتاريخ:</label>
+            <label htmlFor="admin-date-filter" className="text-sm font-medium text-gray-700">{tl('تصفية بالتاريخ:', 'Filter by date:')}</label>
             <input
               id="admin-date-filter"
               type="date"
@@ -192,14 +195,14 @@ const AdminCouriersSheet: React.FC = () => {
                 className="w-full sm:w-auto px-4 py-2 rounded-lg font-bold text-white transition-all bg-green-600"
                 onClick={saveSortOrder}
               >
-                حفظ الترتيب
+                {tl('حفظ الترتيب', 'Save Order')}
               </button>
             ) : (
               <button
                 className="w-full sm:w-auto px-4 py-2 rounded-lg font-bold text-white transition-all bg-blue-600 hover:bg-blue-700"
                 onClick={() => setManualSort(true)}
               >
-                ترتيب يدوي
+                {tl('ترتيب يدوي', 'Manual Sort')}
               </button>
             )}
           </div>
@@ -207,22 +210,22 @@ const AdminCouriersSheet: React.FC = () => {
 
           <div className="overflow-x-auto rounded-xl shadow-lg bg-white">
             {loadingOrders ? (
-              <div className="text-center py-8 text-gray-400">جاري تحميل الطلبات...</div>
+              <div className="text-center py-8 text-gray-400">{tl('جاري تحميل الطلبات...', 'Loading orders...')}</div>
             ) : (
               <table className="min-w-full text-sm text-right rtl:text-right border-separate border-spacing-0">
                 <thead className="bg-blue-100 text-blue-800">
                   <tr>
-                    <th className="px-2 py-2 border-b-4 border-blue-400 font-bold">رقم الطلب</th>
-                    <th className="px-2 py-2 border-b-4 border-blue-400 font-bold">اسم العميل</th>
-                    <th className="px-2 py-2 border-b-4 border-blue-400 font-bold">العنوان</th>
-                    <th className="px-2 py-2 border-b-4 border-blue-400 font-bold">رقم الجوال</th>
-                    {manualSort && <th className="px-2 py-2 border-b-4 border-blue-400 font-bold text-center">ترتيب</th>}
+                    <th className="px-2 py-2 border-b-4 border-blue-400 font-bold">{tl('رقم الطلب', 'Order ID')}</th>
+                    <th className="px-2 py-2 border-b-4 border-blue-400 font-bold">{tl('اسم العميل', 'Customer Name')}</th>
+                    <th className="px-2 py-2 border-b-4 border-blue-400 font-bold">{tl('العنوان', 'Address')}</th>
+                    <th className="px-2 py-2 border-b-4 border-blue-400 font-bold">{tl('رقم الجوال', 'Mobile Number')}</th>
+                    {manualSort && <th className="px-2 py-2 border-b-4 border-blue-400 font-bold text-center">{tl('ترتيب', 'Sort')}</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {orders.length === 0 ? (
                     <tr>
-                      <td colSpan={manualSort ? 5 : 4} className="text-center py-6 text-gray-400">لا توجد طلبات في هذا اليوم</td>
+                      <td colSpan={manualSort ? 5 : 4} className="text-center py-6 text-gray-400">{tl('لا توجد طلبات في هذا اليوم', 'No orders on this day')}</td>
                     </tr>
                   ) : (
                     orders
@@ -246,8 +249,8 @@ const AdminCouriersSheet: React.FC = () => {
                                   className="w-14 border-2 border-blue-400 rounded-lg px-2 py-1 text-sm text-center font-bold"
                                   value={sortNumbers[order.id] ?? ""}
                                   onChange={e => handleSortNumberChange(order.id.toString(), e.target.value)}
-                                  placeholder="رقم"
-                                  aria-label="ترتيب"
+                                  placeholder={tl('رقم', 'No.')}
+                                  aria-label={tl('ترتيب', 'Sort')}
                                 />
                               </td>
                             )}
@@ -266,7 +269,7 @@ const AdminCouriersSheet: React.FC = () => {
               </table>
             )}
           </div>
-          <div className="mt-4 text-xs text-gray-500 text-center">جميع الطلبات تظهر بوضوح ويمكنك ترتيبها يدوياً وحفظ الترتيب.</div>
+          <div className="mt-4 text-xs text-gray-500 text-center">{tl('جميع الطلبات تظهر بوضوح ويمكنك ترتيبها يدوياً وحفظ الترتيب.', 'All orders are shown clearly and you can sort them manually and save the order.')}</div>
         </div>
       )}
     </div>

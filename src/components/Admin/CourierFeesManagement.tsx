@@ -36,6 +36,7 @@ interface CourierFee {
 
 const CourierFeesManagement: React.FC = () => {
   const { language } = useLanguage()
+  const tl = (ar: string, en: string) => (language === 'ar' ? ar : en)
   const [couriers, setCouriers] = useState<Courier[]>([])
   const [courierFees, setCourierFees] = useState<CourierFee[]>([])
   const [loading, setLoading] = useState(true)
@@ -55,8 +56,8 @@ const CourierFeesManagement: React.FC = () => {
     showActiveOnly: true
   })
 
-  // Always use LTR layout regardless of language (keep everything on the left)
-  const isRTL = false
+  // Layout direction follows the selected language
+  const isRTL = language === 'ar'
 
   useEffect(() => {
     fetchCouriers()
@@ -99,7 +100,7 @@ const CourierFeesManagement: React.FC = () => {
     e.preventDefault()
     
     if (!formData.courier_id || !formData.fee_amount || !formData.fee_date) {
-      alert('Please fill in all required fields')
+      alert(tl('يرجى ملء جميع الحقول المطلوبة', 'Please fill in all required fields'))
       return
     }
 
@@ -143,12 +144,12 @@ const CourierFeesManagement: React.FC = () => {
       console.error('Error saving courier fee:', error)
       
       // Show more specific error message
-      let errorMessage = 'Failed to save courier fee. Please try again.'
-      
+      let errorMessage = tl('فشل حفظ رسوم المندوب. حاول مرة أخرى.', 'Failed to save courier fee. Please try again.')
+
       if (error && typeof error === 'object' && 'message' in error) {
-        errorMessage = `Error: ${error.message}`
+        errorMessage = `${tl('خطأ', 'Error')}: ${error.message}`
       } else if (typeof error === 'string') {
-        errorMessage = `Error: ${error}`
+        errorMessage = `${tl('خطأ', 'Error')}: ${error}`
       }
       
       alert(errorMessage)
@@ -166,7 +167,7 @@ const CourierFeesManagement: React.FC = () => {
   }
 
   const handleDelete = async (feeId: string) => {
-    if (!confirm('Are you sure you want to delete this fee?')) {
+    if (!confirm(tl('هل أنت متأكد أنك تريد حذف هذه الرسوم؟', 'Are you sure you want to delete this fee?'))) {
       return
     }
 
@@ -180,13 +181,13 @@ const CourierFeesManagement: React.FC = () => {
       await fetchCourierFees()
     } catch (error) {
       console.error('Error deleting courier fee:', error)
-      alert('Failed to delete courier fee. Please try again.')
+      alert(tl('فشل حذف رسوم المندوب. حاول مرة أخرى.', 'Failed to delete courier fee. Please try again.'))
     }
   }
 
   const getCourierName = (courierId: string) => {
     const courier = couriers.find(c => c.id === courierId)
-    return courier ? courier.name : 'Unknown Courier'
+    return courier ? courier.name : tl('مندوب غير معروف', 'Unknown Courier')
   }
 
   const getActiveFeeForCourier = (courierId: string, date: string) => {
@@ -265,13 +266,10 @@ const CourierFeesManagement: React.FC = () => {
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-gray-900">
-                  {language === 'ar' ? 'إدارة رسوم المندوبين' : 'Courier Fees Management'}
+                  {tl('إدارة رسوم المندوبين', 'Courier Fees Management')}
                 </h1>
                 <p className="text-gray-600">
-                  {language === 'ar' 
-                    ? 'إدارة الرسوم اليومية لكل مندوب' 
-                    : 'Manage daily delivery fees for each courier'
-                  }
+                  {tl('إدارة الرسوم اليومية لكل مندوب', 'Manage daily delivery fees for each courier')}
                 </p>
               </div>
             </div>
@@ -280,7 +278,7 @@ const CourierFeesManagement: React.FC = () => {
               className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
             >
               <Plus className="w-5 h-5" />
-              <span>{language === 'ar' ? 'إضافة رسوم' : 'Add Fee'}</span>
+              <span>{tl('إضافة رسوم', 'Add Fee')}</span>
             </button>
           </div>
         </div>
@@ -288,19 +286,19 @@ const CourierFeesManagement: React.FC = () => {
         {/* Filters Section */}
         <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">
-            {language === 'ar' ? 'الفلاتر' : 'Filters'}
+            {tl('الفلاتر', 'Filters')}
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Courier Name Filter */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                {language === 'ar' ? 'اسم المندوب' : 'Courier Name'}
+                {tl('اسم المندوب', 'Courier Name')}
               </label>
               <input
                 type="text"
                 value={filters.courierName}
                 onChange={(e) => setFilters({...filters, courierName: e.target.value})}
-                placeholder={language === 'ar' ? 'ابحث عن اسم المندوب...' : 'Search courier name...'}
+                placeholder={tl('ابحث عن اسم المندوب...', 'Search courier name...')}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
@@ -308,7 +306,7 @@ const CourierFeesManagement: React.FC = () => {
             {/* Start Date Filter */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                {language === 'ar' ? 'من تاريخ' : 'From Date'}
+                {tl('من تاريخ', 'From Date')}
               </label>
               <input
                 type="date"
@@ -321,7 +319,7 @@ const CourierFeesManagement: React.FC = () => {
             {/* End Date Filter */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                {language === 'ar' ? 'إلى تاريخ' : 'To Date'}
+                {tl('إلى تاريخ', 'To Date')}
               </label>
               <input
                 type="date"
@@ -334,15 +332,15 @@ const CourierFeesManagement: React.FC = () => {
             {/* Active Status Filter */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                {language === 'ar' ? 'الحالة' : 'Status'}
+                {tl('الحالة', 'Status')}
               </label>
               <select
                 value={filters.showActiveOnly ? 'active' : 'all'}
                 onChange={(e) => setFilters({...filters, showActiveOnly: e.target.value === 'active'})}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
-                <option value="active">{language === 'ar' ? 'نشط فقط' : 'Active Only'}</option>
-                <option value="all">{language === 'ar' ? 'الكل' : 'All'}</option>
+                <option value="active">{tl('نشط فقط', 'Active Only')}</option>
+                <option value="all">{tl('الكل', 'All')}</option>
               </select>
             </div>
           </div>
@@ -350,7 +348,7 @@ const CourierFeesManagement: React.FC = () => {
           {/* Filter Actions */}
           <div className="flex items-center justify-between mt-4">
             <div className="text-sm text-gray-600">
-              {language === 'ar' ? 'النتائج:' : 'Results:'} {getFilteredCourierFees().length} {language === 'ar' ? 'رسوم' : 'fees'}
+              {tl('النتائج:', 'Results:')} {getFilteredCourierFees().length} {tl('رسوم', 'fees')}
             </div>
             <div className="flex items-center space-x-3">
               {/* Quick Date Presets */}
@@ -362,7 +360,7 @@ const CourierFeesManagement: React.FC = () => {
                   }}
                   className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
                 >
-                  {language === 'ar' ? 'اليوم' : 'Today'}
+                  {tl('اليوم', 'Today')}
                 </button>
                 <button
                   onClick={() => {
@@ -372,7 +370,7 @@ const CourierFeesManagement: React.FC = () => {
                   }}
                   className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200"
                 >
-                  {language === 'ar' ? 'آخر أسبوع' : 'Last Week'}
+                  {tl('آخر أسبوع', 'Last Week')}
                 </button>
                 <button
                   onClick={() => {
@@ -382,14 +380,14 @@ const CourierFeesManagement: React.FC = () => {
                   }}
                   className="text-xs px-2 py-1 bg-purple-100 text-purple-700 rounded hover:bg-purple-200"
                 >
-                  {language === 'ar' ? 'آخر شهر' : 'Last Month'}
+                  {tl('آخر شهر', 'Last Month')}
                 </button>
               </div>
               <button
                 onClick={clearFilters}
                 className="text-sm text-gray-600 hover:text-gray-800 underline"
               >
-                {language === 'ar' ? 'مسح الفلاتر' : 'Clear Filters'}
+                {tl('مسح الفلاتر', 'Clear Filters')}
               </button>
             </div>
           </div>
@@ -398,7 +396,7 @@ const CourierFeesManagement: React.FC = () => {
         {/* Current Fees Overview */}
         <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">
-            {language === 'ar' ? 'الرسوم الحالية' : 'Current Fees'}
+            {tl('الرسوم الحالية', 'Current Fees')}
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {couriers.map(courier => {
@@ -421,21 +419,21 @@ const CourierFeesManagement: React.FC = () => {
                   
                   <div className="space-y-2">
                     <div className="text-sm text-gray-600">
-                      {language === 'ar' ? 'البريد الإلكتروني:' : 'Email:'} {courier.email}
+                      {tl('البريد الإلكتروني:', 'Email:')} {courier.email}
                     </div>
-                    
+
                     {activeFee ? (
                       <div className="flex items-center justify-between">
                         <span className="text-sm text-gray-600">
-                          {language === 'ar' ? 'الرسوم اليومية:' : 'Daily Fee:'}
+                          {tl('الرسوم اليومية:', 'Daily Fee:')}
                         </span>
                         <span className="font-semibold text-green-600">
-                          {activeFee.fee_amount} د.ك
+                          {activeFee.fee_amount} {tl('د.ك', 'KWD')}
                         </span>
                       </div>
                     ) : (
                       <div className="text-sm text-yellow-600">
-                        {language === 'ar' ? 'لا توجد رسوم محددة لهذا اليوم' : 'No fee set for today'}
+                        {tl('لا توجد رسوم محددة لهذا اليوم', 'No fee set for today')}
                       </div>
                     )}
                   </div>
@@ -457,9 +455,9 @@ const CourierFeesManagement: React.FC = () => {
                   >
                     <Edit className="w-4 h-4" />
                     <span>
-                      {activeFee 
-                        ? (language === 'ar' ? 'تعديل' : 'Edit')
-                        : (language === 'ar' ? 'إضافة رسوم' : 'Add Fee')
+                      {activeFee
+                        ? tl('تعديل', 'Edit')
+                        : tl('إضافة رسوم', 'Add Fee')
                       }
                     </span>
                   </button>
@@ -474,10 +472,10 @@ const CourierFeesManagement: React.FC = () => {
           <div className="p-6 border-b border-gray-200">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold text-gray-900">
-                {language === 'ar' ? 'سجل الرسوم' : 'Fees History'}
+                {tl('سجل الرسوم', 'Fees History')}
               </h3>
               <div className="text-sm text-gray-600">
-                {language === 'ar' ? 'إجمالي الرسوم:' : 'Total Fees:'} {getFilteredCourierFees().reduce((sum, fee) => sum + fee.fee_amount, 0).toFixed(2)} د.ك
+                {tl('إجمالي الرسوم:', 'Total Fees:')} {getFilteredCourierFees().reduce((sum, fee) => sum + fee.fee_amount, 0).toFixed(2)} {tl('د.ك', 'KWD')}
               </div>
             </div>
           </div>
@@ -487,19 +485,19 @@ const CourierFeesManagement: React.FC = () => {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {language === 'ar' ? 'المندوب' : 'Courier'}
+                    {tl('المندوب', 'Courier')}
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {language === 'ar' ? 'المبلغ' : 'Amount'}
+                    {tl('المبلغ', 'Amount')}
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {language === 'ar' ? 'التاريخ' : 'Date'}
+                    {tl('التاريخ', 'Date')}
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {language === 'ar' ? 'الحالة' : 'Status'}
+                    {tl('الحالة', 'Status')}
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {language === 'ar' ? 'الإجراءات' : 'Actions'}
+                    {tl('الإجراءات', 'Actions')}
                   </th>
                 </tr>
               </thead>
@@ -519,7 +517,7 @@ const CourierFeesManagement: React.FC = () => {
                          <div className="flex items-center">
                            <DollarSign className="w-4 h-4 text-green-600 mr-1" />
                            <span className="text-sm text-gray-900 font-medium">
-                             {fee.fee_amount} د.ك
+                             {fee.fee_amount} {tl('د.ك', 'KWD')}
                            </span>
                          </div>
                        </td>
@@ -537,9 +535,9 @@ const CourierFeesManagement: React.FC = () => {
                              ? 'bg-green-100 text-green-800' 
                              : 'bg-gray-100 text-gray-800'
                          }`}>
-                           {fee.is_active 
-                             ? (language === 'ar' ? 'نشط' : 'Active')
-                             : (language === 'ar' ? 'غير نشط' : 'Inactive')
+                           {fee.is_active
+                             ? tl('نشط', 'Active')
+                             : tl('غير نشط', 'Inactive')
                            }
                          </span>
                        </td>
@@ -548,14 +546,14 @@ const CourierFeesManagement: React.FC = () => {
                            <button
                              onClick={() => handleEdit(fee)}
                              className="text-blue-600 hover:text-blue-900 p-1"
-                             title={language === 'ar' ? 'تعديل' : 'Edit'}
+                             title={tl('تعديل', 'Edit')}
                            >
                              <Edit className="w-4 h-4" />
                            </button>
                            <button
                              onClick={() => handleDelete(fee.id)}
                              className="text-red-600 hover:text-red-900 p-1"
-                             title={language === 'ar' ? 'حذف' : 'Delete'}
+                             title={tl('حذف', 'Delete')}
                            >
                              <Trash2 className="w-4 h-4" />
                            </button>
@@ -569,13 +567,10 @@ const CourierFeesManagement: React.FC = () => {
                        <div className="text-gray-500">
                          <User className="w-12 h-12 mx-auto mb-3 text-gray-300" />
                          <p className="text-lg font-medium">
-                           {language === 'ar' ? 'لا توجد نتائج' : 'No results found'}
+                           {tl('لا توجد نتائج', 'No results found')}
                          </p>
                          <p className="text-sm">
-                           {language === 'ar' 
-                             ? 'جرب تغيير الفلاتر أو إضافة رسوم جديدة' 
-                             : 'Try adjusting your filters or add new fees'
-                           }
+                           {tl('جرب تغيير الفلاتر أو إضافة رسوم جديدة', 'Try adjusting your filters or add new fees')}
                          </p>
                        </div>
                      </td>
@@ -593,9 +588,9 @@ const CourierFeesManagement: React.FC = () => {
               <div className="p-6 border-b border-gray-200">
                 <div className="flex items-center justify-between">
                   <h2 className="text-xl font-bold text-gray-900">
-                    {editingFee 
-                      ? (language === 'ar' ? 'تعديل الرسوم' : 'Edit Fee')
-                      : (language === 'ar' ? 'إضافة رسوم جديدة' : 'Add New Fee')
+                    {editingFee
+                      ? tl('تعديل الرسوم', 'Edit Fee')
+                      : tl('إضافة رسوم جديدة', 'Add New Fee')
                     }
                   </h2>
                   <button
@@ -611,7 +606,7 @@ const CourierFeesManagement: React.FC = () => {
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      {language === 'ar' ? 'المندوب' : 'Courier'}
+                      {tl('المندوب', 'Courier')}
                     </label>
                     <select
                       value={formData.courier_id}
@@ -620,7 +615,7 @@ const CourierFeesManagement: React.FC = () => {
                       required
                     >
                       <option value="">
-                        {language === 'ar' ? 'اختر المندوب' : 'Select Courier'}
+                        {tl('اختر المندوب', 'Select Courier')}
                       </option>
                       {couriers.map(courier => (
                         <option key={courier.id} value={courier.id}>
@@ -632,7 +627,7 @@ const CourierFeesManagement: React.FC = () => {
                   
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      {language === 'ar' ? 'المبلغ' : 'Amount'}
+                      {tl('المبلغ', 'Amount')}
                     </label>
                     <div className="relative">
                       <input
@@ -646,14 +641,14 @@ const CourierFeesManagement: React.FC = () => {
                         required
                       />
                       <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">
-                        د.ك
+                        {tl('د.ك', 'KWD')}
                       </div>
                     </div>
                   </div>
                   
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      {language === 'ar' ? 'التاريخ' : 'Date'}
+                      {tl('التاريخ', 'Date')}
                     </label>
                     <input
                       type="date"
@@ -671,7 +666,7 @@ const CourierFeesManagement: React.FC = () => {
                     onClick={resetForm}
                     className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
                   >
-                    {language === 'ar' ? 'إلغاء' : 'Cancel'}
+                    {tl('إلغاء', 'Cancel')}
                   </button>
                   <button
                     type="submit"
@@ -679,9 +674,9 @@ const CourierFeesManagement: React.FC = () => {
                   >
                     <Save className="w-4 h-4" />
                     <span>
-                      {editingFee 
-                        ? (language === 'ar' ? 'حفظ التغييرات' : 'Save Changes')
-                        : (language === 'ar' ? 'إضافة الرسوم' : 'Add Fee')
+                      {editingFee
+                        ? tl('حفظ التغييرات', 'Save Changes')
+                        : tl('إضافة الرسوم', 'Add Fee')
                       }
                     </span>
                   </button>

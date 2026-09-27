@@ -18,6 +18,7 @@ import {
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
 import { useAuth } from "../../contexts/AuthContext"
+import { useLanguage } from "../../contexts/LanguageContext"
 
 interface Courier {
   id: string
@@ -63,6 +64,8 @@ interface OrderCategory {
 
 const CourierActivitySummary: React.FC = () => {
   const { user } = useAuth()
+  const { language } = useLanguage()
+  const tl = (ar: string, en: string) => (language === 'ar' ? ar : en)
   const [couriers, setCouriers] = useState<Courier[]>([])
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
@@ -183,7 +186,7 @@ const CourierActivitySummary: React.FC = () => {
       const ordersWithCouriers = allOrders.map((order) => {
         if (order.assigned_courier_id) {
           const courier = couriers.find((c) => c.id === order.assigned_courier_id)
-          return { ...order, courier_name: courier?.name || "غير معروف" }
+          return { ...order, courier_name: courier?.name || tl("غير معروف", "Unknown") }
         }
         return order
       })
@@ -223,7 +226,7 @@ const CourierActivitySummary: React.FC = () => {
   }, [couriers, fetchOrders, dateRange, selectedDate, selectedCourier])
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("ar-EG", {
+    return new Intl.NumberFormat("en-US", {
       style: "currency",
       currency: "EGP",
       minimumFractionDigits: 2,
@@ -299,7 +302,7 @@ const CourierActivitySummary: React.FC = () => {
   const categories: OrderCategory[] = useMemo(() => [
     {
       id: "total",
-      title: "إجمالي الطلبات",
+      title: tl("إجمالي الطلبات", "Total Orders"),
       icon: Package,
       bgColor: "bg-gray-50",
       textColor: "text-gray-700",
@@ -311,7 +314,7 @@ const CourierActivitySummary: React.FC = () => {
     },
     {
       id: "completed",
-      title: "الطلبات المكتملة",
+      title: tl("الطلبات المكتملة", "Completed Orders"),
       icon: CheckCircle,
       bgColor: "bg-blue-50",
       textColor: "text-blue-700",
@@ -327,7 +330,7 @@ const CourierActivitySummary: React.FC = () => {
     },
     {
       id: "delivered",
-      title: "الطلبات المسلمة",
+      title: tl("الطلبات المسلمة", "Delivered Orders"),
       icon: CheckCircle,
       bgColor: "bg-green-50",
       textColor: "text-green-700",
@@ -343,7 +346,7 @@ const CourierActivitySummary: React.FC = () => {
     },
     {
       id: "assigned",
-      title: "الطلبات المكلفة",
+      title: tl("الطلبات المكلفة", "Assigned Orders"),
       icon: Clock,
       bgColor: "bg-blue-50",
       textColor: "text-blue-700",
@@ -359,7 +362,7 @@ const CourierActivitySummary: React.FC = () => {
     },
     {
       id: "canceled",
-      title: "الطلبات الملغاة",
+      title: tl("الطلبات الملغاة", "Canceled Orders"),
       icon: XCircle,
       bgColor: "bg-red-50",
       textColor: "text-red-700",
@@ -375,7 +378,7 @@ const CourierActivitySummary: React.FC = () => {
     },
     {
       id: "partial",
-      title: "الطلبات الجزئية",
+      title: tl("الطلبات الجزئية", "Partial Orders"),
       icon: Receipt,
       bgColor: "bg-yellow-50",
       textColor: "text-yellow-700",
@@ -391,7 +394,7 @@ const CourierActivitySummary: React.FC = () => {
     },
     {
       id: "deferred",
-      title: "الطلبات المؤجلة",
+      title: tl("الطلبات المؤجلة", "Deferred Orders"),
       icon: Calendar,
       bgColor: "bg-orange-50",
       textColor: "text-orange-700",
@@ -407,7 +410,7 @@ const CourierActivitySummary: React.FC = () => {
     },
     {
       id: "hand_to_hand",
-      title: "الطلبات يد بيد",
+      title: tl("الطلبات يد بيد", "Hand to Hand Orders"),
       icon: HandMetal,
       bgColor: "bg-purple-50",
       textColor: "text-purple-700",
@@ -421,7 +424,7 @@ const CourierActivitySummary: React.FC = () => {
       orders: orders.filter((o) => o.status === "hand_to_hand"),
       ordersCount: orders.filter((o) => o.status === "hand_to_hand").length,
     },
-  ], [orders, wasAssignedOnSelectedDate])
+  ], [orders, wasAssignedOnSelectedDate, language])
 
   const handleCategoryClick = (category: OrderCategory) => {
     if (category.ordersCount > 0) {
@@ -437,11 +440,11 @@ const CourierActivitySummary: React.FC = () => {
 
   const getStatusBadge = (status: string) => {
     const statusConfig: Record<string, { label: string; color: string }> = {
-      delivered: { label: "مسلم", color: "bg-green-100 text-green-800" },
-      canceled: { label: "ملغي", color: "bg-red-100 text-red-800" },
-      partial: { label: "جزئي", color: "bg-yellow-100 text-yellow-800" },
-      assigned: { label: "مكلف", color: "bg-blue-100 text-blue-800" },
-      hand_to_hand: { label: "يد بيد", color: "bg-purple-100 text-purple-800" },
+      delivered: { label: tl("مسلم", "Delivered"), color: "bg-green-100 text-green-800" },
+      canceled: { label: tl("ملغي", "Canceled"), color: "bg-red-100 text-red-800" },
+      partial: { label: tl("جزئي", "Partial"), color: "bg-yellow-100 text-yellow-800" },
+      assigned: { label: tl("مكلف", "Assigned"), color: "bg-blue-100 text-blue-800" },
+      hand_to_hand: { label: tl("يد بيد", "Hand to Hand"), color: "bg-purple-100 text-purple-800" },
     }
     const config = statusConfig[status] || { label: status, color: "bg-gray-100 text-gray-800" }
     return (
@@ -452,21 +455,21 @@ const CourierActivitySummary: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-4 md:p-6 lg:p-8" dir="rtl">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-4 md:p-6 lg:p-8" dir={language === 'ar' ? 'rtl' : 'ltr'}>
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-bold text-gray-800 mb-2">لوحة المحاسبة التفصيلية</h1>
-              <p className="text-gray-600">تقرير شامل للعمليات المالية</p>
+              <h1 className="text-3xl font-bold text-gray-800 mb-2">{tl("لوحة المحاسبة التفصيلية", "Detailed Accounting Dashboard")}</h1>
+              <p className="text-gray-600">{tl("تقرير شامل للعمليات المالية", "Comprehensive financial operations report")}</p>
             </div>
             <button
               onClick={() => fetchOrders()}
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
             >
               <RefreshCw className="w-4 h-4" />
-              تحديث
+              {tl("تحديث", "Refresh")}
             </button>
           </div>
 
@@ -483,7 +486,7 @@ const CourierActivitySummary: React.FC = () => {
                     : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                 }`}
               >
-                الكل
+                {tl("الكل", "All")}
               </button>
 
               {/* Today Button */}
@@ -499,7 +502,7 @@ const CourierActivitySummary: React.FC = () => {
                     : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                 }`}
               >
-                اليوم
+                {tl("اليوم", "Today")}
               </button>
 
               {/* Quick Range Filters */}
@@ -517,7 +520,7 @@ const CourierActivitySummary: React.FC = () => {
                       : "text-gray-700 hover:bg-gray-200"
                   }`}
                 >
-                  أمس
+                  {tl("أمس", "Yesterday")}
                 </button>
                 <button
                   onClick={() => setDateRange("week")}
@@ -527,7 +530,7 @@ const CourierActivitySummary: React.FC = () => {
                       : "text-gray-700 hover:bg-gray-200"
                   }`}
                 >
-                  7 أيام
+                  {tl("7 أيام", "7 days")}
                 </button>
                 <button
                   onClick={() => setDateRange("month")}
@@ -537,7 +540,7 @@ const CourierActivitySummary: React.FC = () => {
                       : "text-gray-700 hover:bg-gray-200"
                   }`}
                 >
-                  شهر
+                  {tl("شهر", "Month")}
                 </button>
               </div>
 
@@ -551,7 +554,7 @@ const CourierActivitySummary: React.FC = () => {
                     setDateRange("custom")
                   }}
                   className="p-1.5 hover:bg-gray-100 rounded transition-colors"
-                  title="اليوم السابق"
+                  title={tl("اليوم السابق", "Previous day")}
                 >
                   <ChevronRight className="w-4 h-4 text-gray-600" />
                 </button>
@@ -565,7 +568,7 @@ const CourierActivitySummary: React.FC = () => {
                       setDateRange("custom")
                     }}
                     className="px-2 py-1.5 border-0 focus:outline-none focus:ring-0 text-sm"
-                    placeholder="اختر تاريخ"
+                    placeholder={tl("اختر تاريخ", "Choose date")}
                   />
                 </div>
                 <button
@@ -579,7 +582,7 @@ const CourierActivitySummary: React.FC = () => {
                     }
                   }}
                   className="p-1.5 hover:bg-gray-100 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="اليوم التالي"
+                  title={tl("اليوم التالي", "Next day")}
                   disabled={selectedDate >= new Date().toISOString().split("T")[0]}
                 >
                   <ChevronLeft className="w-4 h-4 text-gray-600" />
@@ -592,7 +595,7 @@ const CourierActivitySummary: React.FC = () => {
                 onChange={(e) => setSelectedCourier(e.target.value || null)}
                 className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm"
               >
-                <option value="">جميع المندوبين</option>
+                <option value="">{tl("جميع المندوبين", "All Couriers")}</option>
                 {couriers.map((courier) => (
                   <option key={courier.id} value={courier.id}>
                     {courier.name}
@@ -606,13 +609,13 @@ const CourierActivitySummary: React.FC = () => {
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <RefreshCw className="w-8 h-8 text-blue-600 animate-spin" />
-            <span className="mr-3 text-gray-600">جاري التحميل...</span>
+            <span className="mr-3 text-gray-600">{tl("جاري التحميل...", "Loading...")}</span>
           </div>
         ) : (
           <>
             {/* Orders Summary Cards */}
             <div className="mb-6">
-              <h2 className="text-xl font-bold text-gray-800 mb-4">ملخص الطلبات</h2>
+              <h2 className="text-xl font-bold text-gray-800 mb-4">{tl("ملخص الطلبات", "Orders Summary")}</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 {categories.map((category) => {
                   const Icon = category.icon
@@ -627,7 +630,7 @@ const CourierActivitySummary: React.FC = () => {
                       <div className="flex items-center justify-between mb-4">
                         <Icon className={`w-8 h-8 ${category.textColor}`} />
                         <span className={`text-sm font-semibold ${category.textColor}`}>
-                          {category.ordersCount} طلب
+                          {category.ordersCount} {tl("طلب", "orders")}
                         </span>
                       </div>
                       <h3 className={`text-lg font-bold ${category.textColor} mb-3`}>
@@ -635,7 +638,7 @@ const CourierActivitySummary: React.FC = () => {
                       </h3>
                       <div className="space-y-2">
                         <div className="flex justify-between items-center">
-                          <span className="text-sm text-gray-600">القيمة الأصلية:</span>
+                          <span className="text-sm text-gray-600">{tl("القيمة الأصلية:", "Original value:")}</span>
                           <span className={`font-bold ${category.textColor}`}>
                             {formatCurrency(category.originalValue)}
                           </span>
@@ -643,10 +646,10 @@ const CourierActivitySummary: React.FC = () => {
                         <div className="flex justify-between items-center">
                           <span className="text-sm text-gray-600">
                             {category.id === "assigned" || category.id === "completed"
-                              ? "المحصل التقديرية:"
+                              ? tl("المحصل التقديرية:", "Estimated collected:")
                               : category.id === "canceled" || category.id === "deferred"
-                              ? "المحصل (الرسوم فقط):"
-                              : "المحصل فعليا:"}
+                              ? tl("المحصل (الرسوم فقط):", "Collected (fees only):")
+                              : tl("المحصل فعليا:", "Actually collected:")}
                           </span>
                           <span className={`font-bold ${category.textColor}`}>
                             {formatCurrency(category.collectedValue)}
@@ -661,16 +664,16 @@ const CourierActivitySummary: React.FC = () => {
 
             {/* Collected and Undelivered Summary */}
             <div className="mb-6">
-              <h2 className="text-xl font-bold text-gray-800 mb-4">ملخص المحصل والغير مسلم</h2>
+              <h2 className="text-xl font-bold text-gray-800 mb-4">{tl("ملخص المحصل والغير مسلم", "Collected and Undelivered Summary")}</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="bg-green-50 border-2 border-green-300 rounded-xl p-6">
                   <div className="flex items-center gap-3 mb-4">
                     <CheckCircle className="w-8 h-8 text-green-700" />
-                    <h3 className="text-lg font-bold text-green-700">إجمالي مسلم فعليا</h3>
+                    <h3 className="text-lg font-bold text-green-700">{tl("إجمالي مسلم فعليا", "Total Actually Delivered")}</h3>
                   </div>
                   <div className="space-y-2">
                     <div className="flex justify-between items-center">
-                      <span className="text-sm text-gray-600">مجموع المحصل فعليا:</span>
+                      <span className="text-sm text-gray-600">{tl("مجموع المحصل فعليا:", "Total actually collected:")}</span>
                       <span className="text-xl font-bold text-green-700">
                         {formatCurrency(
                           categories
@@ -680,7 +683,7 @@ const CourierActivitySummary: React.FC = () => {
                       </span>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className="text-sm text-gray-600">الطلبات:</span>
+                      <span className="text-sm text-gray-600">{tl("الطلبات:", "Orders:")}</span>
                       <span className="text-lg font-bold text-green-700">
                         {categories
                           .filter((c) => c.id === "delivered" || c.id === "partial")
@@ -693,11 +696,11 @@ const CourierActivitySummary: React.FC = () => {
                 <div className="bg-red-50 border-2 border-red-300 rounded-xl p-6">
                   <div className="flex items-center gap-3 mb-4">
                     <XCircle className="w-8 h-8 text-red-700" />
-                    <h3 className="text-lg font-bold text-red-700">إجمالي غير مسلم</h3>
+                    <h3 className="text-lg font-bold text-red-700">{tl("إجمالي غير مسلم", "Total Undelivered")}</h3>
                   </div>
                   <div className="space-y-2">
                     <div className="flex justify-between items-center">
-                      <span className="text-sm text-gray-600">مجموع الغير مسلم:</span>
+                      <span className="text-sm text-gray-600">{tl("مجموع الغير مسلم:", "Total undelivered:")}</span>
                       <span className="text-xl font-bold text-red-700">
                         {formatCurrency(
                           categories
@@ -707,7 +710,7 @@ const CourierActivitySummary: React.FC = () => {
                       </span>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className="text-sm text-gray-600">الطلبات:</span>
+                      <span className="text-sm text-gray-600">{tl("الطلبات:", "Orders:")}</span>
                       <span className="text-lg font-bold text-red-700">
                         {categories
                           .filter((c) => c.id === "assigned" || c.id === "canceled")
@@ -723,7 +726,7 @@ const CourierActivitySummary: React.FC = () => {
             <div className="bg-green-100 border-2 border-green-400 rounded-xl p-6">
               <div className="flex items-center gap-3 mb-4">
                 <CheckCircle className="w-8 h-8 text-green-700" />
-                <h3 className="text-xl font-bold text-green-700">إجمالي ما يسلم للمحاسبة</h3>
+                <h3 className="text-xl font-bold text-green-700">{tl("إجمالي ما يسلم للمحاسبة", "Total to be handed to accounting")}</h3>
               </div>
               <div className="text-3xl font-bold text-green-700 mb-2">
                 {formatCurrency(
@@ -733,7 +736,7 @@ const CourierActivitySummary: React.FC = () => {
                 )}
               </div>
               <div className="text-sm text-gray-600">
-                النقد في اليد فقط - طلب نقدي{" "}
+                {tl("النقد في اليد فقط - طلب نقدي", "Cash in hand only - cash orders")}{" "}
                 {categories
                   .filter((c) => c.id === "delivered" || c.id === "partial")
                   .reduce((sum, c) => sum + c.orders.filter((o) => o.payment_method === "cash" || o.payment_method === "cod").length, 0)}
@@ -759,7 +762,7 @@ const CourierActivitySummary: React.FC = () => {
                     {categories.find((c) => c.id === selectedCategory)?.title}
                   </h2>
                   <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-semibold">
-                    {selectedOrders.length} طلب
+                    {selectedOrders.length} {tl("طلب", "orders")}
                   </span>
                 </div>
                 <button
@@ -786,45 +789,45 @@ const CourierActivitySummary: React.FC = () => {
                             {getStatusBadge(order.status)}
                           </div>
                           <div className="text-sm text-gray-600 mb-1">
-                            <strong>العميل:</strong> {order.customer_name}
+                            <strong>{tl("العميل:", "Customer:")}</strong> {order.customer_name}
                           </div>
                           {order.courier_name && (
                             <div className="text-sm text-gray-600 mb-1">
-                              <strong>المندوب:</strong> {order.courier_name}
+                              <strong>{tl("المندوب:", "Courier:")}</strong> {order.courier_name}
                             </div>
                           )}
                           {order.address && (
                             <div className="text-sm text-gray-600 mb-1">
-                              <strong>العنوان:</strong> {order.address}
+                              <strong>{tl("العنوان:", "Address:")}</strong> {order.address}
                             </div>
                           )}
                           {order.mobile_number && (
                             <div className="text-sm text-gray-600">
-                              <strong>الهاتف:</strong> {order.mobile_number}
+                              <strong>{tl("الهاتف:", "Phone:")}</strong> {order.mobile_number}
                             </div>
                           )}
                         </div>
                         <div className="text-left">
                           <div className="mb-2">
-                            <span className="text-sm text-gray-600">القيمة الأصلية:</span>
+                            <span className="text-sm text-gray-600">{tl("القيمة الأصلية:", "Original value:")}</span>
                             <span className="mr-2 font-bold text-gray-800">
                               {formatCurrency(Number(order.total_order_fees) || 0)}
                             </span>
                           </div>
                           <div className="mb-2">
-                            <span className="text-sm text-gray-600">المحصل:</span>
+                            <span className="text-sm text-gray-600">{tl("المحصل:", "Collected:")}</span>
                             <span className="mr-2 font-bold text-green-600">
                               {formatCurrency(getCollectedAmount(order))}
                             </span>
                           </div>
                           <div className="mb-2">
-                            <span className="text-sm text-gray-600">طريقة الدفع:</span>
+                            <span className="text-sm text-gray-600">{tl("طريقة الدفع:", "Payment method:")}</span>
                             <span className="mr-2 font-semibold text-gray-800">
-                              {order.payment_method || "غير محدد"}
+                              {order.payment_method || tl("غير محدد", "Not specified")}
                             </span>
                           </div>
                           <div className="text-xs text-gray-500">
-                            {new Date(order.updated_at).toLocaleDateString("ar-EG", {
+                            {new Date(order.updated_at).toLocaleDateString("en-US", {
                               year: "numeric",
                               month: "long",
                               day: "numeric",

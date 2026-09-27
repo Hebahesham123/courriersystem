@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../contexts/AuthContext";
+import { useLanguage } from "../contexts/LanguageContext";
 
 interface Order {
   id: number;
@@ -25,6 +26,8 @@ const LOCAL_STORAGE_KEY = "courier-orders-sorting";
 const YourSheet: React.FC = () => {
 
   const { user } = useAuth();
+  const { language } = useLanguage();
+  const tl = (ar: string, en: string) => (language === 'ar' ? ar : en);
   const [date, setDate] = useState(getToday());
   const [orders, setOrders] = useState<any[]>([]);
   const [manualSort, setManualSort] = useState(false);
@@ -157,9 +160,9 @@ const YourSheet: React.FC = () => {
   // UI: Date filter, Sorting button, Table
   return (
     <div className="p-2 sm:p-4 max-w-2xl mx-auto">
-      <h2 className="text-xl sm:text-2xl font-bold mb-2 text-center text-blue-700">ورقة الطلبات</h2>
+      <h2 className="text-xl sm:text-2xl font-bold mb-2 text-center text-blue-700">{tl('ورقة الطلبات', 'Orders Sheet')}</h2>
       <div className="flex flex-col sm:flex-row items-center gap-2 mb-4">
-        <label className="text-sm font-medium text-gray-700">تصفية بالتاريخ:</label>
+        <label className="text-sm font-medium text-gray-700">{tl('تصفية بالتاريخ:', 'Filter by date:')}</label>
         <input
           type="date"
           className="border rounded-lg px-2 py-1 text-sm focus:outline-blue-400 w-full sm:w-auto"
@@ -172,14 +175,14 @@ const YourSheet: React.FC = () => {
             className="w-full sm:w-auto px-4 py-2 rounded-lg font-bold text-white transition-all bg-green-600"
             onClick={saveSortOrder}
           >
-            حفظ الترتيب
+            {tl('حفظ الترتيب', 'Save Order')}
           </button>
         ) : (
           <button
             className="w-full sm:w-auto px-4 py-2 rounded-lg font-bold text-white transition-all bg-blue-600 hover:bg-blue-700"
             onClick={() => setManualSort(true)}
           >
-            ترتيب يدوي
+            {tl('ترتيب يدوي', 'Manual Sort')}
           </button>
         )}
       </div>
@@ -187,18 +190,18 @@ const YourSheet: React.FC = () => {
         <table className="min-w-full text-sm text-right rtl:text-right border-separate border-spacing-0">
           <thead className="bg-blue-100 text-blue-800">
             <tr>
-              <th className="px-2 py-2 border-b-4 border-blue-400 font-bold">رقم الطلب</th>
-              <th className="px-2 py-2 border-b-4 border-blue-400 font-bold">اسم العميل</th>
-              <th className="px-2 py-2 border-b-4 border-blue-400 font-bold">العنوان</th>
-              <th className="px-2 py-2 border-b-4 border-blue-400 font-bold">رقم الجوال</th>
-              <th className="px-2 py-2 border-b-4 border-blue-400 font-bold text-center">ملاحظات</th>
-              {manualSort && <th className="px-2 py-2 border-b-4 border-blue-400 font-bold text-center">ترتيب</th>}
+              <th className="px-2 py-2 border-b-4 border-blue-400 font-bold">{tl('رقم الطلب', 'Order Number')}</th>
+              <th className="px-2 py-2 border-b-4 border-blue-400 font-bold">{tl('اسم العميل', 'Customer Name')}</th>
+              <th className="px-2 py-2 border-b-4 border-blue-400 font-bold">{tl('العنوان', 'Address')}</th>
+              <th className="px-2 py-2 border-b-4 border-blue-400 font-bold">{tl('رقم الجوال', 'Mobile Number')}</th>
+              <th className="px-2 py-2 border-b-4 border-blue-400 font-bold text-center">{tl('ملاحظات', 'Notes')}</th>
+              {manualSort && <th className="px-2 py-2 border-b-4 border-blue-400 font-bold text-center">{tl('ترتيب', 'Sort')}</th>}
             </tr>
           </thead>
           <tbody>
             {orders.length === 0 ? (
               <tr>
-                <td colSpan={manualSort ? 5 : 4} className="text-center py-6 text-gray-400">لا توجد طلبات في هذا اليوم</td>
+                <td colSpan={manualSort ? 5 : 4} className="text-center py-6 text-gray-400">{tl('لا توجد طلبات في هذا اليوم', 'No orders on this day')}</td>
               </tr>
             ) : (
               orders
@@ -221,33 +224,33 @@ const YourSheet: React.FC = () => {
                           value={notes[order.id] ?? ""}
                           readOnly
                           onClick={() => setExpandedNoteId(order.id)}
-                          placeholder="اكتب ملاحظة..."
-                          aria-label="ملاحظة"
+                          placeholder={tl('اكتب ملاحظة...', 'Write a note...')}
+                          aria-label={tl('ملاحظة', 'Note')}
                         />
                       </td>
       {/* Note Modal */}
       {expandedNoteId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
           <div className="bg-white rounded-xl shadow-lg p-4 w-80 max-w-full relative">
-            <h3 className="text-lg font-bold mb-2 text-blue-700 text-center">ملاحظة الطلب</h3>
+            <h3 className="text-lg font-bold mb-2 text-blue-700 text-center">{tl('ملاحظة الطلب', 'Order Note')}</h3>
             <textarea
               className="w-full border-2 border-blue-400 rounded-lg px-2 py-1 text-sm resize-none mb-2"
               value={notes[expandedNoteId] ?? ""}
               onChange={e => handleNoteChange(expandedNoteId, e.target.value)}
               rows={5}
-              placeholder="اكتب ملاحظتك هنا..."
-              aria-label="ملاحظة"
+              placeholder={tl('اكتب ملاحظتك هنا...', 'Write your note here...')}
+              aria-label={tl('ملاحظة', 'Note')}
               autoFocus
             />
             <button
               className="absolute top-2 right-2 text-gray-500 hover:text-blue-700 text-xl font-bold"
               onClick={() => setExpandedNoteId(null)}
-              aria-label="إغلاق"
+              aria-label={tl('إغلاق', 'Close')}
             >×</button>
             <button
               className="w-full mt-2 px-4 py-2 rounded-lg font-bold text-white bg-blue-600 hover:bg-blue-700"
               onClick={() => setExpandedNoteId(null)}
-            >حفظ وإغلاق</button>
+            >{tl('حفظ وإغلاق', 'Save and Close')}</button>
           </div>
         </div>
       )}
@@ -259,8 +262,8 @@ const YourSheet: React.FC = () => {
                             className="w-14 border-2 border-blue-400 rounded-lg px-2 py-1 text-sm text-center font-bold"
                             value={sortNumbers[order.id] ?? ""}
                             onChange={e => handleSortNumberChange(order.id, e.target.value)}
-                            placeholder="رقم"
-                            aria-label="ترتيب"
+                            placeholder={tl('رقم', 'Number')}
+                            aria-label={tl('ترتيب', 'Sort')}
                           />
                         </td>
                       )}
@@ -278,7 +281,7 @@ const YourSheet: React.FC = () => {
           </tbody>
         </table>
       </div>
-      <div className="mt-4 text-xs text-gray-500 text-center">جميع الطلبات تظهر بوضوح ويمكنك ترتيبها يدوياً وحفظ الترتيب. الواجهة متوافقة مع الجوال.</div>
+      <div className="mt-4 text-xs text-gray-500 text-center">{tl('جميع الطلبات تظهر بوضوح ويمكنك ترتيبها يدوياً وحفظ الترتيب. الواجهة متوافقة مع الجوال.', 'All orders are shown clearly and you can sort them manually and save the order. The interface is mobile friendly.')}</div>
     </div>
   );
 };

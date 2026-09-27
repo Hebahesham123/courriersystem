@@ -4,14 +4,15 @@ import type React from "react"
 import { useEffect, useMemo, useState } from "react"
 import { RefreshCw, Warehouse, User as UserIcon, Clock, MessageSquare, Search, X, ChevronDown } from "lucide-react"
 import { supabase } from "../../lib/supabase"
+import { useLanguage } from "../../contexts/LanguageContext"
 
 // Small category labeler (mirrors the warehouse Returns view).
-const catLabel = (o: any): string => {
-  if (o.receive_piece_or_exchange === "exchange") return "تبديل"
-  if (o.receive_piece_or_exchange === "receive_piece" || o.status === "receiving_part") return "استلام قطعة"
-  if (o.status === "hand_to_hand") return "يد بيد"
-  if (o.status === "canceled") return "ملغي"
-  if (o.status === "partial") return "جزئي"
+const catLabel = (o: any, tl: (ar: string, en: string) => string): string => {
+  if (o.receive_piece_or_exchange === "exchange") return tl("تبديل", "Exchange")
+  if (o.receive_piece_or_exchange === "receive_piece" || o.status === "receiving_part") return tl("استلام قطعة", "Receive piece")
+  if (o.status === "hand_to_hand") return tl("يد بيد", "Hand to hand")
+  if (o.status === "canceled") return tl("ملغي", "Canceled")
+  if (o.status === "partial") return tl("جزئي", "Partial")
   return o.status
 }
 
@@ -32,6 +33,8 @@ const isoDay = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
 
 const WarehouseTracking: React.FC = () => {
+  const { language } = useLanguage()
+  const tl = (ar: string, en: string) => (language === "ar" ? ar : en)
   const today = new Date()
   const [from, setFrom] = useState(isoDay(today))
   const [to, setTo] = useState(isoDay(today))
@@ -70,7 +73,7 @@ const WarehouseTracking: React.FC = () => {
       if (err) throw err
       setRows((data || []) as Row[])
     } catch (e: any) {
-      setError(e?.message || "فشل تحميل البيانات")
+      setError(e?.message || tl("فشل تحميل البيانات", "Failed to load data"))
     } finally {
       setLoading(false)
     }
@@ -123,34 +126,34 @@ const WarehouseTracking: React.FC = () => {
   const fmtTime = (iso?: string | null) => {
     if (!iso) return ""
     const d = new Date(iso)
-    return d.toLocaleString("ar-EG", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
+    return d.toLocaleString("en-US", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
   }
 
   const totalReceived = rows.length
 
   return (
-    <div className="p-4 md:p-6" dir="rtl">
+    <div className="p-4 md:p-6" dir={language === "ar" ? "rtl" : "ltr"}>
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-slate-600 to-slate-800 flex items-center justify-center shadow-sm">
             <Warehouse className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-gray-900">المخزن — موظفو الاستلام</h1>
-            <p className="text-sm text-gray-600">كل موظف مخزن وبداخله الطلبات التي استلمها ومتى</p>
+            <h1 className="text-xl font-bold text-gray-900">{tl("المخزن — موظفو الاستلام", "Warehouse — Receiving staff")}</h1>
+            <p className="text-sm text-gray-600">{tl("كل موظف مخزن وبداخله الطلبات التي استلمها ومتى", "Each warehouse staff member with the orders they received and when")}</p>
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm text-gray-500 ml-2">{totalReceived} استلام</span>
+          <span className="text-sm text-gray-500 ml-2">{totalReceived} {tl("استلام", "received")}</span>
           <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="px-2 py-1.5 border border-gray-300 rounded-lg text-xs" />
           <span className="text-gray-400">→</span>
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="px-2 py-1.5 border border-gray-300 rounded-lg text-xs" />
-          <button onClick={() => preset(0)} className="text-xs px-2.5 py-1 rounded-full border bg-white text-gray-600 border-gray-300 hover:bg-gray-50">اليوم</button>
-          <button onClick={() => preset(7)} className="text-xs px-2.5 py-1 rounded-full border bg-white text-gray-600 border-gray-300 hover:bg-gray-50">٧ أيام</button>
-          <button onClick={() => preset(30)} className="text-xs px-2.5 py-1 rounded-full border bg-white text-gray-600 border-gray-300 hover:bg-gray-50">٣٠ يوم</button>
+          <button onClick={() => preset(0)} className="text-xs px-2.5 py-1 rounded-full border bg-white text-gray-600 border-gray-300 hover:bg-gray-50">{tl("اليوم", "Today")}</button>
+          <button onClick={() => preset(7)} className="text-xs px-2.5 py-1 rounded-full border bg-white text-gray-600 border-gray-300 hover:bg-gray-50">{tl("7 أيام", "7 days")}</button>
+          <button onClick={() => preset(30)} className="text-xs px-2.5 py-1 rounded-full border bg-white text-gray-600 border-gray-300 hover:bg-gray-50">{tl("30 يوم", "30 days")}</button>
           <button onClick={fetchData} disabled={loading} className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-50">
             <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-            تحديث
+            {tl("تحديث", "Refresh")}
           </button>
         </div>
       </div>
@@ -160,7 +163,7 @@ const WarehouseTracking: React.FC = () => {
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="ابحث برقم الطلب أو العميل أو اسم موظف المخزن..."
+          placeholder={tl("ابحث برقم الطلب أو العميل أو اسم موظف المخزن...", "Search by order number, customer, or warehouse staff name...")}
           className="w-full pr-9 pl-8 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-slate-400"
         />
         {search && (
@@ -171,10 +174,10 @@ const WarehouseTracking: React.FC = () => {
       </div>
 
       {error && <div className="mb-3 p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg">{error}</div>}
-      {loading && <div className="p-6 text-center text-sm text-gray-500">جاري التحميل...</div>}
+      {loading && <div className="p-6 text-center text-sm text-gray-500">{tl("جاري التحميل...", "Loading...")}</div>}
       {!loading && groups.length === 0 && (
         <div className="p-6 text-center text-sm text-gray-500 bg-white rounded-xl border border-gray-200">
-          لا يوجد موظفو مخزن
+          {tl("لا يوجد موظفو مخزن", "No warehouse staff")}
         </div>
       )}
 
@@ -195,7 +198,7 @@ const WarehouseTracking: React.FC = () => {
                   <span className="font-semibold text-gray-900">{userName}</span>
                 </div>
                 <span className={`text-xs px-2 py-0.5 rounded-full border ${list.length > 0 ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-gray-100 text-gray-500 border-gray-200"}`}>
-                  {list.length} استلام
+                  {list.length} {tl("استلام", "received")}
                 </span>
               </button>
 
@@ -204,19 +207,19 @@ const WarehouseTracking: React.FC = () => {
                   <table className="w-full text-xs whitespace-nowrap">
                     <thead>
                       <tr className="bg-gray-50 text-gray-500">
-                        <th className="px-3 py-2 text-right">الطلب</th>
-                        <th className="px-3 py-2 text-right">النوع</th>
-                        <th className="px-3 py-2 text-right">العميل</th>
-                        <th className="px-3 py-2 text-right">المندوب</th>
-                        <th className="px-3 py-2 text-right">وقت الاستلام</th>
-                        <th className="px-3 py-2 text-right">ملاحظة</th>
+                        <th className="px-3 py-2 text-right">{tl("الطلب", "Order")}</th>
+                        <th className="px-3 py-2 text-right">{tl("النوع", "Type")}</th>
+                        <th className="px-3 py-2 text-right">{tl("العميل", "Customer")}</th>
+                        <th className="px-3 py-2 text-right">{tl("المندوب", "Courier")}</th>
+                        <th className="px-3 py-2 text-right">{tl("وقت الاستلام", "Received time")}</th>
+                        <th className="px-3 py-2 text-right">{tl("ملاحظة", "Note")}</th>
                       </tr>
                     </thead>
                     <tbody>
                       {list.map((r) => (
                         <tr key={r.id} className="border-t border-gray-100">
                           <td className="px-3 py-2 font-semibold text-gray-900">{r.shopify_order_name || r.order_id}</td>
-                          <td className="px-3 py-2 text-gray-600">{catLabel(r)}</td>
+                          <td className="px-3 py-2 text-gray-600">{catLabel(r, tl)}</td>
                           <td className="px-3 py-2 text-gray-600 max-w-[160px] truncate">{r.customer_name || "—"}</td>
                           <td className="px-3 py-2 text-gray-600">{couriers.get(String(r.assigned_courier_id)) || "—"}</td>
                           <td className="px-3 py-2 text-gray-600">
@@ -244,7 +247,7 @@ const WarehouseTracking: React.FC = () => {
 
               {open && list.length === 0 && (
                 <div className="px-4 py-3 text-xs text-gray-400 border-t border-gray-100">
-                  لم يستلم أي طلب في هذه الفترة
+                  {tl("لم يستلم أي طلب في هذه الفترة", "No orders received in this period")}
                 </div>
               )}
             </div>

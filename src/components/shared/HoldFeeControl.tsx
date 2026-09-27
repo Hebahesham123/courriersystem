@@ -2,6 +2,7 @@
 import React, { useState } from "react"
 import { Clock } from "lucide-react"
 import { supabase } from "../../lib/supabase"
+import { useLanguage } from "../../contexts/LanguageContext"
 
 interface HoldFeeOrderShape {
   id: string
@@ -25,6 +26,9 @@ interface Props {
 // Admin can put an order on hold (hides it from daily views) or remove the hold
 // (order reappears dated to hold_fee_added_at).
 const HoldFeeControl: React.FC<Props> = ({ order, isAdmin, userId, onChange, compact = false }) => {
+  const { language } = useLanguage()
+  const tl = (ar: string, en: string) => (language === 'ar' ? ar : en)
+
   const holdAmount = Number(order.hold_fee || 0)
   const isOnHold = holdAmount > 0 && !order.hold_fee_removed_at
   const currency = order.currency || "EGP"
@@ -40,7 +44,7 @@ const HoldFeeControl: React.FC<Props> = ({ order, isAdmin, userId, onChange, com
     return (
       <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-semibold bg-orange-100 text-orange-700 border border-orange-300">
         <Clock className="w-3.5 h-3.5" />
-        On Hold: {currency} {holdAmount.toFixed(2)}
+        {tl("معلّق:", "On Hold:")} {currency} {holdAmount.toFixed(2)}
       </div>
     )
   }
@@ -58,7 +62,7 @@ const HoldFeeControl: React.FC<Props> = ({ order, isAdmin, userId, onChange, com
   const apply = async () => {
     const amt = Number.parseFloat(amount) || 0
     if (amt <= 0) {
-      alert("أدخل قيمة رسوم التعليق أكبر من صفر")
+      alert(tl("أدخل قيمة رسوم التعليق أكبر من صفر", "Enter a hold fee greater than zero"))
       return
     }
     setSaving(true)
@@ -80,14 +84,14 @@ const HoldFeeControl: React.FC<Props> = ({ order, isAdmin, userId, onChange, com
       setEditing(false)
       onChange?.()
     } catch (e: any) {
-      alert(`Failed to apply hold: ${e?.message || "Unknown error"}`)
+      alert(tl(`فشل تطبيق التعليق: ${e?.message || "خطأ غير معروف"}`, `Failed to apply hold: ${e?.message || "Unknown error"}`))
     } finally {
       setSaving(false)
     }
   }
 
   const remove = async () => {
-    if (!confirm("إزالة رسوم التعليق؟ سيعود الطلب لليوم الذي تم تعليقه فيه.")) return
+    if (!confirm(tl("إزالة رسوم التعليق؟ سيعود الطلب لليوم الذي تم تعليقه فيه.", "Remove the hold fee? The order will return to the day it was held."))) return
     setSaving(true)
     try {
       const { error } = await supabase
@@ -103,7 +107,7 @@ const HoldFeeControl: React.FC<Props> = ({ order, isAdmin, userId, onChange, com
       setEditing(false)
       onChange?.()
     } catch (e: any) {
-      alert(`Failed to remove hold: ${e?.message || "Unknown error"}`)
+      alert(tl(`فشل إزالة التعليق: ${e?.message || "خطأ غير معروف"}`, `Failed to remove hold: ${e?.message || "Unknown error"}`))
     } finally {
       setSaving(false)
     }
@@ -114,7 +118,7 @@ const HoldFeeControl: React.FC<Props> = ({ order, isAdmin, userId, onChange, com
       <div className="mt-2 p-3 rounded-xl border-2 border-orange-300 bg-orange-50 space-y-2">
         <div className="flex items-center gap-2">
           <Clock className="w-4 h-4 text-orange-700" />
-          <span className="text-xs font-bold text-orange-900">رسوم التعليق</span>
+          <span className="text-xs font-bold text-orange-900">{tl("رسوم التعليق", "Hold Fee")}</span>
         </div>
         <input
           type="number"
@@ -123,14 +127,14 @@ const HoldFeeControl: React.FC<Props> = ({ order, isAdmin, userId, onChange, com
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
           className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-          placeholder="المبلغ"
+          placeholder={tl("المبلغ", "Amount")}
         />
         <textarea
           value={comment}
           onChange={(e) => setComment(e.target.value)}
           className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 resize-none"
           rows={2}
-          placeholder="السبب (اختياري)"
+          placeholder={tl("السبب (اختياري)", "Reason (optional)")}
         />
         <div className="flex gap-1.5">
           <button
@@ -139,7 +143,7 @@ const HoldFeeControl: React.FC<Props> = ({ order, isAdmin, userId, onChange, com
             onClick={apply}
             className="flex-1 px-2 py-1.5 text-xs font-bold rounded-lg bg-orange-600 hover:bg-orange-700 text-white disabled:opacity-50"
           >
-            {saving ? "..." : "تطبيق"}
+            {saving ? "..." : tl("تطبيق", "Apply")}
           </button>
           {isOnHold && (
             <button
@@ -148,7 +152,7 @@ const HoldFeeControl: React.FC<Props> = ({ order, isAdmin, userId, onChange, com
               onClick={remove}
               className="px-2 py-1.5 text-xs font-bold rounded-lg bg-red-600 hover:bg-red-700 text-white disabled:opacity-50"
             >
-              إزالة
+              {tl("إزالة", "Remove")}
             </button>
           )}
           <button
@@ -157,7 +161,7 @@ const HoldFeeControl: React.FC<Props> = ({ order, isAdmin, userId, onChange, com
             onClick={() => setEditing(false)}
             className="px-2 py-1.5 text-xs font-bold rounded-lg bg-gray-200 hover:bg-gray-300 text-gray-800"
           >
-            إلغاء
+            {tl("إلغاء", "Cancel")}
           </button>
         </div>
       </div>
@@ -171,7 +175,7 @@ const HoldFeeControl: React.FC<Props> = ({ order, isAdmin, userId, onChange, com
           <Clock className="w-4 h-4 text-orange-700 flex-shrink-0" />
           <div className="min-w-0">
             <div className="text-xs font-bold text-orange-900 truncate">
-              معلّق: {currency} {holdAmount.toFixed(2)}
+              {tl("معلّق:", "On Hold:")} {currency} {holdAmount.toFixed(2)}
               {heldOnDate && <span className="text-orange-700 font-normal mx-1">({heldOnDate})</span>}
             </div>
             {order.hold_fee_comment && (
@@ -184,7 +188,7 @@ const HoldFeeControl: React.FC<Props> = ({ order, isAdmin, userId, onChange, com
           onClick={beginEdit}
           className="px-2 py-1 text-[11px] font-bold rounded-lg bg-orange-600 hover:bg-orange-700 text-white flex-shrink-0"
         >
-          تعديل
+          {tl("تعديل", "Edit")}
         </button>
       </div>
     )
@@ -197,7 +201,7 @@ const HoldFeeControl: React.FC<Props> = ({ order, isAdmin, userId, onChange, com
       className={`inline-flex items-center gap-1.5 rounded-lg border border-orange-300 bg-white hover:bg-orange-50 text-orange-700 font-semibold ${compact ? "px-2 py-1 text-[11px]" : "px-3 py-1.5 text-xs"}`}
     >
       <Clock className="w-3.5 h-3.5" />
-      تعليق الطلب
+      {tl("تعليق الطلب", "Hold Order")}
     </button>
   )
 }

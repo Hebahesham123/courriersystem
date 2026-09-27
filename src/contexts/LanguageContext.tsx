@@ -201,8 +201,8 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   useEffect(() => {
     // Apply language settings
     localStorage.setItem("language", language)
-    // Always use LTR direction (keep everything on the left)
-    document.documentElement.dir = "ltr"
+    // Direction follows the language: Arabic => RTL, English => LTR.
+    document.documentElement.dir = language === "ar" ? "rtl" : "ltr"
     document.documentElement.lang = language
 
     // Set font based on language

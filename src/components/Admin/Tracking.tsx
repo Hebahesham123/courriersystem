@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useEffect, useState, useCallback, useRef } from "react"
+import { useEffect, useState, useCallback } from "react"
 import {
   DollarSign,
   CreditCard,
@@ -164,124 +164,125 @@ const getDisplayPaymentMethod = (order: Order, t?: (key: string) => string): str
 
 const Summary: React.FC = () => {
   const { user } = useAuth()
-  const { t } = useLanguage()
+  const { t, language } = useLanguage()
+  const tl = (ar: string, en: string) => (language === 'ar' ? ar : en)
 
-  const translate = useRef((key: string) => {
+  const translate = (key: string) => {
     const translations: Record<string, string> = {
-      loading: "جاري التحميل...",
-      pleaseLogin: "يرجى تسجيل الدخول",
-      noDataForDate: "لا توجد بيانات لهذا التاريخ",
-      todaySummary: "ملخص اليوم",
-      selectDate: "اختر التاريخ",
-      courier: "المندوب",
-      ordersCount: "طلبات",
-      amount: "المبلغ",
-      EGP: "ج.م",
-      backToCouriers: "العودة للمندوبين",
-      selectCourier: "اختر مندوب لعرض تفاصيله",
-      couriersList: "قائمة المندوبين",
+      loading: tl("جاري التحميل...", "Loading..."),
+      pleaseLogin: tl("يرجى تسجيل الدخول", "Please log in"),
+      noDataForDate: tl("لا توجد بيانات لهذا التاريخ", "No data for this date"),
+      todaySummary: tl("ملخص اليوم", "Today's summary"),
+      selectDate: tl("اختر التاريخ", "Select date"),
+      courier: tl("المندوب", "Courier"),
+      ordersCount: tl("طلبات", "orders"),
+      amount: tl("المبلغ", "Amount"),
+      EGP: tl("ج.م", "EGP"),
+      backToCouriers: tl("العودة للمندوبين", "Back to couriers"),
+      selectCourier: tl("اختر مندوب لعرض تفاصيله", "Select a courier to view details"),
+      couriersList: tl("قائمة المندوبين", "Couriers list"),
       // Date Range
-      today: "اليوم",
-      yesterday: "أمس",
-      last7Days: "آخر 7 أيام",
-      last30Days: "آخر 30 يوم",
-      customRange: "فترة مخصصة",
-      from: "من",
-      to: "إلى",
-      apply: "تطبيق",
+      today: tl("اليوم", "Today"),
+      yesterday: tl("أمس", "Yesterday"),
+      last7Days: tl("آخر 7 أيام", "Last 7 days"),
+      last30Days: tl("آخر 30 يوم", "Last 30 days"),
+      customRange: tl("فترة مخصصة", "Custom range"),
+      from: tl("من", "From"),
+      to: tl("إلى", "To"),
+      apply: tl("تطبيق", "Apply"),
       // Analytics
-      totalAnalytics: "إجمالي التحليلات",
-      overallPerformance: "الأداء العام",
-      orderStatusBreakdown: "توزيع حالة الطلبات",
-      paymentMethodsAnalysis: "تحليل طرق الدفع",
-      courierPerformance: "أداء المندوبين",
-      dailyTrends: "الاتجاهات اليومية",
+      totalAnalytics: tl("إجمالي التحليلات", "Total analytics"),
+      overallPerformance: tl("الأداء العام", "Overall performance"),
+      orderStatusBreakdown: tl("توزيع حالة الطلبات", "Order status breakdown"),
+      paymentMethodsAnalysis: tl("تحليل طرق الدفع", "Payment methods analysis"),
+      courierPerformance: tl("أداء المندوبين", "Courier performance"),
+      dailyTrends: tl("الاتجاهات اليومية", "Daily trends"),
       // Order Status Metrics
-      totalAssignedOrders: "إجمالي الطلبات المكلفة",
-      deliveredOrders: "الطلبات المسلمة",
-      canceledOrders: "الطلبات الملغاة",
-      partialOrders: "الطلبات الجزئية",
-      handToHandOrders: "الطلبات يد بيد",
-      returnOrders: "الطلبات المؤجله",
-      assignedOrders: "الطلبات المكلفة",
-      receivingPartOrders: "طلبات استلام قطعه",
-      totalOrders: "إجمالي الطلبات",
-      totalDeliveryOrders: "إجمالي طلبات التوصيل",
-      totalDeliveryFees: "إجمالي رسوم التوصيل",
-      totalPartialFees: "إجمالي المبالغ الجزئية",
+      totalAssignedOrders: tl("إجمالي الطلبات المكلفة", "Total assigned orders"),
+      deliveredOrders: tl("الطلبات المسلمة", "Delivered orders"),
+      canceledOrders: tl("الطلبات الملغاة", "Canceled orders"),
+      partialOrders: tl("الطلبات الجزئية", "Partial orders"),
+      handToHandOrders: tl("الطلبات يد بيد", "Hand-to-hand orders"),
+      returnOrders: tl("الطلبات المؤجله", "Deferred orders"),
+      assignedOrders: tl("الطلبات المكلفة", "Assigned orders"),
+      receivingPartOrders: tl("طلبات استلام قطعه", "Part-receipt orders"),
+      totalOrders: tl("إجمالي الطلبات", "Total orders"),
+      totalDeliveryOrders: tl("إجمالي طلبات التوصيل", "Total delivery orders"),
+      totalDeliveryFees: tl("إجمالي رسوم التوصيل", "Total delivery fees"),
+      totalPartialFees: tl("إجمالي المبالغ الجزئية", "Total partial amounts"),
       // Accounting
-      accountingDifference: "الفرق المحاسبي",
-      paymentBreakdown: "تفصيل طرق الدفع",
-      totalHandToAccounting: "إجمالي ما يسلم للمحاسبة",
-      orderValue: "قيمة الطلبات",
-      deliveryFeesValue: "قيمة رسوم التوصيل",
-      totalValue: "القيمة الإجمالية",
+      accountingDifference: tl("الفرق المحاسبي", "Accounting difference"),
+      paymentBreakdown: tl("تفصيل طرق الدفع", "Payment breakdown"),
+      totalHandToAccounting: tl("إجمالي ما يسلم للمحاسبة", "Total handed to accounting"),
+      orderValue: tl("قيمة الطلبات", "Orders value"),
+      deliveryFeesValue: tl("قيمة رسوم التوصيل", "Delivery fees value"),
+      totalValue: tl("القيمة الإجمالية", "Total value"),
       // Electronic Payment Methods
-      paymobOrders: "طلبات paymob",
-      valuOrders: "طلبات فاليو",
+      paymobOrders: tl("طلبات paymob", "Paymob orders"),
+      valuOrders: tl("طلبات فاليو", "ValU orders"),
       // Cash-based Payment Sub-types
-      cashOnHandOrders: "طلبات نقداً",
-      instapayOrders: "طلبات إنستاباي",
-      walletOrders: "طلبات المحفظة",
-      visaMachineOrders: "طلبات ماكينة فيزا",
-      totalCODOrders: "إجمالي الدفع عند التسليم",
+      cashOnHandOrders: tl("طلبات نقداً", "Cash orders"),
+      instapayOrders: tl("طلبات إنستاباي", "InstaPay orders"),
+      walletOrders: tl("طلبات المحفظة", "Wallet orders"),
+      visaMachineOrders: tl("طلبات ماكينة فيزا", "Visa machine orders"),
+      totalCODOrders: tl("إجمالي الدفع عند التسليم", "Total COD orders"),
       // Collection Metrics
-      totalCashOnHand: "إجمالي النقد في اليد",
-      totalPaymobCollected: "إجمالي paymob محصل",
-      totalValuCollected: "إجمالي فاليو محصل",
-      deliveryFeesCollected: "رسوم التوصيل المحصلة",
-      totalCollected: "إجمالي المحصل",
-      totalRevenue: "إجمالي الإيرادات",
-      averageOrderValue: "متوسط قيمة الطلب",
-      successRate: "معدل النجاح",
-      orderId: "رقم الطلب",
-      customer: "العميل",
-      total: "الإجمالي",
-      status: "الحالة",
-      address: "العنوان",
-      phone: "الهاتف",
-      comment: "تعليق",
-      close: "إغلاق",
-      paymentMethod: "طريقة الدفع",
-      collectedBy: "محصل بواسطة",
-      partialAmount: "المبلغ الجزئي",
-      deliveryFee: "رسوم التوصيل",
-      assigned: "مكلف",
-      delivered: "تم التوصيل",
-      canceled: "ملغي",
-      partial: "جزئي",
-      hand_to_hand: "استبدال",
-      return: "مؤجل",
-      receiving_part: "استلام قطعه",
-      cash: "نقداً",
-      paymob: "باي موب",
-      valu: "فاليو",
-      on_hand: "نقداً",
-      instapay: "إنستاباي",
-      wallet: "المحفظة",
-      visa_machine: "ماكينة فيزا",
-      orderTotalLabel: "إجمالي الطلب",
-      partialAmountLabel: "المبلغ الجزئي",
-      orderAmountCollectedLabel: "مبلغ الطلب المحصل",
-      totalCourierHandledLabel: "إجمالي ما تعامل معه المندوب",
-      paymentSubTypeLabel: "نوع الدفع",
-      proofImagesLabel: "صور الإثبات",
+      totalCashOnHand: tl("إجمالي النقد في اليد", "Total cash on hand"),
+      totalPaymobCollected: tl("إجمالي paymob محصل", "Total Paymob collected"),
+      totalValuCollected: tl("إجمالي فاليو محصل", "Total ValU collected"),
+      deliveryFeesCollected: tl("رسوم التوصيل المحصلة", "Delivery fees collected"),
+      totalCollected: tl("إجمالي المحصل", "Total collected"),
+      totalRevenue: tl("إجمالي الإيرادات", "Total revenue"),
+      averageOrderValue: tl("متوسط قيمة الطلب", "Average order value"),
+      successRate: tl("معدل النجاح", "Success rate"),
+      orderId: tl("رقم الطلب", "Order ID"),
+      customer: tl("العميل", "Customer"),
+      total: tl("الإجمالي", "Total"),
+      status: tl("الحالة", "Status"),
+      address: tl("العنوان", "Address"),
+      phone: tl("الهاتف", "Phone"),
+      comment: tl("تعليق", "Comment"),
+      close: tl("إغلاق", "Close"),
+      paymentMethod: tl("طريقة الدفع", "Payment method"),
+      collectedBy: tl("محصل بواسطة", "Collected by"),
+      partialAmount: tl("المبلغ الجزئي", "Partial amount"),
+      deliveryFee: tl("رسوم التوصيل", "Delivery fee"),
+      assigned: tl("مكلف", "Assigned"),
+      delivered: tl("تم التوصيل", "Delivered"),
+      canceled: tl("ملغي", "Canceled"),
+      partial: tl("جزئي", "Partial"),
+      hand_to_hand: tl("استبدال", "Exchange"),
+      return: tl("مؤجل", "Deferred"),
+      receiving_part: tl("استلام قطعه", "Part receipt"),
+      cash: tl("نقداً", "Cash"),
+      paymob: tl("باي موب", "Paymob"),
+      valu: tl("فاليو", "ValU"),
+      on_hand: tl("نقداً", "Cash"),
+      instapay: tl("إنستاباي", "InstaPay"),
+      wallet: tl("المحفظة", "Wallet"),
+      visa_machine: tl("ماكينة فيزا", "Visa machine"),
+      orderTotalLabel: tl("إجمالي الطلب", "Order total"),
+      partialAmountLabel: tl("المبلغ الجزئي", "Partial amount"),
+      orderAmountCollectedLabel: tl("مبلغ الطلب المحصل", "Order amount collected"),
+      totalCourierHandledLabel: tl("إجمالي ما تعامل معه المندوب", "Total handled by courier"),
+      paymentSubTypeLabel: tl("نوع الدفع", "Payment type"),
+      proofImagesLabel: tl("صور الإثبات", "Proof images"),
       // Hold Fees
-      holdFee: "رسوم الحجز",
-      holdFeeAmount: "مبلغ الحجز",
-      holdFeeComment: "تعليق الحجز",
-      addHoldFee: "إضافة رسوم حجز",
-      editHoldFee: "تعديل رسوم الحجز",
-      removeHoldFee: "إزالة رسوم الحجز",
-      save: "حفظ",
-      cancel: "إلغاء",
-      enterAmount: "أدخل المبلغ",
-      enterComment: "أدخل التعليق",
-      holdFeeAddedBy: "أضيفت بواسطة",
-      holdFeeAddedAt: "تاريخ الإضافة",
+      holdFee: tl("رسوم الحجز", "Hold fee"),
+      holdFeeAmount: tl("مبلغ الحجز", "Hold amount"),
+      holdFeeComment: tl("تعليق الحجز", "Hold comment"),
+      addHoldFee: tl("إضافة رسوم حجز", "Add hold fee"),
+      editHoldFee: tl("تعديل رسوم الحجز", "Edit hold fee"),
+      removeHoldFee: tl("إزالة رسوم الحجز", "Remove hold fee"),
+      save: tl("حفظ", "Save"),
+      cancel: tl("إلغاء", "Cancel"),
+      enterAmount: tl("أدخل المبلغ", "Enter amount"),
+      enterComment: tl("أدخل التعليق", "Enter comment"),
+      holdFeeAddedBy: tl("أضيفت بواسطة", "Added by"),
+      holdFeeAddedAt: tl("تاريخ الإضافة", "Added at"),
     }
     return translations[key] || key
-  }).current
+  }
 
   const [summaryList, setSummaryList] = useState<CourierSummary[]>([])
   const [allOrders, setAllOrders] = useState<Order[]>([])
@@ -568,7 +569,7 @@ const Summary: React.FC = () => {
         // For admin users
         console.log('Fetching couriers list...')
         const { data: couriers } = await supabase.from("users").select("id, name").eq("role", "courier")
-        setSummaryList((couriers ?? []).map((c) => ({ courierId: c.id, courierName: c.name ?? "مندوب" })))
+        setSummaryList((couriers ?? []).map((c) => ({ courierId: c.id, courierName: c.name ?? translate("courier") })))
 
         if (selectedCourier) {
           // If a courier is selected, fetch all their orders for the date range
@@ -808,7 +809,7 @@ const Summary: React.FC = () => {
     } catch (error) {
       console.error("Error saving hold fee:", error)
       // Show error to user
-      alert(`Failed to save hold fee: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      alert(`${tl('فشل حفظ رسوم الحجز', 'Failed to save hold fee')}: ${error instanceof Error ? error.message : tl('خطأ غير معروف', 'Unknown error')}`)
     } finally {
       setHoldFeeLoading(false)
     }
@@ -1313,7 +1314,7 @@ const Summary: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50" dir="rtl">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50" dir={language === 'ar' ? 'rtl' : 'ltr'}>
         <div className="text-center space-y-4">
           <div
             className={`border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto ${
@@ -1328,7 +1329,7 @@ const Summary: React.FC = () => {
 
   if (!user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50" dir="rtl">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50" dir={language === 'ar' ? 'rtl' : 'ltr'}>
         <div className="text-center space-y-4">
           <div
             className={`bg-red-100 rounded-full flex items-center justify-center mx-auto ${
@@ -1348,7 +1349,7 @@ const Summary: React.FC = () => {
   // For admin users, show analytics or courier selection
   if (user.role !== "courier" && !selectedCourier) {
     return (
-      <div className="min-h-screen bg-gray-50" dir="rtl">
+      <div className="min-h-screen bg-gray-50" dir={language === 'ar' ? 'rtl' : 'ltr'}>
         {/* Header */}
         <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
           <div className="max-w-7xl mx-auto px-6 py-6">
@@ -1358,8 +1359,8 @@ const Summary: React.FC = () => {
                   <Calculator className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                  <h1 className="text-2xl font-bold text-gray-900">لوحة المحاسبة التفصيلية</h1>
-                  <p className="text-gray-600">تحليل شامل لجميع العمليات المالية</p>
+                  <h1 className="text-2xl font-bold text-gray-900">{tl("لوحة المحاسبة التفصيلية", "Detailed accounting dashboard")}</h1>
+                  <p className="text-gray-600">{tl("تحليل شامل لجميع العمليات المالية", "Comprehensive analysis of all financial operations")}</p>
                 </div>
               </div>
               <div className="flex items-center gap-4">
@@ -1378,7 +1379,7 @@ const Summary: React.FC = () => {
                   className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
                 >
                   <RefreshCw className="w-4 h-4" />
-                  تحديث
+                  {tl("تحديث", "Refresh")}
                 </button>
                 
                 {/* Debug Info */}
@@ -1467,7 +1468,7 @@ const Summary: React.FC = () => {
               }`}
             >
               <Calculator className="w-4 h-4" />
-              <span>لوحة المحاسبة الشاملة</span>
+              <span>{tl("لوحة المحاسبة الشاملة", "Full accounting dashboard")}</span>
             </button>
             <button
               onClick={() => setShowAnalytics(false)}
@@ -1496,28 +1497,28 @@ const Summary: React.FC = () => {
                       <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
                         <Package className="w-6 h-6 text-blue-600" />
                       </div>
-                      <h2 className="text-xl font-bold text-gray-900">📦 ملخص الطلبات</h2>
+                      <h2 className="text-xl font-bold text-gray-900">📦 {tl("ملخص الطلبات", "Orders summary")}</h2>
                     </div>
                     <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
                       {/* Total Orders */}
                       <div
                         className="bg-gray-50 border-2 border-gray-200 rounded-xl p-6 cursor-pointer hover:shadow-lg transition-all group"
-                        onClick={() => openOrders(metrics.allOrders, "إجمالي الطلبات")}
+                        onClick={() => openOrders(metrics.allOrders, tl("إجمالي الطلبات", "Total orders"))}
                       >
                         <div className="flex items-center gap-4 mb-4">
                           <div className="w-12 h-12 bg-gray-200 rounded-xl flex items-center justify-center">
                             <Package className="w-6 h-6 text-gray-700" />
                           </div>
                           <div>
-                            <h3 className="text-lg font-bold text-gray-900">إجمالي الطلبات</h3>
-                            <p className="text-sm text-gray-700">{metrics.totalOrdersCount} طلب</p>
+                            <h3 className="text-lg font-bold text-gray-900">{tl("إجمالي الطلبات", "Total orders")}</h3>
+                            <p className="text-sm text-gray-700">{metrics.totalOrdersCount} {tl("طلب", "orders")}</p>
                           </div>
                         </div>
                         <div className="space-y-2">
                           <div className="flex justify-between items-center pt-2 border-t border-gray-300">
-                            <span className="font-bold text-gray-700">القيمة الأصلية:</span>
+                            <span className="font-bold text-gray-700">{tl("القيمة الأصلية:", "Original value:")}</span>
                             <span className="font-bold text-gray-900">
-                              {metrics.totalOrdersOriginalValue.toFixed(2)} ج.م
+                              {metrics.totalOrdersOriginalValue.toFixed(2)} {tl("ج.م", "EGP")}
                             </span>
                           </div>
                         </div>
@@ -1528,28 +1529,28 @@ const Summary: React.FC = () => {
                       {/* Assigned Orders */}
                       <div
                         className="bg-blue-50 border-2 border-blue-200 rounded-xl p-6 cursor-pointer hover:shadow-lg transition-all group"
-                        onClick={() => openOrders(metrics.assigned.orders, "الطلبات المكلفة")}
+                        onClick={() => openOrders(metrics.assigned.orders, tl("الطلبات المكلفة", "Assigned orders"))}
                       >
                         <div className="flex items-center gap-4 mb-4">
                           <div className="w-12 h-12 bg-blue-200 rounded-xl flex items-center justify-center">
                             <Clock className="w-6 h-6 text-blue-700" />
                           </div>
                           <div>
-                            <h3 className="text-lg font-bold text-blue-900">الطلبات المكلفة</h3>
-                            <p className="text-sm text-blue-700">{metrics.assigned.count} طلب</p>
+                            <h3 className="text-lg font-bold text-blue-900">{tl("الطلبات المكلفة", "Assigned orders")}</h3>
+                            <p className="text-sm text-blue-700">{metrics.assigned.count} {tl("طلب", "orders")}</p>
                           </div>
                         </div>
                         <div className="space-y-2">
                           <div className="flex justify-between items-center pt-2 border-t border-blue-300">
-                            <span className="text-sm font-bold text-blue-700">القيمة الأصلية:</span>
+                            <span className="text-sm font-bold text-blue-700">{tl("القيمة الأصلية:", "Original value:")}</span>
                             <span className="font-bold text-xl text-blue-900">
-                              {metrics.assigned.originalValue.toFixed(2)} ج.م
+                              {metrics.assigned.originalValue.toFixed(2)} {tl("ج.م", "EGP")}
                             </span>
                           </div>
                           <div className="flex justify-between items-center">
-                            <span className="text-sm font-bold text-blue-700">المحصل (تقديري):</span>
+                            <span className="text-sm font-bold text-blue-700">{tl("المحصل (تقديري):", "Collected (estimated):")}</span>
                             <span className="font-bold text-xl text-blue-900">
-                              {metrics.assigned.courierCollected.toFixed(2)} ج.م
+                              {metrics.assigned.courierCollected.toFixed(2)} {tl("ج.م", "EGP")}
                             </span>
                           </div>
                         </div>
@@ -1560,28 +1561,28 @@ const Summary: React.FC = () => {
                       {/* Delivered Orders */}
                       <div
                         className="bg-green-50 border-2 border-green-200 rounded-xl p-6 cursor-pointer hover:shadow-lg transition-all group"
-                        onClick={() => openOrders(metrics.delivered.orders, "الطلبات المسلمة")}
+                        onClick={() => openOrders(metrics.delivered.orders, tl("الطلبات المسلمة", "Delivered orders"))}
                       >
                         <div className="flex items-center gap-4 mb-4">
                           <div className="w-12 h-12 bg-green-200 rounded-xl flex items-center justify-center">
                             <CheckCircle className="w-6 h-6 text-green-700" />
                           </div>
                           <div>
-                            <h3 className="text-lg font-bold text-green-900">الطلبات المسلمة</h3>
-                            <p className="text-sm text-green-700">{metrics.delivered.count} طلب</p>
+                            <h3 className="text-lg font-bold text-green-900">{tl("الطلبات المسلمة", "Delivered orders")}</h3>
+                            <p className="text-sm text-green-700">{metrics.delivered.count} {tl("طلب", "orders")}</p>
                           </div>
                         </div>
                         <div className="space-y-2">
                           <div className="flex justify-between items-center pt-2 border-t border-green-300">
-                            <span className="text-sm font-bold text-green-700">القيمة الأصلية:</span>
+                            <span className="text-sm font-bold text-green-700">{tl("القيمة الأصلية:", "Original value:")}</span>
                             <span className="font-bold text-xl text-green-900">
-                              {metrics.delivered.originalValue.toFixed(2)} ج.م
+                              {metrics.delivered.originalValue.toFixed(2)} {tl("ج.م", "EGP")}
                             </span>
                           </div>
                           <div className="flex justify-between items-center">
-                            <span className="text-sm font-bold text-green-700">المحصل فعلياً:</span>
+                            <span className="text-sm font-bold text-green-700">{tl("المحصل فعلياً:", "Actually collected:")}</span>
                             <span className="font-bold text-xl text-green-900">
-                              {metrics.delivered.courierCollected.toFixed(2)} ج.م
+                              {metrics.delivered.courierCollected.toFixed(2)} {tl("ج.م", "EGP")}
                             </span>
                           </div>
                         </div>
@@ -1592,28 +1593,28 @@ const Summary: React.FC = () => {
                       {/* Canceled Orders */}
                       <div
                         className="bg-red-50 border-2 border-red-200 rounded-xl p-6 cursor-pointer hover:shadow-lg transition-all group"
-                        onClick={() => openOrders(metrics.canceled.orders, "الطلبات الملغاة")}
+                        onClick={() => openOrders(metrics.canceled.orders, tl("الطلبات الملغاة", "Canceled orders"))}
                       >
                         <div className="flex items-center gap-4 mb-4">
                           <div className="w-12 h-12 bg-red-200 rounded-xl flex items-center justify-center">
                             <XCircle className="w-6 h-6 text-red-700" />
                           </div>
                           <div>
-                            <h3 className="text-lg font-bold text-red-900">الطلبات الملغاة</h3>
-                            <p className="text-sm text-red-700">{metrics.canceled.count} طلب</p>
+                            <h3 className="text-lg font-bold text-red-900">{tl("الطلبات الملغاة", "Canceled orders")}</h3>
+                            <p className="text-sm text-red-700">{metrics.canceled.count} {tl("طلب", "orders")}</p>
                           </div>
                         </div>
                         <div className="space-y-2">
                           <div className="flex justify-between items-center pt-2 border-t border-red-300">
-                            <span className="text-sm font-bold text-red-700">القيمة الأصلية:</span>
+                            <span className="text-sm font-bold text-red-700">{tl("القيمة الأصلية:", "Original value:")}</span>
                             <span className="font-bold text-xl text-red-900">
-                              {metrics.canceled.originalValue.toFixed(2)} ج.م
+                              {metrics.canceled.originalValue.toFixed(2)} {tl("ج.م", "EGP")}
                             </span>
                           </div>
                           <div className="flex justify-between items-center">
-                            <span className="text-sm font-bold text-red-700">المحصل (رسوم فقط):</span>
+                            <span className="text-sm font-bold text-red-700">{tl("المحصل (رسوم فقط):", "Collected (fees only):")}</span>
                             <span className="font-bold text-xl text-red-900">
-                              {metrics.canceled.courierCollected.toFixed(2)} ج.م
+                              {metrics.canceled.courierCollected.toFixed(2)} {tl("ج.م", "EGP")}
                             </span>
                           </div>
                         </div>
@@ -1624,28 +1625,28 @@ const Summary: React.FC = () => {
                       {/* Partial Orders */}
                       <div
                         className="bg-yellow-50 border-2 border-yellow-200 rounded-xl p-6 cursor-pointer hover:shadow-lg transition-all group"
-                        onClick={() => openOrders(metrics.partial.orders, "الطلبات الجزئية")}
+                        onClick={() => openOrders(metrics.partial.orders, tl("الطلبات الجزئية", "Partial orders"))}
                       >
                         <div className="flex items-center gap-4 mb-4">
                           <div className="w-12 h-12 bg-yellow-200 rounded-xl flex items-center justify-center">
                             <HandCoins className="w-6 h-6 text-yellow-700" />
                           </div>
                           <div>
-                            <h3 className="text-lg font-bold text-yellow-900">الطلبات الجزئية</h3>
-                            <p className="text-sm text-yellow-700">{metrics.partial.count} طلب</p>
+                            <h3 className="text-lg font-bold text-yellow-900">{tl("الطلبات الجزئية", "Partial orders")}</h3>
+                            <p className="text-sm text-yellow-700">{metrics.partial.count} {tl("طلب", "orders")}</p>
                           </div>
                         </div>
                         <div className="space-y-2">
                           <div className="flex justify-between items-center pt-2 border-t border-yellow-300">
-                            <span className="text-sm font-bold text-yellow-700">القيمة الأصلية:</span>
+                            <span className="text-sm font-bold text-yellow-700">{tl("القيمة الأصلية:", "Original value:")}</span>
                             <span className="font-bold text-xl text-yellow-900">
-                              {metrics.partial.originalValue.toFixed(2)} ج.م
+                              {metrics.partial.originalValue.toFixed(2)} {tl("ج.م", "EGP")}
                             </span>
                           </div>
                           <div className="flex justify-between items-center">
-                            <span className="text-sm font-bold text-yellow-700">المحصل فعلياً:</span>
+                            <span className="text-sm font-bold text-yellow-700">{tl("المحصل فعلياً:", "Actually collected:")}</span>
                             <span className="font-bold text-xl text-yellow-900">
-                              {metrics.partial.courierCollected.toFixed(2)} ج.م
+                              {metrics.partial.courierCollected.toFixed(2)} {tl("ج.م", "EGP")}
                             </span>
                           </div>
                         </div>
@@ -1656,28 +1657,28 @@ const Summary: React.FC = () => {
                       {/* Returned Orders */}
                       <div
                         className="bg-orange-50 border-2 border-orange-200 rounded-xl p-6 cursor-pointer hover:shadow-lg transition-all group"
-                        onClick={() => openOrders(metrics.returned.orders, "الطلبات المؤجله")}
+                        onClick={() => openOrders(metrics.returned.orders, tl("الطلبات المؤجله", "Deferred orders"))}
                       >
                         <div className="flex items-center gap-4 mb-4">
                           <div className="w-12 h-12 bg-orange-200 rounded-xl flex items-center justify-center">
                             <Truck className="w-6 h-6 text-orange-700" />
                           </div>
                           <div>
-                            <h3 className="text-lg font-bold text-orange-900">الطلبات المؤجله</h3>
-                            <p className="text-sm text-orange-700">{metrics.returned.count} طلب</p>
+                            <h3 className="text-lg font-bold text-orange-900">{tl("الطلبات المؤجله", "Deferred orders")}</h3>
+                            <p className="text-sm text-orange-700">{metrics.returned.count} {tl("طلب", "orders")}</p>
                           </div>
                         </div>
                         <div className="space-y-2">
                           <div className="flex justify-between items-center pt-2 border-t border-orange-300">
-                            <span className="text-sm font-bold text-orange-700">القيمة الأصلية:</span>
+                            <span className="text-sm font-bold text-orange-700">{tl("القيمة الأصلية:", "Original value:")}</span>
                             <span className="font-bold text-xl text-orange-900">
-                              {metrics.returned.originalValue.toFixed(2)} ج.م
+                              {metrics.returned.originalValue.toFixed(2)} {tl("ج.م", "EGP")}
                             </span>
                           </div>
                           <div className="flex justify-between items-center">
-                            <span className="text-sm font-bold text-orange-700">المحصل (رسوم فقط):</span>
+                            <span className="text-sm font-bold text-orange-700">{tl("المحصل (رسوم فقط):", "Collected (fees only):")}</span>
                             <span className="font-bold text-xl text-orange-900">
-                              {metrics.returned.courierCollected.toFixed(2)} ج.م
+                              {metrics.returned.courierCollected.toFixed(2)} {tl("ج.م", "EGP")}
                             </span>
                           </div>
                         </div>
@@ -1688,28 +1689,28 @@ const Summary: React.FC = () => {
                       {/* Receiving Part Orders */}
                       <div
                         className="bg-indigo-50 border-2 border-indigo-200 rounded-xl p-6 cursor-pointer hover:shadow-lg transition-all group"
-                        onClick={() => openOrders(metrics.receivingPart.orders, "طلبات استلام قطعة")}
+                        onClick={() => openOrders(metrics.receivingPart.orders, tl("طلبات استلام قطعة", "Part-receipt orders"))}
                       >
                         <div className="flex items-center gap-4 mb-4">
                           <div className="w-12 h-12 bg-indigo-200 rounded-xl flex items-center justify-center">
                             <HandMetal className="w-6 h-6 text-indigo-700" />
                           </div>
                           <div>
-                            <h3 className="text-lg font-bold text-indigo-900">طلبات استلام قطعة</h3>
-                            <p className="text-sm text-indigo-700">{metrics.receivingPart.count} طلب</p>
+                            <h3 className="text-lg font-bold text-indigo-900">{tl("طلبات استلام قطعة", "Part-receipt orders")}</h3>
+                            <p className="text-sm text-indigo-700">{metrics.receivingPart.count} {tl("طلب", "orders")}</p>
                           </div>
                         </div>
                         <div className="space-y-2">
                           <div className="flex justify-between items-center pt-2 border-t border-indigo-300">
-                            <span className="text-sm font-bold text-indigo-700">القيمة الأصلية:</span>
+                            <span className="text-sm font-bold text-indigo-700">{tl("القيمة الأصلية:", "Original value:")}</span>
                             <span className="font-bold text-xl text-indigo-900">
-                              {metrics.receivingPart.originalValue.toFixed(2)} ج.م
+                              {metrics.receivingPart.originalValue.toFixed(2)} {tl("ج.م", "EGP")}
                             </span>
                           </div>
                           <div className="flex justify-between items-center">
-                            <span className="text-sm font-bold text-indigo-700">المحصل فعلياً:</span>
+                            <span className="text-sm font-bold text-indigo-700">{tl("المحصل فعلياً:", "Actually collected:")}</span>
                             <span className="font-bold text-xl text-indigo-900">
-                              {metrics.receivingPart.courierCollected.toFixed(2)} ج.م
+                              {metrics.receivingPart.courierCollected.toFixed(2)} {tl("ج.م", "EGP")}
                             </span>
                           </div>
                         </div>
@@ -1720,28 +1721,28 @@ const Summary: React.FC = () => {
                       {/* Hand-to-Hand Orders */}
                       <div
                         className="bg-purple-50 border-2 border-purple-200 rounded-xl p-6 cursor-pointer hover:shadow-lg transition-all group"
-                        onClick={() => openOrders(metrics.handToHand.orders, "الطلبات يد بيد")}
+                        onClick={() => openOrders(metrics.handToHand.orders, tl("الطلبات يد بيد", "Hand-to-hand orders"))}
                       >
                         <div className="flex items-center gap-4 mb-4">
                           <div className="w-12 h-12 bg-purple-200 rounded-xl flex items-center justify-center">
                             <RefreshCw className="w-6 h-6 text-purple-700" />
                           </div>
                           <div>
-                            <h3 className="text-lg font-bold text-purple-900">الطلبات يد بيد</h3>
-                            <p className="text-sm text-purple-700">{metrics.handToHand.count} طلب</p>
+                            <h3 className="text-lg font-bold text-purple-900">{tl("الطلبات يد بيد", "Hand-to-hand orders")}</h3>
+                            <p className="text-sm text-purple-700">{metrics.handToHand.count} {tl("طلب", "orders")}</p>
                           </div>
                         </div>
                         <div className="space-y-2">
                           <div className="flex justify-between items-center pt-2 border-t border-purple-300">
-                            <span className="text-sm font-bold text-purple-700">القيمة الأصلية:</span>
+                            <span className="text-sm font-bold text-purple-700">{tl("القيمة الأصلية:", "Original value:")}</span>
                             <span className="font-bold text-xl text-purple-900">
-                              {metrics.handToHand.originalValue.toFixed(2)} ج.م
+                              {metrics.handToHand.originalValue.toFixed(2)} {tl("ج.م", "EGP")}
                             </span>
                           </div>
                           <div className="flex justify-between items-center">
-                            <span className="text-sm font-bold text-purple-700">المحصل فعلياً:</span>
+                            <span className="text-sm font-bold text-purple-700">{tl("المحصل فعلياً:", "Actually collected:")}</span>
                             <span className="font-bold text-xl text-purple-900">
-                              {metrics.handToHand.courierCollected.toFixed(2)} ج.م
+                              {metrics.handToHand.courierCollected.toFixed(2)} {tl("ج.م", "EGP")}
                             </span>
                           </div>
                         </div>
@@ -1758,7 +1759,7 @@ const Summary: React.FC = () => {
                       <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center">
                         <Calculator className="w-6 h-6 text-emerald-600" />
                       </div>
-                      <h2 className="text-xl font-bold text-gray-900">💰 ملخص المحصل والغير مُسلَّم</h2>
+                      <h2 className="text-xl font-bold text-gray-900">💰 {tl("ملخص المحصل والغير مُسلَّم", "Collected & undelivered summary")}</h2>
                     </div>
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                       {/* Total Collected */}
@@ -1780,7 +1781,7 @@ const Summary: React.FC = () => {
                             // Include all orders since we're now including fees only
                             return true
                           })
-                          openOrders(collectedOrders, "إجمالي مُسلَّم فعليًا")
+                          openOrders(collectedOrders, tl("إجمالي مُسلَّم فعليًا", "Total actually delivered"))
                         }}
                       >
                         <div className="flex items-center gap-4 mb-4">
@@ -1788,13 +1789,13 @@ const Summary: React.FC = () => {
                             <CheckCircle className="w-6 h-6 text-emerald-700" />
                           </div>
                           <div>
-                            <h3 className="text-lg font-bold text-emerald-900">إجمالي مُسلَّم فعليًا</h3>
-                            <p className="text-sm text-emerald-700">مجموع المحصَّل فعليًا</p>
+                            <h3 className="text-lg font-bold text-emerald-900">{tl("إجمالي مُسلَّم فعليًا", "Total actually delivered")}</h3>
+                            <p className="text-sm text-emerald-700">{tl("مجموع المحصَّل فعليًا", "Total actually collected")}</p>
                           </div>
                         </div>
                         <div className="space-y-2">
                           <div className="flex justify-between items-center pt-2 border-t border-emerald-300">
-                            <span className="text-sm font-bold text-emerald-700">المحصل فعلياً:</span>
+                            <span className="text-sm font-bold text-emerald-700">{tl("المحصل فعلياً:", "Actually collected:")}</span>
                             <span className="font-bold text-xl text-emerald-900">
                               {(() => {
                                 // Calculate total collected from all statuses including fees only
@@ -1806,11 +1807,11 @@ const Summary: React.FC = () => {
                                   metrics.canceled.courierCollected + // رسوم فقط
                                   metrics.returned.courierCollected    // رسوم فقط
                                 return totalCollected.toFixed(2)
-                              })()} ج.م
+                              })()} {tl("ج.م", "EGP")}
                             </span>
                           </div>
                           <div className="flex justify-between items-center">
-                            <span className="text-sm font-bold text-emerald-700">الطلبات:</span>
+                            <span className="text-sm font-bold text-emerald-700">{tl("الطلبات:", "Orders:")}</span>
                             <span className="font-bold text-emerald-900">
                               {(() => {
                                 const collectedOrders = [
@@ -1827,7 +1828,7 @@ const Summary: React.FC = () => {
                                   return true // Include all orders since we're now including fees only
                                 }).length
                                 return collectedOrders
-                              })()} طلب
+                              })()} {tl("طلب", "orders")}
                             </span>
                           </div>
                         </div>
@@ -1844,7 +1845,7 @@ const Summary: React.FC = () => {
                             ...metrics.returned.orders,
                             ...metrics.assigned.orders
                           ]
-                          openOrders(notDeliveredOrders, "إجمالي غير مُسلَّم")
+                          openOrders(notDeliveredOrders, tl("إجمالي غير مُسلَّم", "Total undelivered"))
                         }}
                       >
                         <div className="flex items-center gap-4 mb-4">
@@ -1852,13 +1853,13 @@ const Summary: React.FC = () => {
                             <XCircle className="w-6 h-6 text-red-700" />
                           </div>
                           <div>
-                            <h3 className="text-lg font-bold text-red-900">إجمالي غير مُسلَّم</h3>
-                            <p className="text-sm text-red-700">مجموع العجز/الغير مُحصَّل</p>
+                            <h3 className="text-lg font-bold text-red-900">{tl("إجمالي غير مُسلَّم", "Total undelivered")}</h3>
+                            <p className="text-sm text-red-700">{tl("مجموع العجز/الغير مُحصَّل", "Total deficit / uncollected")}</p>
                           </div>
                         </div>
                         <div className="space-y-2">
                           <div className="flex justify-between items-center pt-2 border-t border-red-300">
-                            <span className="text-sm font-bold text-red-700">الغير مُسلَّم:</span>
+                            <span className="text-sm font-bold text-red-700">{tl("الغير مُسلَّم:", "Undelivered:")}</span>
                                                     <span className="font-bold text-xl text-red-900">
                           {(() => {
                             // Calculate total not delivered according to the specified rules
@@ -1883,11 +1884,11 @@ const Summary: React.FC = () => {
                             totalNotDelivered += metrics.returned.originalValue
                             
                             return totalNotDelivered.toFixed(2)
-                          })()} ج.م
+                          })()} {tl("ج.م", "EGP")}
                             </span>
                           </div>
                           <div className="flex justify-between items-center">
-                            <span className="text-sm font-bold text-red-700">الطلبات:</span>
+                            <span className="text-sm font-bold text-red-700">{tl("الطلبات:", "Orders:")}</span>
                             <span className="font-bold text-red-900">
                               {(() => {
                                 const notDeliveredCount = 
@@ -1895,7 +1896,7 @@ const Summary: React.FC = () => {
                                   metrics.returned.count +
                                   metrics.assigned.count
                                 return notDeliveredCount
-                              })()} طلب
+                              })()} {tl("طلب", "orders")}
                             </span>
                           </div>
                         </div>
@@ -1913,7 +1914,7 @@ const Summary: React.FC = () => {
                         <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center">
                           <CreditCard className="w-6 h-6 text-purple-600" />
                         </div>
-                        <h2 className="text-xl font-bold text-gray-900">💳 تفصيل طرق الدفع</h2>
+                        <h2 className="text-xl font-bold text-gray-900">💳 {tl("تفصيل طرق الدفع", "Payment breakdown")}</h2>
                       </div>
                       {/* Hold Fee Filter Toggle */}
                       <div className="flex items-center gap-3 bg-purple-50 px-3 py-2 rounded-lg border border-purple-200">
@@ -1927,7 +1928,7 @@ const Summary: React.FC = () => {
                             }}
                             className="w-5 h-5 text-purple-600 bg-white border-purple-300 rounded focus:ring-purple-500 focus:ring-2"
                           />
-                          <span className="text-purple-800 font-medium">تضمين رسوم الحجز</span>
+                          <span className="text-purple-800 font-medium">{tl("تضمين رسوم الحجز", "Include hold fees")}</span>
                         </label>
                       </div>
                     </div>
@@ -1936,16 +1937,16 @@ const Summary: React.FC = () => {
                       {metrics.visaMachineOrders.count > 0 && (
                         <div
                           className="bg-slate-50 border-2 border-slate-200 rounded-xl p-4 cursor-pointer hover:shadow-lg transition-all group"
-                          onClick={() => openOrders(metrics.visaMachineOrders.orders, "طلبات ماكينة فيزا", 'visa_machine')}
+                          onClick={() => openOrders(metrics.visaMachineOrders.orders, tl("طلبات ماكينة فيزا", "Visa machine orders"), 'visa_machine')}
                         >
                           <div className="flex items-center gap-3 mb-3">
                             <Monitor className="w-6 h-6 text-slate-600" />
-                            <h4 className="font-semibold text-slate-900">ماكينة فيزا</h4>
+                            <h4 className="font-semibold text-slate-900">{tl("ماكينة فيزا", "Visa machine")}</h4>
                           </div>
                           <div className="space-y-1">
                             <p className="text-2xl font-bold text-slate-900">{metrics.visaMachineOrders.count}</p>
                             <p className="text-lg font-semibold text-slate-700">
-                              {metrics.visaMachineOrders.amount.toFixed(2)} ج.م
+                              {metrics.visaMachineOrders.amount.toFixed(2)} {tl("ج.م", "EGP")}
                             </p>
                           </div>
                         </div>
@@ -1954,16 +1955,16 @@ const Summary: React.FC = () => {
                       {metrics.instapayOrders.count > 0 && (
                         <div
                           className="bg-cyan-50 border-2 border-cyan-200 rounded-xl p-4 cursor-pointer hover:shadow-lg transition-all group"
-                          onClick={() => openOrders(metrics.instapayOrders.orders, "طلبات إنستاباي", 'instapay')}
+                          onClick={() => openOrders(metrics.instapayOrders.orders, tl("طلبات إنستاباي", "InstaPay orders"), 'instapay')}
                         >
                           <div className="flex items-center gap-3 mb-3">
                             <Smartphone className="w-6 h-6 text-cyan-600" />
-                            <h4 className="font-semibold text-cyan-900">إنستاباي</h4>
+                            <h4 className="font-semibold text-cyan-900">{tl("إنستاباي", "InstaPay")}</h4>
                           </div>
                           <div className="space-y-1">
                             <p className="text-2xl font-bold text-cyan-900">{metrics.instapayOrders.count}</p>
                             <p className="text-lg font-semibold text-cyan-700">
-                              {metrics.instapayOrders.amount.toFixed(2)} ج.م
+                              {metrics.instapayOrders.amount.toFixed(2)} {tl("ج.م", "EGP")}
                             </p>
                           </div>
                         </div>
@@ -1972,16 +1973,16 @@ const Summary: React.FC = () => {
                       {metrics.walletOrders.count > 0 && (
                         <div
                           className="bg-teal-50 border-2 border-teal-200 rounded-xl p-4 cursor-pointer hover:shadow-lg transition-all group"
-                          onClick={() => openOrders(metrics.walletOrders.orders, "طلبات المحفظة", 'wallet')}
+                          onClick={() => openOrders(metrics.walletOrders.orders, tl("طلبات المحفظة", "Wallet orders"), 'wallet')}
                         >
                           <div className="flex items-center gap-3 mb-3">
                             <Wallet className="w-6 h-6 text-teal-600" />
-                            <h4 className="font-semibold text-teal-900">المحفظة</h4>
+                            <h4 className="font-semibold text-teal-900">{tl("المحفظة", "Wallet")}</h4>
                           </div>
                           <div className="space-y-1">
                             <p className="text-2xl font-bold text-teal-900">{metrics.walletOrders.count}</p>
                             <p className="text-lg font-semibold text-teal-700">
-                              {metrics.walletOrders.amount.toFixed(2)} ج.م
+                              {metrics.walletOrders.amount.toFixed(2)} {tl("ج.م", "EGP")}
                             </p>
                           </div>
                         </div>
@@ -1990,16 +1991,16 @@ const Summary: React.FC = () => {
                       {metrics.cashOnHandOrders.count > 0 && (
                         <div
                           className="bg-emerald-50 border-2 border-emerald-200 rounded-xl p-4 cursor-pointer hover:shadow-lg transition-all group"
-                          onClick={() => openOrders(metrics.cashOnHandOrders.orders, "طلبات نقداً", 'on_hand')}
+                          onClick={() => openOrders(metrics.cashOnHandOrders.orders, tl("طلبات نقداً", "Cash orders"), 'on_hand')}
                         >
                           <div className="flex items-center gap-3 mb-3">
                             <Banknote className="w-6 h-6 text-emerald-600" />
-                            <h4 className="font-semibold text-emerald-900">نقداً</h4>
+                            <h4 className="font-semibold text-emerald-900">{tl("نقداً", "Cash")}</h4>
                           </div>
                           <div className="space-y-1">
                             <p className="text-2xl font-bold text-emerald-900">{metrics.cashOnHandOrders.count}</p>
                             <p className="text-lg font-semibold text-emerald-700">
-                              {metrics.cashOnHandOrders.amount.toFixed(2)} ج.م
+                              {metrics.cashOnHandOrders.amount.toFixed(2)} {tl("ج.م", "EGP")}
                             </p>
                           </div>
                         </div>
@@ -2008,16 +2009,16 @@ const Summary: React.FC = () => {
                       {metrics.totalCODOrders.count > 0 && (
                         <div
                           className="bg-amber-50 border-2 border-amber-200 rounded-xl p-4 cursor-pointer hover:shadow-lg transition-all group"
-                          onClick={() => openOrders(metrics.totalCODOrders.orders, "إجمالي الدفع عند التسليم")}
+                          onClick={() => openOrders(metrics.totalCODOrders.orders, tl("إجمالي الدفع عند التسليم", "Total COD"))}
                         >
                           <div className="flex items-center gap-3 mb-3">
                             <HandCoins className="w-6 h-6 text-amber-600" />
-                            <h4 className="font-semibold text-amber-900">إجمالي COD</h4>
+                            <h4 className="font-semibold text-amber-900">{tl("إجمالي COD", "Total COD")}</h4>
                           </div>
                           <div className="space-y-1">
                             <p className="text-2xl font-bold text-amber-900">{metrics.totalCODOrders.count}</p>
                             <p className="text-lg font-semibold text-amber-700">
-                              {metrics.totalCODOrders.amount.toFixed(2)} ج.م
+                              {metrics.totalCODOrders.amount.toFixed(2)} {tl("ج.م", "EGP")}
                             </p>
                           </div>
                         </div>
@@ -2029,16 +2030,16 @@ const Summary: React.FC = () => {
                       {metrics.valuOrders.count > 0 && (
                         <div
                           className="bg-indigo-50 border-2 border-indigo-200 rounded-xl p-4 cursor-pointer hover:shadow-lg transition-all group"
-                          onClick={() => openOrders(metrics.valuOrders.orders, "طلبات فاليو", 'valu')}
+                          onClick={() => openOrders(metrics.valuOrders.orders, tl("طلبات فاليو", "ValU orders"), 'valu')}
                         >
                           <div className="flex items-center gap-3 mb-3">
                             <Wallet className="w-6 h-6 text-indigo-600" />
-                            <h4 className="font-semibold text-indigo-900">فاليو</h4>
+                            <h4 className="font-semibold text-indigo-900">{tl("فاليو", "ValU")}</h4>
                           </div>
                           <div className="space-y-1">
                             <p className="text-2xl font-bold text-indigo-900">{metrics.valuOrders.count}</p>
                             <p className="text-lg font-semibold text-indigo-700">
-                              {metrics.valuOrders.amount.toFixed(2)} ج.م
+                              {metrics.valuOrders.amount.toFixed(2)} {tl("ج.م", "EGP")}
                             </p>
                           </div>
                         </div>
@@ -2047,7 +2048,7 @@ const Summary: React.FC = () => {
                       {metrics.paymobOrders.count > 0 && (
                         <div
                           className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4 cursor-pointer hover:shadow-lg transition-all group"
-                          onClick={() => openOrders(metrics.paymobOrders.orders, "طلبات paymob", 'paymob')}
+                          onClick={() => openOrders(metrics.paymobOrders.orders, tl("طلبات paymob", "Paymob orders"), 'paymob')}
                         >
                           <div className="flex items-center gap-3 mb-3">
                             <CreditCard className="w-6 h-6 text-blue-600" />
@@ -2056,7 +2057,7 @@ const Summary: React.FC = () => {
                           <div className="space-y-1">
                             <p className="text-2xl font-bold text-blue-900">{metrics.paymobOrders.count}</p>
                             <p className="text-lg font-semibold text-blue-700">
-                              {metrics.paymobOrders.amount.toFixed(2)} ج.م
+                              {metrics.paymobOrders.amount.toFixed(2)} {tl("ج.م", "EGP")}
                             </p>
                           </div>
                         </div>
@@ -2071,12 +2072,12 @@ const Summary: React.FC = () => {
                         <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center">
                           <AlertCircle className="w-6 h-6 text-red-600" />
                         </div>
-                        <h2 className="text-xl font-bold text-gray-900">🚨 رسوم الحجز</h2>
+                        <h2 className="text-xl font-bold text-gray-900">🚨 {tl("رسوم الحجز", "Hold fees")}</h2>
                       </div>
                       
                       {/* Hold Date Filter */}
                       <div className="flex items-center gap-2">
-                        <span className="text-sm text-gray-600">فلتر التاريخ:</span>
+                        <span className="text-sm text-gray-600">{tl("فلتر التاريخ:", "Date filter:")}</span>
                         <select
                           value={holdDateFilter}
                           onChange={(e) => {
@@ -2087,12 +2088,12 @@ const Summary: React.FC = () => {
                           }}
                           className="px-3 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
                         >
-                          <option value="all">جميع الأيام</option>
-                          <option value="today">اليوم</option>
-                          <option value="yesterday">أمس</option>
-                          <option value="last7days">آخر 7 أيام</option>
-                          <option value="last30days">آخر 30 يوم</option>
-                          <option value="custom">تاريخ مخصص</option>
+                          <option value="all">{tl("جميع الأيام", "All days")}</option>
+                          <option value="today">{tl("اليوم", "Today")}</option>
+                          <option value="yesterday">{tl("أمس", "Yesterday")}</option>
+                          <option value="last7days">{tl("آخر 7 أيام", "Last 7 days")}</option>
+                          <option value="last30days">{tl("آخر 30 يوم", "Last 30 days")}</option>
+                          <option value="custom">{tl("تاريخ مخصص", "Custom date")}</option>
                         </select>
                         {holdDateFilter === "custom" && (
                           <input
@@ -2120,20 +2121,20 @@ const Summary: React.FC = () => {
                         return (
                           <div
                             className={`${orders.length > 0 ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200'} border-2 rounded-xl p-4 ${orders.length > 0 ? 'cursor-pointer hover:shadow-lg' : ''} transition-all group`}
-                            onClick={orders.length > 0 ? () => openOrders(orders, "رسوم الحجز النشطة (جميع الأيام)") : undefined}
+                            onClick={orders.length > 0 ? () => openOrders(orders, tl("رسوم الحجز النشطة (جميع الأيام)", "Active hold fees (all days)")) : undefined}
                           >
                             <div className="flex items-center gap-3 mb-3">
                               <AlertCircle className={`w-6 h-6 ${orders.length > 0 ? 'text-red-600' : 'text-gray-400'}`} />
-                              <h4 className={`font-semibold ${orders.length > 0 ? 'text-red-900' : 'text-gray-500'}`}>رسوم حجز نشطة</h4>
+                              <h4 className={`font-semibold ${orders.length > 0 ? 'text-red-900' : 'text-gray-500'}`}>{tl("رسوم حجز نشطة", "Active hold fees")}</h4>
                             </div>
                             <div className="space-y-1">
                               <p className={`text-2xl font-bold ${orders.length > 0 ? 'text-red-900' : 'text-gray-500'}`}>{orders.length}</p>
                               <p className={`text-lg font-semibold ${orders.length > 0 ? 'text-red-700' : 'text-gray-400'}`}>
-                                {amount.toFixed(2)} ج.م
+                                {amount.toFixed(2)} {tl("ج.م", "EGP")}
                               </p>
                               {sortedOrders.length > 0 && (sortedOrders[0].hold_fee_added_at || sortedOrders[0].hold_fee_created_at) && (
                                 <p className="text-sm text-red-600">
-                                  آخر إضافة: {new Date(sortedOrders[0].hold_fee_added_at || sortedOrders[0].hold_fee_created_at || '').toLocaleDateString('ar-EG', {
+                                  {tl("آخر إضافة:", "Last added:")} {new Date(sortedOrders[0].hold_fee_added_at || sortedOrders[0].hold_fee_created_at || '').toLocaleDateString('en-US', {
                                     year: 'numeric',
                                     month: '2-digit',
                                     day: '2-digit'
@@ -2159,20 +2160,20 @@ const Summary: React.FC = () => {
                         return (
                           <div
                             className={`${orders.length > 0 ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'} border-2 rounded-xl p-4 ${orders.length > 0 ? 'cursor-pointer hover:shadow-lg' : ''} transition-all group`}
-                            onClick={orders.length > 0 ? () => openOrders(orders, "رسوم الحجز المزالة (جميع الأيام)") : undefined}
+                            onClick={orders.length > 0 ? () => openOrders(orders, tl("رسوم الحجز المزالة (جميع الأيام)", "Removed hold fees (all days)")) : undefined}
                           >
                             <div className="flex items-center gap-3 mb-3">
                               <CheckCircle className={`w-6 h-6 ${orders.length > 0 ? 'text-green-600' : 'text-gray-400'}`} />
-                              <h4 className={`font-semibold ${orders.length > 0 ? 'text-green-900' : 'text-gray-500'}`}>رسوم حجز مزالة</h4>
+                              <h4 className={`font-semibold ${orders.length > 0 ? 'text-green-900' : 'text-gray-500'}`}>{tl("رسوم حجز مزالة", "Removed hold fees")}</h4>
                             </div>
                             <div className="space-y-1">
                               <p className={`text-2xl font-bold ${orders.length > 0 ? 'text-green-900' : 'text-gray-500'}`}>{orders.length}</p>
                               <p className={`text-lg font-semibold ${orders.length > 0 ? 'text-green-700' : 'text-gray-400'}`}>
-                                {orders.length > 0 ? 'تم الإزالة' : 'لا توجد'}
+                                {orders.length > 0 ? tl('تم الإزالة', 'Removed') : tl('لا توجد', 'None')}
                               </p>
                               {sortedOrders.length > 0 && (sortedOrders[0].hold_fee_removed_at || sortedOrders[0].hold_fee_created_at) && (
                                 <p className="text-sm text-green-600">
-                                  آخر إزالة: {new Date(sortedOrders[0].hold_fee_removed_at || sortedOrders[0].hold_fee_created_at || '').toLocaleDateString('ar-EG', {
+                                  {tl("آخر إزالة:", "Last removed:")} {new Date(sortedOrders[0].hold_fee_removed_at || sortedOrders[0].hold_fee_created_at || '').toLocaleDateString('en-US', {
                                     year: 'numeric',
                                     month: '2-digit',
                                     day: '2-digit'
@@ -2192,14 +2193,14 @@ const Summary: React.FC = () => {
                       <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center">
                         <Receipt className="w-6 h-6 text-green-600" />
                       </div>
-                      <h2 className="text-xl font-bold text-gray-900">🧾 إجمالي ما يسلم للمحاسبة</h2>
+                      <h2 className="text-xl font-bold text-gray-900">🧾 {tl("إجمالي ما يسلم للمحاسبة", "Total handed to accounting")}</h2>
                     </div>
                     <div className="bg-green-50 border-2 border-green-200 rounded-xl p-8 text-center">
                       <div className="text-4xl font-bold text-green-900 mb-2">
-                        {metrics.totalHandToAccounting.toFixed(2)} ج.م
+                        {metrics.totalHandToAccounting.toFixed(2)} {tl("ج.م", "EGP")}
                       </div>
-                      <p className="text-green-700 font-medium">النقد في اليد فقط</p>
-                      <p className="text-sm text-green-600 mt-2">({metrics.cashOnHandOrders.count} طلب نقدي)</p>
+                      <p className="text-green-700 font-medium">{tl("النقد في اليد فقط", "Cash on hand only")}</p>
+                      <p className="text-sm text-green-600 mt-2">({metrics.cashOnHandOrders.count} {tl("طلب نقدي", "cash orders")})</p>
                     </div>
                   </div>
                 </div>
@@ -2243,7 +2244,7 @@ const Summary: React.FC = () => {
                               {courier.courierName}
                             </h4>
                             <p className="text-sm text-gray-600 group-hover:text-blue-700 transition-colors">
-                              اضغط لعرض التفاصيل
+                              {tl("اضغط لعرض التفاصيل", "Click to view details")}
                             </p>
                           </div>
                         </div>
@@ -2309,15 +2310,15 @@ const Summary: React.FC = () => {
                               </div>
                               <div className="flex-1">
                                 <div className="flex items-center gap-2">
-                                  <h4 className="font-semibold text-gray-900">طلب #{order.order_id}</h4>
+                                  <h4 className="font-semibold text-gray-900">{tl("طلب", "Order")} #{order.order_id}</h4>
                                   {order.hold_fee && order.hold_fee > 0 && (
                                     <span className="px-2 py-1 bg-orange-100 text-orange-800 text-xs rounded-full font-medium">
-                                      رسوم حجز
+                                      {tl("رسوم حجز", "Hold fee")}
                                     </span>
                                   )}
                                   {(!order.hold_fee || order.hold_fee === 0) && order.hold_fee_removed_at && (
                                     <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full font-medium">
-                                      تم الإزالة
+                                      {tl("تم الإزالة", "Removed")}
                                     </span>
                                   )}
                                 </div>
@@ -2328,11 +2329,11 @@ const Summary: React.FC = () => {
                                   <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-lg">
                                     <div className="flex items-center gap-2">
                                       <Calendar className="w-4 h-4 text-blue-600" />
-                                      <span className="text-sm font-medium text-blue-800">تاريخ إضافة رسوم الحجز:</span>
+                                      <span className="text-sm font-medium text-blue-800">{tl("تاريخ إضافة رسوم الحجز:", "Hold fee added date:")}</span>
                                     </div>
                                     <p className="text-sm text-blue-700 mt-1">
                                       {order.hold_fee_added_at ? 
-                                        new Date(order.hold_fee_added_at).toLocaleDateString('ar-EG', {
+                                        new Date(order.hold_fee_added_at).toLocaleDateString('en-US', {
                                           year: 'numeric',
                                           month: '2-digit',
                                           day: '2-digit',
@@ -2340,14 +2341,14 @@ const Summary: React.FC = () => {
                                           minute: '2-digit'
                                         }) : 
                                         order.hold_fee_created_at ? 
-                                          new Date(order.hold_fee_created_at).toLocaleDateString('ar-EG', {
+                                          new Date(order.hold_fee_created_at).toLocaleDateString('en-US', {
                                             year: 'numeric',
                                             month: '2-digit',
                                             day: '2-digit',
                                             hour: '2-digit',
                                             minute: '2-digit'
                                           }) : 
-                                          'تاريخ غير محدد'
+                                          tl('تاريخ غير محدد', 'Date not specified')
                                       }
                                     </p>
                                   </div>
@@ -2356,11 +2357,11 @@ const Summary: React.FC = () => {
                                   <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-lg">
                                     <div className="flex items-center gap-2">
                                       <Calendar className="w-4 h-4 text-green-600" />
-                                      <span className="text-sm font-medium text-green-800">تاريخ إزالة رسوم الحجز:</span>
+                                      <span className="text-sm font-medium text-green-800">{tl("تاريخ إزالة رسوم الحجز:", "Hold fee removed date:")}</span>
                                     </div>
                                     <p className="text-sm text-green-700 mt-1">
                                       {order.hold_fee_removed_at ? 
-                                        new Date(order.hold_fee_removed_at).toLocaleDateString('ar-EG', {
+                                        new Date(order.hold_fee_removed_at).toLocaleDateString('en-US', {
                                           year: 'numeric',
                                           month: '2-digit',
                                           day: '2-digit',
@@ -2368,14 +2369,14 @@ const Summary: React.FC = () => {
                                           minute: '2-digit'
                                         }) : 
                                         order.hold_fee_created_at ? 
-                                          new Date(order.hold_fee_created_at).toLocaleDateString('ar-EG', {
+                                          new Date(order.hold_fee_created_at).toLocaleDateString('en-US', {
                                             year: 'numeric',
                                             month: '2-digit',
                                             day: '2-digit',
                                             hour: '2-digit',
                                             minute: '2-digit'
                                           }) : 
-                                          'تاريخ غير محدد'
+                                          tl('تاريخ غير محدد', 'Date not specified')
                                       }
                                     </p>
                                   </div>
@@ -2387,14 +2388,14 @@ const Summary: React.FC = () => {
                                 <div className="w-6 h-6 bg-green-100 rounded flex items-center justify-center">
                                   <User className="w-3 h-3 text-green-600" />
                                 </div>
-                                <span className="text-sm text-gray-600">العميل:</span>
+                                <span className="text-sm text-gray-600">{tl("العميل:", "Customer:")}</span>
                                 <span className="font-medium">{order.customer_name}</span>
                               </div>
                               <div className="flex items-center gap-3">
                                 <div className="w-6 h-6 bg-blue-100 rounded flex items-center justify-center">
                                   <Smartphone className="w-3 h-3 text-blue-600" />
                                 </div>
-                                <span className="text-sm text-gray-600">الهاتف:</span>
+                                <span className="text-sm text-gray-600">{tl("الهاتف:", "Phone:")}</span>
                                 <a
                                   href={`tel:${order.mobile_number}`}
                                   className="text-blue-600 hover:text-blue-800 font-medium transition-colors"
@@ -2406,7 +2407,7 @@ const Summary: React.FC = () => {
                                 <div className={`bg-red-100 rounded flex items-center justify-center mt-0.5`}>
                                   <Package className="w-3 h-3 text-red-600" />
                                 </div>
-                                <span className="text-sm text-gray-600">العنوان:</span>
+                                <span className="text-sm text-gray-600">{tl("العنوان:", "Address:")}</span>
                                 <span className="text-sm text-gray-800 flex-1">{order.address}</span>
                               </div>
                               <div className="flex items-center gap-3">
@@ -2430,7 +2431,7 @@ const Summary: React.FC = () => {
                             <div className="bg-white rounded-lg p-4 border border-gray-200">
                               <h5 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
                                 <DollarSign className="w-4 h-4" />
-                                المعلومات المالية
+                                {tl("المعلومات المالية", "Financial information")}
                               </h5>
                               <div className="space-y-3">
                                 <div className="flex justify-between items-center">
@@ -2545,7 +2546,7 @@ const Summary: React.FC = () => {
                                     )}
                                     {holdFee > 0 && order.hold_fee_added_at && (
                                       <p className="text-xs text-blue-600 mt-1">
-                                        تم الإضافة: {new Date(order.hold_fee_added_at).toLocaleDateString('ar-EG', {
+                                        {tl("تم الإضافة:", "Added:")} {new Date(order.hold_fee_added_at).toLocaleDateString('en-US', {
                                           year: 'numeric',
                                           month: '2-digit',
                                           day: '2-digit',
@@ -2556,7 +2557,7 @@ const Summary: React.FC = () => {
                                     )}
                                     {holdFee === 0 && order.hold_fee_removed_at && (
                                       <p className="text-xs text-green-600 mt-1">
-                                        تم الإزالة: {new Date(order.hold_fee_removed_at).toLocaleDateString('ar-EG', {
+                                        {tl("تم الإزالة:", "Removed:")} {new Date(order.hold_fee_removed_at).toLocaleDateString('en-US', {
                                           year: 'numeric',
                                           month: '2-digit',
                                           day: '2-digit',
@@ -2640,7 +2641,7 @@ const Summary: React.FC = () => {
                                 <img
                                   key={proof.id}
                                   src={proof.image_data || "/placeholder.svg"}
-                                  alt="إثبات"
+                                  alt={tl("إثبات", "Proof")}
                                   className="h-20 w-full rounded-lg border border-gray-200 object-cover cursor-pointer hover:opacity-75 transition-opacity"
                                   onClick={() => window.open(proof.image_data, "_blank")}
                                 />
@@ -2671,7 +2672,7 @@ const Summary: React.FC = () => {
   const metrics = calculateAccountingMetrics()
 
   return (
-    <div className="min-h-screen bg-gray-50" dir="rtl">
+    <div className="min-h-screen bg-gray-50" dir={language === 'ar' ? 'rtl' : 'ltr'}>
       {/* Header - Mobile Optimized for Couriers */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className={`max-w-7xl mx-auto ${isCourier ? "px-3 py-3" : "px-6 py-6"}`}>
@@ -2695,12 +2696,12 @@ const Summary: React.FC = () => {
               </div>
               <div>
                 <h1 className={`font-bold text-gray-900 ${isCourier ? "text-lg" : "text-2xl"}`}>
-                  {isCourier ? "المحاسبة" : "لوحة المحاسبة التفصيلية"}
+                  {isCourier ? tl("المحاسبة", "Accounting") : tl("لوحة المحاسبة التفصيلية", "Detailed accounting dashboard")}
                 </h1>
                 <p className={`text-gray-600 ${isCourier ? "text-xs" : "text-base"}`}>
                   {isCourier
                     ? currentCourier.courierName
-                    : `تقرير شامل للعمليات المالية - ${currentCourier.courierName}`}
+                    : `${tl("تقرير شامل للعمليات المالية", "Comprehensive financial report")} - ${currentCourier.courierName}`}
                 </p>
               </div>
             </div>
@@ -2750,7 +2751,7 @@ const Summary: React.FC = () => {
                       activeFilter === "today" ? "bg-blue-600 text-white" : "bg-blue-100 text-blue-700"
                     }`}
                   >
-                    اليوم
+                    {tl("اليوم", "Today")}
                   </button>
                   <button
                     onClick={() => setQuickDateRange("yesterday")}
@@ -2758,7 +2759,7 @@ const Summary: React.FC = () => {
                       activeFilter === "yesterday" ? "bg-blue-600 text-white" : "bg-blue-100 text-blue-700"
                     }`}
                   >
-                    أمس
+                    {tl("أمس", "Yesterday")}
                   </button>
                 </div>
               )}
@@ -2815,7 +2816,7 @@ const Summary: React.FC = () => {
                   <Package className={`text-blue-600 ${isCourier ? "w-4 h-4" : "w-6 h-6"}`} />
                 </div>
                 <h2 className={`font-bold text-gray-900 ${isCourier ? "text-lg" : "text-xl"}`}>
-                  {isCourier ? "📦 الطلبات" : "📦 ملخص الطلبات"}
+                  {isCourier ? tl("📦 الطلبات", "📦 Orders") : tl("📦 ملخص الطلبات", "📦 Orders summary")}
                 </h2>
               </div>
               <div
@@ -2828,7 +2829,7 @@ const Summary: React.FC = () => {
                   className={`bg-gray-50 border-2 border-gray-200 rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
                     isCourier ? "p-4" : "p-6"
                   }`}
-                  onClick={() => openOrders(metrics.allOrders, "إجمالي الطلبات")}
+                  onClick={() => openOrders(metrics.allOrders, tl("إجمالي الطلبات", "Total orders"))}
                 >
                   <div className={`flex items-center gap-4 ${isCourier ? "mb-2" : "mb-4"}`}>
                     <div
@@ -2840,18 +2841,18 @@ const Summary: React.FC = () => {
                     </div>
                     <div>
                       <h3 className={`font-bold text-gray-900 ${isCourier ? "text-sm" : "text-lg"}`}>
-                        {isCourier ? "الإجمالي" : "إجمالي الطلبات"}
+                        {isCourier ? tl("الإجمالي", "Total") : tl("إجمالي الطلبات", "Total orders")}
                       </h3>
                       <p className={`text-gray-700 ${isCourier ? "text-xs" : "text-sm"}`}>
-                        {metrics.totalOrdersCount} طلب
+                        {metrics.totalOrdersCount} {tl("طلب", "orders")}
                       </p>
                     </div>
                   </div>
                   <div className="space-y-2">
                     <div className={`flex justify-between items-center pt-2 border-t border-gray-300`}>
-                      <span className={`font-bold text-gray-700 ${isCourier ? "text-xs" : "text-sm"}`}>القيمة:</span>
+                      <span className={`font-bold text-gray-700 ${isCourier ? "text-xs" : "text-sm"}`}>{tl("القيمة:", "Value:")}</span>
                       <span className={`font-bold text-gray-900 ${isCourier ? "text-sm" : "text-xl"}`}>
-                        {metrics.totalOrdersOriginalValue.toFixed(0)} ج.م
+                        {metrics.totalOrdersOriginalValue.toFixed(0)} {tl("ج.م", "EGP")}
                       </span>
                     </div>
                   </div>
@@ -2864,7 +2865,7 @@ const Summary: React.FC = () => {
                   className={`bg-blue-50 border-2 border-blue-200 rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
                     isCourier ? "p-4" : "p-6"
                   }`}
-                  onClick={() => openOrders(metrics.assigned.orders, "الطلبات المكلفة")}
+                  onClick={() => openOrders(metrics.assigned.orders, tl("الطلبات المكلفة", "Assigned orders"))}
                 >
                   <div className={`flex items-center gap-4 ${isCourier ? "mb-2" : "mb-4"}`}>
                     <div
@@ -2876,28 +2877,28 @@ const Summary: React.FC = () => {
                     </div>
                     <div>
                       <h3 className={`font-bold text-blue-900 ${isCourier ? "text-sm" : "text-lg"}`}>
-                        {isCourier ? "المكلفة" : "الطلبات المكلفة"}
+                        {isCourier ? tl("المكلفة", "Assigned") : tl("الطلبات المكلفة", "Assigned orders")}
                       </h3>
                       <p className={`text-blue-700 ${isCourier ? "text-xs" : "text-sm"}`}>
-                        {metrics.assigned.count} طلب
+                        {metrics.assigned.count} {tl("طلب", "orders")}
                       </p>
                     </div>
                   </div>
                   <div className="space-y-2">
                     <div className={`flex justify-between items-center pt-2 border-t border-blue-300`}>
                       <span className={`font-bold text-blue-700 ${isCourier ? "text-xs" : "text-sm"}`}>
-                        القيمة الأصلية:
+                        {tl("القيمة الأصلية:", "Original value:")}
                       </span>
                       <span className={`font-bold text-blue-900 ${isCourier ? "text-sm" : "text-xl"}`}>
-                        {metrics.assigned.originalValue.toFixed(0)} ج.م
+                        {metrics.assigned.originalValue.toFixed(0)} {tl("ج.م", "EGP")}
                       </span>
                     </div>
                     <div className={`flex justify-between items-center`}>
                       <span className={`font-bold text-blue-700 ${isCourier ? "text-xs" : "text-sm"}`}>
-                        المحصل (تقديري):
+                        {tl("المحصل (تقديري):", "Collected (estimated):")}
                       </span>
                       <span className={`font-bold text-blue-900 ${isCourier ? "text-sm" : "text-xl"}`}>
-                        {metrics.assigned.courierCollected.toFixed(0)} ج.م
+                        {metrics.assigned.courierCollected.toFixed(0)} {tl("ج.م", "EGP")}
                       </span>
                     </div>
                   </div>
@@ -2910,7 +2911,7 @@ const Summary: React.FC = () => {
                   className={`bg-green-50 border-2 border-green-200 rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
                     isCourier ? "p-4" : "p-6"
                   }`}
-                  onClick={() => openOrders(metrics.delivered.orders, "الطلبات المسلمة")}
+                  onClick={() => openOrders(metrics.delivered.orders, tl("الطلبات المسلمة", "Delivered orders"))}
                 >
                   <div className={`flex items-center gap-4 ${isCourier ? "mb-2" : "mb-4"}`}>
                     <div
@@ -2922,28 +2923,28 @@ const Summary: React.FC = () => {
                     </div>
                     <div>
                       <h3 className={`font-bold text-green-900 ${isCourier ? "text-sm" : "text-lg"}`}>
-                        {isCourier ? "المسلمة" : "الطلبات المسلمة"}
+                        {isCourier ? tl("المسلمة", "Delivered") : tl("الطلبات المسلمة", "Delivered orders")}
                       </h3>
                       <p className={`text-green-700 ${isCourier ? "text-xs" : "text-sm"}`}>
-                        {metrics.delivered.count} طلب
+                        {metrics.delivered.count} {tl("طلب", "orders")}
                       </p>
                     </div>
                   </div>
                   <div className="space-y-2">
                     <div className={`flex justify-between items-center pt-2 border-t border-green-300`}>
                       <span className={`font-bold text-green-700 ${isCourier ? "text-xs" : "text-sm"}`}>
-                        القيمة الأصلية:
+                        {tl("القيمة الأصلية:", "Original value:")}
                       </span>
                       <span className={`font-bold text-green-900 ${isCourier ? "text-sm" : "text-xl"}`}>
-                        {metrics.delivered.originalValue.toFixed(0)} ج.م
+                        {metrics.delivered.originalValue.toFixed(0)} {tl("ج.م", "EGP")}
                       </span>
                     </div>
                     <div className={`flex justify-between items-center`}>
                       <span className={`font-bold text-green-700 ${isCourier ? "text-xs" : "text-sm"}`}>
-                        المحصل فعلياً:
+                        {tl("المحصل فعلياً:", "Actually collected:")}
                       </span>
                       <span className={`font-bold text-green-900 ${isCourier ? "text-sm" : "text-xl"}`}>
-                        {metrics.delivered.courierCollected.toFixed(0)} ج.م
+                        {metrics.delivered.courierCollected.toFixed(0)} {tl("ج.م", "EGP")}
                       </span>
                     </div>
                   </div>
@@ -2956,7 +2957,7 @@ const Summary: React.FC = () => {
                   className={`bg-red-50 border-2 border-red-200 rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
                     isCourier ? "p-4" : "p-6"
                   }`}
-                  onClick={() => openOrders(metrics.canceled.orders, "الطلبات الملغاة")}
+                  onClick={() => openOrders(metrics.canceled.orders, tl("الطلبات الملغاة", "Canceled orders"))}
                 >
                   <div className={`flex items-center gap-4 ${isCourier ? "mb-2" : "mb-4"}`}>
                     <div
@@ -2968,28 +2969,28 @@ const Summary: React.FC = () => {
                     </div>
                     <div>
                       <h3 className={`font-bold text-red-900 ${isCourier ? "text-sm" : "text-lg"}`}>
-                        {isCourier ? "الملغاة" : "الطلبات الملغاة"}
+                        {isCourier ? tl("الملغاة", "Canceled") : tl("الطلبات الملغاة", "Canceled orders")}
                       </h3>
                       <p className={`text-red-700 ${isCourier ? "text-xs" : "text-sm"}`}>
-                        {metrics.canceled.count} طلب
+                        {metrics.canceled.count} {tl("طلب", "orders")}
                       </p>
                     </div>
                   </div>
                   <div className="space-y-2">
                     <div className={`flex justify-between items-center pt-2 border-t border-red-300`}>
                       <span className={`font-bold text-red-700 ${isCourier ? "text-xs" : "text-sm"}`}>
-                        القيمة الأصلية:
+                        {tl("القيمة الأصلية:", "Original value:")}
                       </span>
                       <span className={`font-bold text-red-900 ${isCourier ? "text-sm" : "text-xl"}`}>
-                        {metrics.canceled.originalValue.toFixed(0)} ج.م
+                        {metrics.canceled.originalValue.toFixed(0)} {tl("ج.م", "EGP")}
                       </span>
                     </div>
                     <div className={`flex justify-between items-center`}>
                       <span className={`font-bold text-red-700 ${isCourier ? "text-xs" : "text-sm"}`}>
-                        المحصل (رسوم فقط):
+                        {tl("المحصل (رسوم فقط):", "Collected (fees only):")}
                       </span>
                       <span className={`font-bold text-red-900 ${isCourier ? "text-sm" : "text-xl"}`}>
-                        {metrics.canceled.courierCollected.toFixed(0)} ج.م
+                        {metrics.canceled.courierCollected.toFixed(0)} {tl("ج.م", "EGP")}
                       </span>
                     </div>
                   </div>
@@ -3002,7 +3003,7 @@ const Summary: React.FC = () => {
                   className={`bg-yellow-50 border-2 border-yellow-200 rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
                     isCourier ? "p-4" : "p-6"
                   }`}
-                  onClick={() => openOrders(metrics.partial.orders, "الطلبات الجزئية")}
+                  onClick={() => openOrders(metrics.partial.orders, tl("الطلبات الجزئية", "Partial orders"))}
                 >
                   <div className={`flex items-center gap-4 ${isCourier ? "mb-2" : "mb-4"}`}>
                     <div
@@ -3014,28 +3015,28 @@ const Summary: React.FC = () => {
                     </div>
                     <div>
                       <h3 className={`font-bold text-yellow-900 ${isCourier ? "text-sm" : "text-lg"}`}>
-                        {isCourier ? "الجزئية" : "الطلبات الجزئية"}
+                        {isCourier ? tl("الجزئية", "Partial") : tl("الطلبات الجزئية", "Partial orders")}
                       </h3>
                       <p className={`text-yellow-700 ${isCourier ? "text-xs" : "text-sm"}`}>
-                        {metrics.partial.count} طلب
+                        {metrics.partial.count} {tl("طلب", "orders")}
                       </p>
                     </div>
                   </div>
                   <div className="space-y-2">
                     <div className={`flex justify-between items-center pt-2 border-t border-yellow-300`}>
                       <span className={`font-bold text-yellow-700 ${isCourier ? "text-xs" : "text-sm"}`}>
-                        القيمة الأصلية:
+                        {tl("القيمة الأصلية:", "Original value:")}
                       </span>
                       <span className={`font-bold text-yellow-900 ${isCourier ? "text-sm" : "text-xl"}`}>
-                        {metrics.partial.originalValue.toFixed(0)} ج.م
+                        {metrics.partial.originalValue.toFixed(0)} {tl("ج.م", "EGP")}
                       </span>
                     </div>
                     <div className={`flex justify-between items-center`}>
                       <span className={`font-bold text-yellow-700 ${isCourier ? "text-xs" : "text-sm"}`}>
-                        المحصل فعلياً:
+                        {tl("المحصل فعلياً:", "Actually collected:")}
                       </span>
                       <span className={`font-bold text-yellow-900 ${isCourier ? "text-sm" : "text-xl"}`}>
-                        {metrics.partial.courierCollected.toFixed(0)} ج.م
+                        {metrics.partial.courierCollected.toFixed(0)} {tl("ج.م", "EGP")}
                       </span>
                     </div>
                   </div>
@@ -3048,7 +3049,7 @@ const Summary: React.FC = () => {
                   className={`bg-orange-50 border-2 border-orange-200 rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
                     isCourier ? "p-4" : "p-6"
                   }`}
-                  onClick={() => openOrders(metrics.returned.orders, "الطلبات المؤجله")}
+                  onClick={() => openOrders(metrics.returned.orders, tl("الطلبات المؤجله", "Deferred orders"))}
                 >
                   <div className={`flex items-center gap-4 ${isCourier ? "mb-2" : "mb-4"}`}>
                     <div
@@ -3060,28 +3061,28 @@ const Summary: React.FC = () => {
                     </div>
                     <div>
                       <h3 className={`font-bold text-orange-900 ${isCourier ? "text-sm" : "text-lg"}`}>
-                        {isCourier ? "المؤجلة" : "الطلبات المؤجله"}
+                        {isCourier ? tl("المؤجلة", "Deferred") : tl("الطلبات المؤجله", "Deferred orders")}
                       </h3>
                       <p className={`text-orange-700 ${isCourier ? "text-xs" : "text-sm"}`}>
-                        {metrics.returned.count} طلب
+                        {metrics.returned.count} {tl("طلب", "orders")}
                       </p>
                     </div>
                   </div>
                   <div className="space-y-2">
                     <div className={`flex justify-between items-center pt-2 border-t border-orange-300`}>
                       <span className={`font-bold text-orange-700 ${isCourier ? "text-xs" : "text-sm"}`}>
-                        القيمة الأصلية:
+                        {tl("القيمة الأصلية:", "Original value:")}
                       </span>
                       <span className={`font-bold text-orange-900 ${isCourier ? "text-sm" : "text-xl"}`}>
-                        {metrics.returned.originalValue.toFixed(0)} ج.م
+                        {metrics.returned.originalValue.toFixed(0)} {tl("ج.م", "EGP")}
                       </span>
                     </div>
                     <div className={`flex justify-between items-center`}>
                       <span className={`font-bold text-orange-700 ${isCourier ? "text-xs" : "text-sm"}`}>
-                        المحصل (رسوم فقط):
+                        {tl("المحصل (رسوم فقط):", "Collected (fees only):")}
                       </span>
                       <span className={`font-bold text-orange-900 ${isCourier ? "text-sm" : "text-xl"}`}>
-                        {metrics.returned.courierCollected.toFixed(0)} ج.م
+                        {metrics.returned.courierCollected.toFixed(0)} {tl("ج.م", "EGP")}
                       </span>
                     </div>
                   </div>
@@ -3094,7 +3095,7 @@ const Summary: React.FC = () => {
                   className={`bg-indigo-50 border-2 border-indigo-200 rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
                     isCourier ? "p-4" : "p-6"
                   }`}
-                  onClick={() => openOrders(metrics.receivingPart.orders, "طلبات استلام قطعة")}
+                  onClick={() => openOrders(metrics.receivingPart.orders, tl("طلبات استلام قطعة", "Part-receipt orders"))}
                 >
                   <div className={`flex items-center gap-4 ${isCourier ? "mb-2" : "mb-4"}`}>
                     <div
@@ -3106,28 +3107,28 @@ const Summary: React.FC = () => {
                     </div>
                     <div>
                       <h3 className={`font-bold text-indigo-900 ${isCourier ? "text-sm" : "text-lg"}`}>
-                        {isCourier ? "استلام قطعة" : "طلبات استلام قطعة"}
+                        {isCourier ? tl("استلام قطعة", "Part receipt") : tl("طلبات استلام قطعة", "Part-receipt orders")}
                       </h3>
                       <p className={`text-indigo-700 ${isCourier ? "text-xs" : "text-sm"}`}>
-                        {metrics.receivingPart.count} طلب
+                        {metrics.receivingPart.count} {tl("طلب", "orders")}
                       </p>
                     </div>
                   </div>
                   <div className="space-y-2">
                     <div className={`flex justify-between items-center pt-2 border-t border-indigo-300`}>
                       <span className={`font-bold text-indigo-700 ${isCourier ? "text-xs" : "text-sm"}`}>
-                        القيمة الأصلية:
+                        {tl("القيمة الأصلية:", "Original value:")}
                       </span>
                       <span className={`font-bold text-indigo-900 ${isCourier ? "text-sm" : "text-xl"}`}>
-                        {metrics.receivingPart.originalValue.toFixed(0)} ج.م
+                        {metrics.receivingPart.originalValue.toFixed(0)} {tl("ج.م", "EGP")}
                       </span>
                     </div>
                     <div className={`flex justify-between items-center`}>
                       <span className={`font-bold text-indigo-700 ${isCourier ? "text-xs" : "text-sm"}`}>
-                        المحصل فعلياً:
+                        {tl("المحصل فعلياً:", "Actually collected:")}
                       </span>
                       <span className={`font-bold text-indigo-900 ${isCourier ? "text-sm" : "text-xl"}`}>
-                        {metrics.receivingPart.courierCollected.toFixed(0)} ج.م
+                        {metrics.receivingPart.courierCollected.toFixed(0)} {tl("ج.م", "EGP")}
                       </span>
                     </div>
                   </div>
@@ -3140,7 +3141,7 @@ const Summary: React.FC = () => {
                   className={`bg-purple-50 border-2 border-purple-200 rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
                     isCourier ? "p-4" : "p-6"
                   }`}
-                  onClick={() => openOrders(metrics.handToHand.orders, "الطلبات يد بيد")}
+                  onClick={() => openOrders(metrics.handToHand.orders, tl("الطلبات يد بيد", "Hand-to-hand orders"))}
                 >
                   <div className={`flex items-center gap-4 ${isCourier ? "mb-2" : "mb-4"}`}>
                     <div
@@ -3152,28 +3153,28 @@ const Summary: React.FC = () => {
                     </div>
                     <div>
                       <h3 className={`font-bold text-purple-900 ${isCourier ? "text-sm" : "text-lg"}`}>
-                        {isCourier ? "يد بيد" : "الطلبات يد بيد"}
+                        {isCourier ? tl("يد بيد", "Hand to hand") : tl("الطلبات يد بيد", "Hand-to-hand orders")}
                       </h3>
                       <p className={`text-purple-700 ${isCourier ? "text-xs" : "text-sm"}`}>
-                        {metrics.handToHand.count} طلب
+                        {metrics.handToHand.count} {tl("طلب", "orders")}
                       </p>
                     </div>
                   </div>
                   <div className="space-y-2">
                     <div className={`flex justify-between items-center pt-2 border-t border-purple-300`}>
                       <span className={`font-bold text-purple-700 ${isCourier ? "text-xs" : "text-sm"}`}>
-                        القيمة الأصلية:
+                        {tl("القيمة الأصلية:", "Original value:")}
                       </span>
                       <span className={`font-bold text-purple-900 ${isCourier ? "text-sm" : "text-xl"}`}>
-                        {metrics.handToHand.originalValue.toFixed(0)} ج.م
+                        {metrics.handToHand.originalValue.toFixed(0)} {tl("ج.م", "EGP")}
                       </span>
                     </div>
                     <div className={`flex justify-between items-center`}>
                       <span className={`font-bold text-purple-700 ${isCourier ? "text-xs" : "text-sm"}`}>
-                        المحصل فعلياً:
+                        {tl("المحصل فعلياً:", "Actually collected:")}
                       </span>
                       <span className={`font-bold text-purple-900 ${isCourier ? "text-sm" : "text-xl"}`}>
-                        {metrics.handToHand.courierCollected.toFixed(0)} ج.م
+                        {metrics.handToHand.courierCollected.toFixed(0)} {tl("ج.م", "EGP")}
                       </span>
                     </div>
                   </div>
@@ -3195,7 +3196,7 @@ const Summary: React.FC = () => {
                   <Calculator className={`text-emerald-600 ${isCourier ? "w-4 h-4" : "w-6 h-6"}`} />
                 </div>
                 <h2 className={`font-bold text-gray-900 ${isCourier ? "text-lg" : "text-xl"}`}>
-                  {isCourier ? "💰 المحصل والغير مُسلَّم" : "💰 ملخص المحصل والغير مُسلَّم"}
+                  {isCourier ? tl("💰 المحصل والغير مُسلَّم", "💰 Collected & undelivered") : tl("💰 ملخص المحصل والغير مُسلَّم", "💰 Collected & undelivered summary")}
                 </h2>
               </div>
               <div className={`grid ${isCourier ? "grid-cols-1 gap-3" : "grid-cols-1 lg:grid-cols-2 gap-6"}`}>
@@ -3220,7 +3221,7 @@ const Summary: React.FC = () => {
                       // Include all orders since we're now including fees only
                       return true
                     })
-                    openOrders(collectedOrders, "إجمالي مُسلَّم فعليًا")
+                    openOrders(collectedOrders, tl("إجمالي مُسلَّم فعليًا", "Total actually delivered"))
                   }}
                 >
                   <div className={`flex items-center gap-4 ${isCourier ? "mb-2" : "mb-4"}`}>
@@ -3233,17 +3234,17 @@ const Summary: React.FC = () => {
                     </div>
                     <div>
                       <h3 className={`font-bold text-emerald-900 ${isCourier ? "text-sm" : "text-lg"}`}>
-                        {isCourier ? "المُسلَّم فعليًا" : "إجمالي مُسلَّم فعليًا"}
+                        {isCourier ? tl("المُسلَّم فعليًا", "Actually delivered") : tl("إجمالي مُسلَّم فعليًا", "Total actually delivered")}
                       </h3>
                       <p className={`text-emerald-700 ${isCourier ? "text-xs" : "text-sm"}`}>
-                        {isCourier ? "المحصَّل فعليًا" : "مجموع المحصَّل فعليًا"}
+                        {isCourier ? tl("المحصَّل فعليًا", "Actually collected") : tl("مجموع المحصَّل فعليًا", "Total actually collected")}
                       </p>
                     </div>
                   </div>
                   <div className="space-y-2">
                     <div className={`flex justify-between items-center pt-2 border-t border-emerald-300`}>
                       <span className={`font-bold text-emerald-700 ${isCourier ? "text-xs" : "text-sm"}`}>
-                        المحصل فعلياً:
+                        {tl("المحصل فعلياً:", "Actually collected:")}
                       </span>
                       <span className={`font-bold text-emerald-900 ${isCourier ? "text-sm" : "text-xl"}`}>
                         {(() => {
@@ -3256,12 +3257,12 @@ const Summary: React.FC = () => {
                             metrics.canceled.courierCollected + // رسوم فقط
                             metrics.returned.courierCollected    // رسوم فقط
                           return totalCollected.toFixed(0)
-                        })()} ج.م
+                        })()} {tl("ج.م", "EGP")}
                       </span>
                     </div>
                     <div className={`flex justify-between items-center`}>
                       <span className={`font-bold text-emerald-700 ${isCourier ? "text-xs" : "text-sm"}`}>
-                        الطلبات:
+                        {tl("الطلبات:", "Orders:")}
                       </span>
                       <span className={`font-bold text-emerald-900 ${isCourier ? "text-sm" : "text-base"}`}>
                         {(() => {
@@ -3279,7 +3280,7 @@ const Summary: React.FC = () => {
                             return true // Include all orders since we're now including fees only
                           }).length
                           return collectedOrders
-                        })()} طلب
+                        })()} {tl("طلب", "orders")}
                       </span>
                     </div>
                   </div>
@@ -3298,7 +3299,7 @@ const Summary: React.FC = () => {
                       ...metrics.returned.orders,
                       ...metrics.assigned.orders
                     ]
-                    openOrders(notDeliveredOrders, "إجمالي غير مُسلَّم")
+                    openOrders(notDeliveredOrders, tl("إجمالي غير مُسلَّم", "Total undelivered"))
                   }}
                 >
                   <div className={`flex items-center gap-4 ${isCourier ? "mb-2" : "mb-4"}`}>
@@ -3311,17 +3312,17 @@ const Summary: React.FC = () => {
                     </div>
                     <div>
                       <h3 className={`font-bold text-red-900 ${isCourier ? "text-sm" : "text-lg"}`}>
-                        {isCourier ? "غير مُسلَّم" : "إجمالي غير مُسلَّم"}
+                        {isCourier ? tl("غير مُسلَّم", "Undelivered") : tl("إجمالي غير مُسلَّم", "Total undelivered")}
                       </h3>
                       <p className={`text-red-700 ${isCourier ? "text-xs" : "text-sm"}`}>
-                        {isCourier ? "العجز/الغير مُحصَّل" : "مجموع العجز/الغير مُحصَّل"}
+                        {isCourier ? tl("العجز/الغير مُحصَّل", "Deficit / uncollected") : tl("مجموع العجز/الغير مُحصَّل", "Total deficit / uncollected")}
                       </p>
                     </div>
                   </div>
                   <div className="space-y-2">
                     <div className={`flex justify-between items-center pt-2 border-t border-red-300`}>
                       <span className={`font-bold text-red-700 ${isCourier ? "text-xs" : "text-sm"}`}>
-                        غير مُسلَّم:
+                        {tl("غير مُسلَّم:", "Undelivered:")}
                       </span>
                       <span className={`font-bold text-red-900 ${isCourier ? "text-sm" : "text-xl"}`}>
                         {(() => {
@@ -3347,12 +3348,12 @@ const Summary: React.FC = () => {
                           totalNotDelivered += metrics.returned.originalValue
                           
                           return totalNotDelivered.toFixed(0)
-                        })()} ج.م
+                        })()} {tl("ج.م", "EGP")}
                       </span>
                     </div>
                     <div className={`flex justify-between items-center`}>
                       <span className={`font-bold text-red-700 ${isCourier ? "text-xs" : "text-sm"}`}>
-                        الطلبات:
+                        {tl("الطلبات:", "Orders:")}
                       </span>
                       <span className={`font-bold text-red-900 ${isCourier ? "text-sm" : "text-base"}`}>
                         {(() => {
@@ -3361,7 +3362,7 @@ const Summary: React.FC = () => {
                             metrics.returned.count +
                             metrics.assigned.count
                           return notDeliveredCount
-                        })()} طلب
+                        })()} {tl("طلب", "orders")}
                       </span>
                     </div>
                   </div>
@@ -3384,12 +3385,12 @@ const Summary: React.FC = () => {
                     <HandCoins className={`text-green-600 ${isCourier ? "w-4 h-4" : "w-6 h-6"}`} />
                   </div>
                   <h2 className={`font-bold text-gray-900 ${isCourier ? "text-lg" : "text-xl"}`}>
-                    💰 رسوم المندوب
+                    💰 {tl("رسوم المندوب", "Courier fee")}
                   </h2>
                 </div>
                 <div className="flex flex-col sm:flex-row items-center gap-4">
                   <div className="flex items-center gap-3">
-                    <label htmlFor="courier-fee-amount" className="text-sm font-medium text-gray-700">المبلغ:</label>
+                    <label htmlFor="courier-fee-amount" className="text-sm font-medium text-gray-700">{tl("المبلغ:", "Amount:")}</label>
                     <input
                       id="courier-fee-amount"
                       type="number"
@@ -3400,10 +3401,10 @@ const Summary: React.FC = () => {
                       value={courierFeeAmount}
                       onChange={(e) => setCourierFeeAmount(e.target.value)}
                     />
-                    <span className="text-sm text-gray-600">د.ك</span>
+                    <span className="text-sm text-gray-600">{tl("د.ك", "KWD")}</span>
                   </div>
                   <div className="flex items-center gap-3">
-                    <label htmlFor="courier-fee-date" className="text-sm font-medium text-gray-700">التاريخ:</label>
+                    <label htmlFor="courier-fee-date" className="text-sm font-medium text-gray-700">{tl("التاريخ:", "Date:")}</label>
                     <input
                       id="courier-fee-date"
                       type="date"
@@ -3421,14 +3422,14 @@ const Summary: React.FC = () => {
                         onClick={saveCourierFee}
                       >
                         <Save className="w-4 h-4" />
-                        حفظ
+                        {tl("حفظ", "Save")}
                       </button>
                       <button
                         className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg transition-all flex items-center gap-2"
                         onClick={() => setCourierFeeAmount("")}
                       >
                         <X className="w-4 h-4" />
-                        إلغاء
+                        {tl("إلغاء", "Cancel")}
                       </button>
                     </div>
                   ) : (
@@ -3437,7 +3438,7 @@ const Summary: React.FC = () => {
                       disabled={!courierFeeAmount}
                     >
                       <Save className="w-4 h-4" />
-                      حفظ
+                      {tl("حفظ", "Save")}
                     </button>
                   )}
                 </div>
@@ -3445,11 +3446,11 @@ const Summary: React.FC = () => {
                   <div className="mt-3 p-3 bg-green-100 border border-green-300 rounded-lg">
                     <div className="flex items-center justify-between">
                       <span className="text-green-800 font-medium">
-                        رسوم المندوب المحفوظة: <strong>{getCurrentDayFee()} د.ك</strong>
+                        {tl("رسوم المندوب المحفوظة:", "Saved courier fee:")} <strong>{getCurrentDayFee()} {tl("د.ك", "KWD")}</strong>
                       </span>
                       <div className="flex items-center gap-2">
                         <span className="text-green-600 text-sm">
-                          للتاريخ: {dateRange.startDate}
+                          {tl("للتاريخ:", "For date:")} {dateRange.startDate}
                         </span>
                         <button
                           onClick={removeCourierFee}
@@ -3462,7 +3463,7 @@ const Summary: React.FC = () => {
                   </div>
                 )}
                 <div className="mt-3 text-xs text-gray-500 text-center">
-                  يمكن للمدير تحديد رسوم التوصيل اليومية لكل مندوب
+                  {tl("يمكن للمدير تحديد رسوم التوصيل اليومية لكل مندوب", "The manager can set daily delivery fees for each courier")}
                 </div>
               </div>
             )}
@@ -3479,7 +3480,7 @@ const Summary: React.FC = () => {
                     <CreditCard className={`text-purple-600 ${isCourier ? "w-4 h-4" : "w-6 h-6"}`} />
                   </div>
                   <h2 className={`font-bold text-gray-900 ${isCourier ? "text-lg" : "text-xl"}`}>
-                    {isCourier ? "💳 طرق الدفع" : "💳 تفصيل طرق الدفع"}
+                    {isCourier ? tl("💳 طرق الدفع", "💳 Payment methods") : tl("💳 تفصيل طرق الدفع", "💳 Payment breakdown")}
                   </h2>
                 </div>
                 {/* Hold Fee Filter Toggle */}
@@ -3494,7 +3495,7 @@ const Summary: React.FC = () => {
                       }}
                       className="w-5 h-5 text-purple-600 bg-white border-purple-300 rounded focus:ring-purple-500 focus:ring-2"
                     />
-                    <span className="text-purple-800 font-medium">تضمين رسوم الحجز</span>
+                    <span className="text-purple-800 font-medium">{tl("تضمين رسوم الحجز", "Include hold fees")}</span>
                   </label>
                 </div>
               </div>
@@ -3521,12 +3522,12 @@ const Summary: React.FC = () => {
                       className={`bg-slate-50 border-2 border-slate-200 rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
                         isCourier ? "p-3" : "p-4"
                       }`}
-                      onClick={() => openOrders(orders, "طلبات ماكينة فيزا")}
+                      onClick={() => openOrders(orders, tl("طلبات ماكينة فيزا", "Visa machine orders"))}
                     >
                       <div className={`flex items-center gap-3 ${isCourier ? "mb-2" : "mb-3"}`}>
                         <Monitor className={`text-slate-600 ${isCourier ? "w-4 h-4" : "w-6 h-6"}`} />
                         <h4 className={`font-semibold text-slate-900 ${isCourier ? "text-xs" : "text-base"}`}>
-                          {isCourier ? "فيزا" : "ماكينة فيزا"}
+                          {isCourier ? tl("فيزا", "Visa") : tl("ماكينة فيزا", "Visa machine")}
                         </h4>
                       </div>
                       <div className="space-y-1">
@@ -3534,7 +3535,7 @@ const Summary: React.FC = () => {
                           {orders.length}
                         </p>
                         <p className={`font-semibold text-slate-700 ${isCourier ? "text-sm" : "text-lg"}`}>
-                          {amount.toFixed(0)} ج.م
+                          {amount.toFixed(0)} {tl("ج.م", "EGP")}
                         </p>
                       </div>
                     </div>
@@ -3556,12 +3557,12 @@ const Summary: React.FC = () => {
                       className={`bg-cyan-50 border-2 border-cyan-200 rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
                         isCourier ? "p-3" : "p-4"
                       }`}
-                      onClick={() => openOrders(orders, "طلبات إنستاباي")}
+                      onClick={() => openOrders(orders, tl("طلبات إنستاباي", "InstaPay orders"))}
                     >
                       <div className={`flex items-center gap-3 ${isCourier ? "mb-2" : "mb-3"}`}>
                         <Smartphone className={`text-cyan-600 ${isCourier ? "w-4 h-4" : "w-6 h-6"}`} />
                         <h4 className={`font-semibold text-cyan-900 ${isCourier ? "text-xs" : "text-base"}`}>
-                          {isCourier ? "إنستا" : "إنستاباي"}
+                          {isCourier ? tl("إنستا", "Insta") : tl("إنستاباي", "InstaPay")}
                         </h4>
                       </div>
                       <div className="space-y-1">
@@ -3569,7 +3570,7 @@ const Summary: React.FC = () => {
                           {orders.length}
                         </p>
                         <p className={`font-semibold text-cyan-700 ${isCourier ? "text-sm" : "text-lg"}`}>
-                          {amount.toFixed(0)} ج.م
+                          {amount.toFixed(0)} {tl("ج.م", "EGP")}
                         </p>
                       </div>
                     </div>
@@ -3591,12 +3592,12 @@ const Summary: React.FC = () => {
                       className={`bg-teal-50 border-2 border-teal-200 rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
                         isCourier ? "p-3" : "p-4"
                       }`}
-                      onClick={() => openOrders(orders, "طلبات المحفظة")}
+                      onClick={() => openOrders(orders, tl("طلبات المحفظة", "Wallet orders"))}
                     >
                       <div className={`flex items-center gap-3 ${isCourier ? "mb-2" : "mb-3"}`}>
                         <Wallet className={`text-teal-600 ${isCourier ? "w-4 h-4" : "w-6 h-6"}`} />
                         <h4 className={`font-semibold text-teal-900 ${isCourier ? "text-xs" : "text-base"}`}>
-                          المحفظة
+                          {tl("المحفظة", "Wallet")}
                         </h4>
                       </div>
                       <div className="space-y-1">
@@ -3604,7 +3605,7 @@ const Summary: React.FC = () => {
                           {orders.length}
                         </p>
                         <p className={`font-semibold text-teal-700 ${isCourier ? "text-sm" : "text-lg"}`}>
-                          {amount.toFixed(0)} ج.م
+                          {amount.toFixed(0)} {tl("ج.م", "EGP")}
                         </p>
                       </div>
                     </div>
@@ -3640,12 +3641,12 @@ const Summary: React.FC = () => {
                       className={`bg-emerald-50 border-2 border-emerald-200 rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
                         isCourier ? "p-3" : "p-4"
                       }`}
-                      onClick={() => openOrders(orders, "طلبات نقداً")}
+                      onClick={() => openOrders(orders, tl("طلبات نقداً", "Cash orders"))}
                     >
                       <div className={`flex items-center gap-3 ${isCourier ? "mb-2" : "mb-3"}`}>
                         <Banknote className={`text-emerald-600 ${isCourier ? "w-4 h-4" : "w-6 h-6"}`} />
                         <h4 className={`font-semibold text-emerald-900 ${isCourier ? "text-xs" : "text-base"}`}>
-                          نقداً
+                          {tl("نقداً", "Cash")}
                         </h4>
                       </div>
                       <div className="space-y-1">
@@ -3653,7 +3654,7 @@ const Summary: React.FC = () => {
                           {orders.length}
                         </p>
                         <p className={`font-semibold text-emerald-700 ${isCourier ? "text-sm" : "text-lg"}`}>
-                          {amount.toFixed(0)} ج.م
+                          {amount.toFixed(0)} {tl("ج.م", "EGP")}
                         </p>
                       </div>
                     </div>
@@ -3692,15 +3693,15 @@ const Summary: React.FC = () => {
                     return orders.length > 0 ? (
                       <div
                         className="bg-amber-50 border-2 border-amber-200 rounded-xl p-4 cursor-pointer hover:shadow-lg transition-all group"
-                        onClick={() => openOrders(orders, "إجمالي الدفع عند التسليم")}
+                        onClick={() => openOrders(orders, tl("إجمالي الدفع عند التسليم", "Total COD"))}
                       >
                         <div className="flex items-center gap-3 mb-3">
                           <HandCoins className="w-6 h-6 text-amber-600" />
-                          <h4 className="font-semibold text-amber-900">إجمالي COD</h4>
+                          <h4 className="font-semibold text-amber-900">{tl("إجمالي COD", "Total COD")}</h4>
                         </div>
                         <div className="space-y-1">
                           <p className="text-2xl font-bold text-amber-900">{orders.length}</p>
-                          <p className="text-lg font-semibold text-amber-700">{amount.toFixed(2)} ج.م</p>
+                          <p className="text-lg font-semibold text-amber-700">{amount.toFixed(2)} {tl("ج.م", "EGP")}</p>
                         </div>
                       </div>
                     ) : null
@@ -3727,12 +3728,12 @@ const Summary: React.FC = () => {
                       className={`bg-indigo-50 border-2 border-indigo-200 rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
                         isCourier ? "p-3" : "p-4"
                       }`}
-                      onClick={() => openOrders(orders, "طلبات فاليو")}
+                      onClick={() => openOrders(orders, tl("طلبات فاليو", "ValU orders"))}
                     >
                       <div className={`flex items-center gap-3 ${isCourier ? "mb-2" : "mb-3"}`}>
                         <Wallet className={`text-indigo-600 ${isCourier ? "w-4 h-4" : "w-6 h-6"}`} />
                         <h4 className={`font-semibold text-indigo-900 ${isCourier ? "text-xs" : "text-base"}`}>
-                          فاليو
+                          {tl("فاليو", "ValU")}
                         </h4>
                       </div>
                       <div className="space-y-1">
@@ -3740,7 +3741,7 @@ const Summary: React.FC = () => {
                           {orders.length}
                         </p>
                         <p className={`font-semibold text-indigo-700 ${isCourier ? "text-sm" : "text-lg"}`}>
-                          {amount.toFixed(0)} ج.م
+                          {amount.toFixed(0)} {tl("ج.م", "EGP")}
                         </p>
                       </div>
                     </div>
@@ -3774,7 +3775,7 @@ const Summary: React.FC = () => {
                       className={`bg-blue-50 border-2 border-blue-200 rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
                         isCourier ? "p-3" : "p-4"
                       }`}
-                      onClick={() => openOrders(orders, "طلبات paymob")}
+                      onClick={() => openOrders(orders, tl("طلبات paymob", "Paymob orders"))}
                     >
                       <div className={`flex items-center gap-3 ${isCourier ? "mb-2" : "mb-3"}`}>
                         <CreditCard className={`text-blue-600 ${isCourier ? "w-4 h-4" : "w-6 h-6"}`} />
@@ -3785,7 +3786,7 @@ const Summary: React.FC = () => {
                           {orders.length}
                         </p>
                         <p className={`font-semibold text-blue-700 ${isCourier ? "text-sm" : "text-lg"}`}>
-                          {amount.toFixed(0)} ج.م
+                          {amount.toFixed(0)} {tl("ج.م", "EGP")}
                         </p>
                       </div>
                     </div>
@@ -3806,13 +3807,13 @@ const Summary: React.FC = () => {
                     <AlertCircle className={`text-red-600 ${isCourier ? "w-4 h-4" : "w-6 h-6"}`} />
                   </div>
                   <h2 className={`font-bold text-gray-900 ${isCourier ? "text-lg" : "text-xl"}`}>
-                    {isCourier ? "رسوم الحجز" : "🚨 رسوم الحجز"}
+                    {isCourier ? tl("رسوم الحجز", "Hold fees") : tl("🚨 رسوم الحجز", "🚨 Hold fees")}
                   </h2>
                 </div>
                 
                 {/* Hold Date Filter */}
                 <div className="flex items-center gap-2">
-                  <span className={`text-gray-600 ${isCourier ? "text-xs" : "text-sm"}`}>فلتر التاريخ:</span>
+                  <span className={`text-gray-600 ${isCourier ? "text-xs" : "text-sm"}`}>{tl("فلتر التاريخ:", "Date filter:")}</span>
                   <select
                     value={holdDateFilter}
                     onChange={(e) => {
@@ -3825,12 +3826,12 @@ const Summary: React.FC = () => {
                       isCourier ? "text-xs" : "text-sm"
                     }`}
                   >
-                    <option value="all">جميع الأيام</option>
-                    <option value="today">اليوم</option>
-                    <option value="yesterday">أمس</option>
-                    <option value="last7days">آخر 7 أيام</option>
-                    <option value="last30days">آخر 30 يوم</option>
-                    <option value="custom">تاريخ مخصص</option>
+                    <option value="all">{tl("جميع الأيام", "All days")}</option>
+                    <option value="today">{tl("اليوم", "Today")}</option>
+                    <option value="yesterday">{tl("أمس", "Yesterday")}</option>
+                    <option value="last7days">{tl("آخر 7 أيام", "Last 7 days")}</option>
+                    <option value="last30days">{tl("آخر 30 يوم", "Last 30 days")}</option>
+                    <option value="custom">{tl("تاريخ مخصص", "Custom date")}</option>
                   </select>
                   {holdDateFilter === "custom" && (
                     <input
@@ -3862,12 +3863,12 @@ const Summary: React.FC = () => {
                       className={`${orders.length > 0 ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200'} border-2 rounded-xl ${orders.length > 0 ? 'cursor-pointer hover:shadow-lg' : ''} transition-all group ${
                         isCourier ? "p-3" : "p-4"
                       }`}
-                      onClick={orders.length > 0 ? () => openOrders(orders, "رسوم الحجز النشطة (جميع الأيام)") : undefined}
+                      onClick={orders.length > 0 ? () => openOrders(orders, tl("رسوم الحجز النشطة (جميع الأيام)", "Active hold fees (all days)")) : undefined}
                     >
                       <div className={`flex items-center gap-3 ${isCourier ? "mb-2" : "mb-3"}`}>
                         <AlertCircle className={`${orders.length > 0 ? 'text-red-600' : 'text-gray-400'} ${isCourier ? "w-4 h-4" : "w-6 h-6"}`} />
                         <h4 className={`font-semibold ${orders.length > 0 ? 'text-red-900' : 'text-gray-500'} ${isCourier ? "text-xs" : "text-base"}`}>
-                          رسوم حجز نشطة
+                          {tl("رسوم حجز نشطة", "Active hold fees")}
                         </h4>
                       </div>
                       <div className="space-y-1">
@@ -3875,11 +3876,11 @@ const Summary: React.FC = () => {
                           {orders.length}
                         </p>
                         <p className={`font-semibold ${orders.length > 0 ? 'text-red-700' : 'text-gray-400'} ${isCourier ? "text-sm" : "text-lg"}`}>
-                          {amount.toFixed(2)} ج.م
+                          {amount.toFixed(2)} {tl("ج.م", "EGP")}
                         </p>
                         {sortedOrders.length > 0 && (sortedOrders[0].hold_fee_added_at || sortedOrders[0].hold_fee_created_at) && (
                           <p className={`${orders.length > 0 ? 'text-red-600' : 'text-gray-400'} ${isCourier ? "text-xs" : "text-sm"}`}>
-                            آخر إضافة: {new Date(sortedOrders[0].hold_fee_added_at || sortedOrders[0].hold_fee_created_at || '').toLocaleDateString('ar-EG', {
+                            {tl("آخر إضافة:", "Last added:")} {new Date(sortedOrders[0].hold_fee_added_at || sortedOrders[0].hold_fee_created_at || '').toLocaleDateString('en-US', {
                               year: 'numeric',
                               month: '2-digit',
                               day: '2-digit'
@@ -3907,12 +3908,12 @@ const Summary: React.FC = () => {
                       className={`${orders.length > 0 ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'} border-2 rounded-xl ${orders.length > 0 ? 'cursor-pointer hover:shadow-lg' : ''} transition-all group ${
                         isCourier ? "p-3" : "p-4"
                       }`}
-                      onClick={orders.length > 0 ? () => openOrders(orders, "رسوم الحجز المزالة (جميع الأيام)") : undefined}
+                      onClick={orders.length > 0 ? () => openOrders(orders, tl("رسوم الحجز المزالة (جميع الأيام)", "Removed hold fees (all days)")) : undefined}
                     >
                       <div className={`flex items-center gap-3 ${isCourier ? "mb-2" : "mb-3"}`}>
                         <CheckCircle className={`${orders.length > 0 ? 'text-green-600' : 'text-gray-400'} ${isCourier ? "w-4 h-4" : "w-6 h-6"}`} />
                         <h4 className={`font-semibold ${orders.length > 0 ? 'text-green-900' : 'text-gray-500'} ${isCourier ? "text-xs" : "text-base"}`}>
-                          رسوم حجز مزالة
+                          {tl("رسوم حجز مزالة", "Removed hold fees")}
                         </h4>
                       </div>
                       <div className="space-y-1">
@@ -3920,11 +3921,11 @@ const Summary: React.FC = () => {
                           {orders.length}
                         </p>
                         <p className={`font-semibold ${orders.length > 0 ? 'text-green-700' : 'text-gray-400'} ${isCourier ? "text-sm" : "text-lg"}`}>
-                          {orders.length > 0 ? 'تم الإزالة' : 'لا توجد'}
+                          {orders.length > 0 ? tl('تم الإزالة', 'Removed') : tl('لا توجد', 'None')}
                         </p>
                         {sortedOrders.length > 0 && (sortedOrders[0].hold_fee_removed_at || sortedOrders[0].hold_fee_created_at) && (
                           <p className={`${orders.length > 0 ? 'text-green-600' : 'text-gray-400'} ${isCourier ? "text-xs" : "text-sm"}`}>
-                            آخر إزالة: {new Date(sortedOrders[0].hold_fee_removed_at || sortedOrders[0].hold_fee_created_at || '').toLocaleDateString('ar-EG', {
+                            {tl("آخر إزالة:", "Last removed:")} {new Date(sortedOrders[0].hold_fee_removed_at || sortedOrders[0].hold_fee_created_at || '').toLocaleDateString('en-US', {
                               year: 'numeric',
                               month: '2-digit',
                               day: '2-digit'
@@ -3949,7 +3950,7 @@ const Summary: React.FC = () => {
                   <Receipt className={`text-green-600 ${isCourier ? "w-4 h-4" : "w-6 h-6"}`} />
                 </div>
                 <h2 className={`font-bold text-gray-900 ${isCourier ? "text-lg" : "text-xl"}`}>
-                  {isCourier ? "للمحاسبة" : "🧾 إجمالي ما يسلم للمحاسبة"}
+                  {isCourier ? tl("للمحاسبة", "To accounting") : tl("🧾 إجمالي ما يسلم للمحاسبة", "🧾 Total handed to accounting")}
                 </h2>
               </div>
               <div
@@ -3981,13 +3982,13 @@ const Summary: React.FC = () => {
                   return (
                     <>
                       <div className={`font-bold text-green-900 mb-2 ${isCourier ? "text-2xl" : "text-4xl"}`}>
-                        {totalHandToAccounting.toFixed(0)} ج.م
+                        {totalHandToAccounting.toFixed(0)} {tl("ج.م", "EGP")}
                       </div>
                       <p className={`text-green-700 font-medium ${isCourier ? "text-sm" : "text-base"}`}>
-                        {isCourier ? "النقد فقط" : "النقد في اليد فقط"}
+                        {isCourier ? tl("النقد فقط", "Cash only") : tl("النقد في اليد فقط", "Cash on hand only")}
                       </p>
                       <p className={`text-green-600 mt-2 ${isCourier ? "text-xs" : "text-sm"}`}>
-                        ({cashOnHandOrders.length} طلب نقدي)
+                        ({cashOnHandOrders.length} {tl("طلب نقدي", "cash orders")})
                       </p>
                     </>
                   )
@@ -4063,16 +4064,16 @@ const Summary: React.FC = () => {
                               <div className="flex-1">
                                 <div className="flex items-center gap-2">
                                   <h4 className={`font-semibold text-gray-900 ${isCourier ? "text-sm" : "text-base"}`}>
-                                    طلب #{order.order_id}
+                                    {tl("طلب", "Order")} #{order.order_id}
                                   </h4>
                                   {order.hold_fee && order.hold_fee > 0 && (
                                     <span className={`px-2 py-1 bg-orange-100 text-orange-800 rounded-full font-medium ${isCourier ? "text-xs" : "text-xs"}`}>
-                                      رسوم حجز
+                                      {tl("رسوم حجز", "Hold fee")}
                                     </span>
                                   )}
                                   {(!order.hold_fee || order.hold_fee === 0) && order.hold_fee_removed_at && (
                                     <span className={`px-2 py-1 bg-green-100 text-green-800 rounded-full font-medium ${isCourier ? "text-xs" : "text-xs"}`}>
-                                      تم الإزالة
+                                      {tl("تم الإزالة", "Removed")}
                                     </span>
                                   )}
                                 </div>
@@ -4085,11 +4086,11 @@ const Summary: React.FC = () => {
                                   <div className={`mt-2 p-2 bg-blue-50 border border-blue-200 rounded-lg ${isCourier ? "text-xs" : "text-sm"}`}>
                                     <div className="flex items-center gap-2">
                                       <Calendar className={`text-blue-600 ${isCourier ? "w-3 h-3" : "w-4 h-4"}`} />
-                                      <span className={`font-medium text-blue-800 ${isCourier ? "text-xs" : "text-sm"}`}>تاريخ إضافة رسوم الحجز:</span>
+                                      <span className={`font-medium text-blue-800 ${isCourier ? "text-xs" : "text-sm"}`}>{tl("تاريخ إضافة رسوم الحجز:", "Hold fee added date:")}</span>
                                     </div>
                                     <p className={`text-blue-700 mt-1 ${isCourier ? "text-xs" : "text-sm"}`}>
                                       {order.hold_fee_added_at ? 
-                                        new Date(order.hold_fee_added_at).toLocaleDateString('ar-EG', {
+                                        new Date(order.hold_fee_added_at).toLocaleDateString('en-US', {
                                           year: 'numeric',
                                           month: '2-digit',
                                           day: '2-digit',
@@ -4097,14 +4098,14 @@ const Summary: React.FC = () => {
                                           minute: '2-digit'
                                         }) : 
                                         order.hold_fee_created_at ? 
-                                          new Date(order.hold_fee_created_at).toLocaleDateString('ar-EG', {
+                                          new Date(order.hold_fee_created_at).toLocaleDateString('en-US', {
                                             year: 'numeric',
                                             month: '2-digit',
                                             day: '2-digit',
                                             hour: '2-digit',
                                             minute: '2-digit'
                                           }) : 
-                                          'تاريخ غير محدد'
+                                          tl('تاريخ غير محدد', 'Date not specified')
                                       }
                                     </p>
                                   </div>
@@ -4113,11 +4114,11 @@ const Summary: React.FC = () => {
                                   <div className={`mt-2 p-2 bg-green-50 border border-green-200 rounded-lg ${isCourier ? "text-xs" : "text-sm"}`}>
                                     <div className="flex items-center gap-2">
                                       <Calendar className={`text-green-600 ${isCourier ? "w-3 h-3" : "w-4 h-4"}`} />
-                                      <span className={`font-medium text-green-800 ${isCourier ? "text-xs" : "text-sm"}`}>تاريخ إزالة رسوم الحجز:</span>
+                                      <span className={`font-medium text-green-800 ${isCourier ? "text-xs" : "text-sm"}`}>{tl("تاريخ إزالة رسوم الحجز:", "Hold fee removed date:")}</span>
                                     </div>
                                     <p className={`text-green-700 mt-1 ${isCourier ? "text-xs" : "text-sm"}`}>
                                       {order.hold_fee_removed_at ? 
-                                        new Date(order.hold_fee_removed_at).toLocaleDateString('ar-EG', {
+                                        new Date(order.hold_fee_removed_at).toLocaleDateString('en-US', {
                                           year: 'numeric',
                                           month: '2-digit',
                                           day: '2-digit',
@@ -4125,14 +4126,14 @@ const Summary: React.FC = () => {
                                           minute: '2-digit'
                                         }) : 
                                         order.hold_fee_created_at ? 
-                                          new Date(order.hold_fee_created_at).toLocaleDateString('ar-EG', {
+                                          new Date(order.hold_fee_created_at).toLocaleDateString('en-US', {
                                             year: 'numeric',
                                             month: '2-digit',
                                             day: '2-digit',
                                             hour: '2-digit',
                                             minute: '2-digit'
                                           }) : 
-                                          'تاريخ غير محدد'
+                                          tl('تاريخ غير محدد', 'Date not specified')
                                       }
                                     </p>
                                   </div>
@@ -4146,7 +4147,7 @@ const Summary: React.FC = () => {
                                 >
                                   <User className={`text-green-600 ${isCourier ? "w-2 h-2" : "w-3 h-3"}`} />
                                 </div>
-                                <span className={`text-gray-600 ${isCourier ? "text-xs" : "text-sm"}`}>العميل:</span>
+                                <span className={`text-gray-600 ${isCourier ? "text-xs" : "text-sm"}`}>{tl("العميل:", "Customer:")}</span>
                                 <span className={`font-medium ${isCourier ? "text-xs" : "text-sm"}`}>
                                   {order.customer_name}
                                 </span>
@@ -4157,7 +4158,7 @@ const Summary: React.FC = () => {
                                 >
                                   <Smartphone className={`text-blue-600 ${isCourier ? "w-2 h-2" : "w-3 h-3"}`} />
                                 </div>
-                                <span className={`text-gray-600 ${isCourier ? "text-xs" : "text-sm"}`}>الهاتف:</span>
+                                <span className={`text-gray-600 ${isCourier ? "text-xs" : "text-sm"}`}>{tl("الهاتف:", "Phone:")}</span>
                                 <a
                                   href={`tel:${order.mobile_number}`}
                                   className={`text-blue-600 hover:text-blue-800 font-medium transition-colors ${isCourier ? "text-xs" : "text-sm"}`}
@@ -4171,7 +4172,7 @@ const Summary: React.FC = () => {
                                 >
                                   <Package className={`text-red-600 ${isCourier ? "w-2 h-2" : "w-3 h-3"}`} />
                                 </div>
-                                <span className={`text-gray-600 ${isCourier ? "text-xs" : "text-sm"}`}>العنوان:</span>
+                                <span className={`text-gray-600 ${isCourier ? "text-xs" : "text-sm"}`}>{tl("العنوان:", "Address:")}</span>
                                 <span className={`text-gray-800 flex-1 ${isCourier ? "text-xs" : "text-sm"}`}>
                                   {isCourier
                                     ? order.address.length > 50
@@ -4203,12 +4204,12 @@ const Summary: React.FC = () => {
                                 className={`font-semibold text-gray-800 mb-3 flex items-center gap-2 ${isCourier ? "text-sm" : "text-base"}`}
                               >
                                 <DollarSign className={`${isCourier ? "w-3 h-3" : "w-4 h-4"}`} />
-                                {isCourier ? "المالية" : "المعلومات المالية"}
+                                {isCourier ? tl("المالية", "Financial") : tl("المعلومات المالية", "Financial information")}
                               </h5>
                               <div className={`space-y-${isCourier ? "2" : "3"}`}>
                                 <div className="flex justify-between items-center">
                                   <span className={`text-gray-600 ${isCourier ? "text-xs" : "text-sm"}`}>
-                                    {isCourier ? "الطلب:" : translate("orderTotalLabel") + ":"}
+                                    {isCourier ? tl("الطلب:", "Order:") : translate("orderTotalLabel") + ":"}
                                   </span>
                                   <span className={`font-medium ${isCourier ? "text-xs" : "text-sm"}`}>
                                     {Number(order.total_order_fees).toFixed(0)} {translate("EGP")}
@@ -4219,10 +4220,10 @@ const Summary: React.FC = () => {
                                     <span className={`text-gray-600 ${isCourier ? "text-xs" : "text-sm"}`}>
                                       {Number(order.partial_paid_amount || 0) > 0
                                         ? isCourier
-                                          ? "جزئي:"
+                                          ? tl("جزئي:", "Partial:")
                                           : translate("partialAmountLabel") + ":"
                                         : isCourier
-                                          ? "محصل:"
+                                          ? tl("محصل:", "Collected:")
                                           : translate("orderAmountCollectedLabel") + ":"}
                                     </span>
                                     <span
@@ -4235,7 +4236,7 @@ const Summary: React.FC = () => {
                                 {deliveryFee > 0 && (
                                   <div className="flex justify-between items-center">
                                     <span className={`text-gray-600 ${isCourier ? "text-xs" : "text-sm"}`}>
-                                      {isCourier ? "رسوم:" : translate("deliveryFee") + ":"}
+                                      {isCourier ? tl("رسوم:", "Fee:") : translate("deliveryFee") + ":"}
                                     </span>
                                     <span
                                       className={`font-semibold text-blue-600 ${isCourier ? "text-xs" : "text-sm"}`}
@@ -4329,7 +4330,7 @@ const Summary: React.FC = () => {
                                     )}
                                     {holdFee > 0 && order.hold_fee_added_at && (
                                       <p className="text-xs text-blue-600 mt-1">
-                                        تم الإضافة: {new Date(order.hold_fee_added_at).toLocaleDateString('ar-EG', {
+                                        {tl("تم الإضافة:", "Added:")} {new Date(order.hold_fee_added_at).toLocaleDateString('en-US', {
                                           year: 'numeric',
                                           month: '2-digit',
                                           day: '2-digit',
@@ -4340,7 +4341,7 @@ const Summary: React.FC = () => {
                                     )}
                                     {holdFee === 0 && order.hold_fee_removed_at && (
                                       <p className="text-xs text-green-600 mt-1">
-                                        تم الإزالة: {new Date(order.hold_fee_removed_at).toLocaleDateString('ar-EG', {
+                                        {tl("تم الإزالة:", "Removed:")} {new Date(order.hold_fee_removed_at).toLocaleDateString('en-US', {
                                           year: 'numeric',
                                           month: '2-digit',
                                           day: '2-digit',
@@ -4356,7 +4357,7 @@ const Summary: React.FC = () => {
                                     <span
                                       className={`font-semibold text-gray-700 ${isCourier ? "text-xs" : "text-sm"}`}
                                     >
-                                      {isCourier ? "الإجمالي:" : translate("totalCourierHandledLabel") + ":"}
+                                      {isCourier ? tl("الإجمالي:", "Total:") : translate("totalCourierHandledLabel") + ":"}
                                     </span>
                                     <span
                                       className={`font-bold text-purple-600 ${isCourier ? "text-sm" : "text-base"}`}
@@ -4372,7 +4373,7 @@ const Summary: React.FC = () => {
                             <div className={`space-y-${isCourier ? "1" : "2"}`}>
                               <div className="flex items-center gap-2">
                                 <span className={`text-gray-600 ${isCourier ? "text-xs" : "text-sm"}`}>
-                                  {isCourier ? "الدفع:" : translate("paymentMethod") + ":"}
+                                  {isCourier ? tl("الدفع:", "Payment:") : translate("paymentMethod") + ":"}
                                 </span>
                                 <span
                                   className={`px-2 py-1 rounded font-medium bg-purple-100 text-purple-800 ${isCourier ? "text-xs" : "text-xs"}`}
@@ -4396,7 +4397,7 @@ const Summary: React.FC = () => {
                               </div>
                               <div>
                                 <span className={`font-medium text-gray-700 ${isCourier ? "text-xs" : "text-sm"}`}>
-                                  {isCourier ? "تعليق:" : translate("comment") + ":"}
+                                  {isCourier ? tl("تعليق:", "Comment:") : translate("comment") + ":"}
                                 </span>
                                 <p className={`text-gray-600 mt-1 ${isCourier ? "text-xs" : "text-sm"}`}>
                                   {isCourier
@@ -4421,7 +4422,7 @@ const Summary: React.FC = () => {
                               </div>
                               <span className={`font-medium text-gray-700 ${isCourier ? "text-xs" : "text-sm"}`}>
                                 {isCourier
-                                  ? `صور (${order.order_proofs.length})`
+                                  ? `${tl("صور", "Photos")} (${order.order_proofs.length})`
                                   : `${translate("proofImagesLabel")} (${order.order_proofs.length})`}
                               </span>
                             </div>
@@ -4430,7 +4431,7 @@ const Summary: React.FC = () => {
                                 <img
                                   key={proof.id}
                                   src={proof.image_data || "/placeholder.svg"}
-                                  alt="إثبات"
+                                  alt={tl("إثبات", "Proof")}
                                   className={`w-full rounded-lg border border-gray-200 object-cover cursor-pointer hover:opacity-75 transition-opacity ${isCourier ? "h-16" : "h-20"}`}
                                   onClick={() => window.open(proof.image_data, "_blank")}
                                 />

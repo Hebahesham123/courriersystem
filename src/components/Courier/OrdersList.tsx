@@ -40,6 +40,7 @@ import {
 import { supabase } from "../../lib/supabase"
 import { whatsappSupabase } from "../../lib/whatsappSupabase"
 import { useAuth } from "../../contexts/AuthContext"
+import { useLanguage } from "../../contexts/LanguageContext"
 import { logActivity, diffFields } from "../../lib/activityLogger"
 import { useModalScrollPreserve } from "../../lib/useModalScrollPreserve"
 
@@ -193,7 +194,8 @@ const CLOUDINARY_UPLOAD_PRESET = "hebaaa"
 const SUPABASE_BUCKET = "order-proofs"
 
 // Utility function to render notes with clickable links
-const renderNotesWithLinks = (notes: string, isInModal: boolean = false) => {
+const renderNotesWithLinks = (notes: string, isInModal: boolean = false, localize?: (ar: string, en: string) => string) => {
+  const L = localize || ((ar: string) => ar)
   // Regular expression to detect URLs (including Google Maps links)
   const urlRegex = /(https?:\/\/[^\s]+)/g;
   
@@ -226,7 +228,7 @@ const renderNotesWithLinks = (notes: string, isInModal: boolean = false) => {
           target="_blank"
           rel="noopener noreferrer"
           className={linkClasses}
-          title={isGoogleMaps ? "فتح في خرائط جوجل" : "فتح الرابط"}
+          title={isGoogleMaps ? L("فتح في خرائط جوجل", "Open in Google Maps") : L("فتح الرابط", "Open link")}
           onClick={(e) => {
             e.stopPropagation(); // Prevent card click
             // Don't prevent default - allow link to open
@@ -363,6 +365,40 @@ const OrdersList: React.FC = () => {
   const [isInitialLoad, setIsInitialLoad] = useState(true)
 
   const { user } = useAuth()
+  const { language } = useLanguage()
+  const tl = (ar: string, en: string) => (language === 'ar' ? ar : en)
+  // Bilingual labels for module-level maps (keys/logic stay unchanged)
+  const statusLabelText = (key: string) => {
+    const m: Record<string, [string, string]> = {
+      assigned: ["مكلف", "Assigned"],
+      delivered: ["تم التوصيل", "Delivered"],
+      canceled: ["ملغي", "Canceled"],
+      partial: ["جزئي", "Partial"],
+      hand_to_hand: ["استبدال", "Exchange"],
+      return: ["مؤجل", "Deferred"],
+      receiving_part: ["استلام قطعه", "Receive Piece"],
+    }
+    const e = m[key]
+    return e ? tl(e[0], e[1]) : key
+  }
+  const methodLabel = (key: string) => {
+    const m: Record<string, [string, string]> = {
+      on_hand: ["نقداً", "Cash"],
+      instapay: ["إنستاباي", "InstaPay"],
+      wallet: ["المحفظة", "Wallet"],
+      visa_machine: ["ماكينة فيزا", "Visa Machine"],
+      paymob: ["باي موب", "Paymob"],
+      onther: ["دفع مقسم / طرق متعددة", "Split / Multiple Methods"],
+      valu: ["فاليو", "ValU"],
+      courier: ["المندوب", "Courier"],
+      fawry: ["فوري", "Fawry"],
+      vodafone_cash: ["فودافون كاش", "Vodafone Cash"],
+      orange_cash: ["أورانج كاش", "Orange Cash"],
+      we_pay: ["وي باي", "WE Pay"],
+    }
+    const e = m[key]
+    return e ? tl(e[0], e[1]) : key
+  }
 
   // Scroll preservation disabled for mobile stability
   const modalScroll = useMemo(() => ({
@@ -1027,13 +1063,14 @@ const OrdersList: React.FC = () => {
     yesterday.setDate(yesterday.getDate() - 1)
 
     if (date.toDateString() === today.toDateString()) {
-      return "اليوم"
+      return tl("اليوم", "Today")
     }
     if (date.toDateString() === yesterday.toDateString()) {
-      return "أمس"
+      return tl("أمس", "Yesterday")
     }
 
     const arabicDays = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"]
+    const englishDays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
     const arabicMonths = [
       "يناير",
       "فبراير",
@@ -1048,10 +1085,24 @@ const OrdersList: React.FC = () => {
       "نوفمبر",
       "ديسمبر",
     ]
+    const englishMonths = [
+      "January",
+      "February",
+      "March",
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December",
+    ]
 
-    const dayName = arabicDays[date.getDay()]
+    const dayName = tl(arabicDays[date.getDay()], englishDays[date.getDay()])
     const day = date.getDate()
-    const month = arabicMonths[date.getMonth()]
+    const month = tl(arabicMonths[date.getMonth()], englishMonths[date.getMonth()])
     const year = date.getFullYear()
 
     return `${dayName} ${day} ${month} ${year}`
@@ -1060,7 +1111,7 @@ const OrdersList: React.FC = () => {
   // Helper function to format time
   const formatTime = (dateStr: string) => {
     const date = new Date(dateStr)
-    return date.toLocaleTimeString("ar-EG", {
+    return date.toLocaleTimeString("en-US", {
       hour: "2-digit",
       minute: "2-digit",
       hour12: true,
@@ -1413,8 +1464,8 @@ const OrdersList: React.FC = () => {
       setOrders(sortedData)
     } catch (error: any) {
       console.error("Error fetching orders:", error)
-      const errorMessage = error?.message || "حدث خطأ غير معروف"
-      alert(`فشل تحميل الطلبات\n\n${errorMessage}\n\nيرجى المحاولة مرة أخرى أو تحديث الصفحة`)
+      const errorMessage = error?.message || tl("حدث خطأ غير معروف", "An unknown error occurred")
+      alert(tl(`فشل تحميل الطلبات\n\n${errorMessage}\n\nيرجى المحاولة مرة أخرى أو تحديث الصفحة`, `Failed to load orders\n\n${errorMessage}\n\nPlease try again or refresh the page`))
     } finally {
       setLoading(false)
       setRefreshing(false)
@@ -1663,12 +1714,12 @@ const OrdersList: React.FC = () => {
       
       if (uploadError) {
         console.error("Supabase upload error:", uploadError)
-        throw new Error(uploadError.message || "فشل رفع الصورة إلى التخزين")
+        throw new Error(uploadError.message || tl("فشل رفع الصورة إلى التخزين", "Failed to upload image to storage"))
       }
 
       const { data: urlData } = supabase.storage.from(SUPABASE_BUCKET).getPublicUrl(filePath)
       if (!urlData?.publicUrl) {
-        throw new Error("فشل الحصول على رابط الصورة من سبابيز")
+        throw new Error(tl("فشل الحصول على رابط الصورة من سبابيز", "Failed to get image URL from Supabase"))
       }
       
       return urlData.publicUrl
@@ -1728,14 +1779,14 @@ const OrdersList: React.FC = () => {
         
         const data = await res.json()
         if (!data.secure_url) {
-          throw new Error(data?.error?.message || "فشل رفع الصورة على كلاودينارى")
+          throw new Error(data?.error?.message || tl("فشل رفع الصورة على كلاودينارى", "Failed to upload image to Cloudinary"))
         }
         imageUrl = data.secure_url
         console.log("[v0] Cloudinary upload successful:", imageUrl)
       } catch (fetchErr: any) {
         clearTimeout(timeoutId)
         if (fetchErr.name === 'AbortError') {
-          throw new Error("انتهت مهلة الاتصال. يرجى المحاولة مرة أخرى.")
+          throw new Error(tl("انتهت مهلة الاتصال. يرجى المحاولة مرة أخرى.", "Connection timed out. Please try again."))
         }
         throw fetchErr
       }
@@ -1757,7 +1808,7 @@ const OrdersList: React.FC = () => {
     }
 
     if (!imageUrl) {
-      const errorMsg = lastError?.message || lastError?.error?.message || "فشل رفع الصورة، برجاء المحاولة مرة أخرى"
+      const errorMsg = lastError?.message || lastError?.error?.message || tl("فشل رفع الصورة، برجاء المحاولة مرة أخرى", "Failed to upload image, please try again")
       console.error("[v0] Upload failed with error:", errorMsg)
       throw new Error(errorMsg)
     }
@@ -1772,11 +1823,11 @@ const OrdersList: React.FC = () => {
 
     if (error) {
       console.error("[v0] Database insert error:", error)
-      throw new Error(error.message || "فشل حفظ الصورة في قاعدة البيانات")
+      throw new Error(error.message || tl("فشل حفظ الصورة في قاعدة البيانات", "Failed to save image to the database"))
     }
 
     if (!inserted) {
-      throw new Error("لم يتم حفظ الصورة في قاعدة البيانات")
+      throw new Error(tl("لم يتم حفظ الصورة في قاعدة البيانات", "Image was not saved to the database"))
     }
 
     console.log("[v0] Image successfully saved with ID:", inserted.id)
@@ -1804,7 +1855,7 @@ const OrdersList: React.FC = () => {
     
     if (!selectedOrder || !user) {
       console.warn("[v0] No selected order or user", { selectedOrder: !!selectedOrder, user: !!user })
-      alert("خطأ: لا يوجد طلب محدد أو مستخدم. يرجى تحديث الصفحة.")
+      alert(tl("خطأ: لا يوجد طلب محدد أو مستخدم. يرجى تحديث الصفحة.", "Error: No order or user selected. Please refresh the page."))
       return
     }
 
@@ -1827,14 +1878,14 @@ const OrdersList: React.FC = () => {
         try {
           // Validate file before upload
           if (!file || file.size === 0) {
-            errors.push(`${file.name}: ملف فارغ أو تالف`)
+            errors.push(`${file.name}: ${tl("ملف فارغ أو تالف", "Empty or corrupt file")}`)
             setUploadingImages(prev => prev.filter(name => name !== file.name))
             continue
           }
           
           // Check file size (max 10MB for mobile)
           if (file.size > 10 * 1024 * 1024) {
-            errors.push(`${file.name}: حجم الملف كبير جداً (الحد الأقصى 10MB)`)
+            errors.push(`${file.name}: ${tl("حجم الملف كبير جداً (الحد الأقصى 10MB)", "File size too large (max 10MB)")}`)
             setUploadingImages(prev => prev.filter(name => name !== file.name))
             continue
           }
@@ -1844,7 +1895,7 @@ const OrdersList: React.FC = () => {
           // Remove this file from uploading list
           setUploadingImages(prev => prev.filter(name => name !== file.name))
         } catch (error: any) {
-          const errorMsg = error?.message || "خطأ غير معروف"
+          const errorMsg = error?.message || tl("خطأ غير معروف", "Unknown error")
           errors.push(`${file.name}: ${errorMsg}`)
           console.error(`Error uploading ${file.name}:`, error)
           // Remove this file from uploading list even on error
@@ -1885,18 +1936,18 @@ const OrdersList: React.FC = () => {
       }
 
       if (errors.length > 0) {
-        const successMsg = uploadedProofs.length > 0 
-          ? `تم رفع ${uploadedProofs.length} صورة بنجاح\n\n`
+        const successMsg = uploadedProofs.length > 0
+          ? tl(`تم رفع ${uploadedProofs.length} صورة بنجاح\n\n`, `${uploadedProofs.length} image(s) uploaded successfully\n\n`)
           : ""
-        alert(`${successMsg}فشل رفع ${errors.length} صورة:\n${errors.join('\n')}`)
+        alert(tl(`${successMsg}فشل رفع ${errors.length} صورة:\n${errors.join('\n')}`, `${successMsg}Failed to upload ${errors.length} image(s):\n${errors.join('\n')}`))
       } else if (uploadedProofs.length > 0) {
         // Success message will be shown by the success indicator
       } else {
-        alert("لم يتم رفع أي صورة. يرجى المحاولة مرة أخرى.")
+        alert(tl("لم يتم رفع أي صورة. يرجى المحاولة مرة أخرى.", "No images were uploaded. Please try again."))
       }
     } catch (error: any) {
       console.error("Upload error:", error)
-      alert("فشل الرفع: " + (error?.message || "خطأ غير معروف"))
+      alert(tl("فشل الرفع: ", "Upload failed: ") + (error?.message || tl("خطأ غير معروف", "Unknown error")))
     } finally {
       setImageUploading(false)
       setUploadingImages([])
@@ -1923,7 +1974,7 @@ const OrdersList: React.FC = () => {
 
     if (!inputEl) {
       console.error(`File input not found for type: ${type}`)
-      alert("خطأ: لم يتم العثور على حقل رفع الصور. يرجى تحديث الصفحة.")
+      alert(tl("خطأ: لم يتم العثور على حقل رفع الصور. يرجى تحديث الصفحة.", "Error: Image upload field not found. Please refresh the page."))
       return
     }
 
@@ -1943,7 +1994,7 @@ const OrdersList: React.FC = () => {
       
     } catch (err) {
       console.error("Error opening file input:", err)
-      alert("خطأ في فتح حقل رفع الصور. يرجى المحاولة مرة أخرى.")
+      alert(tl("خطأ في فتح حقل رفع الصور. يرجى المحاولة مرة أخرى.", "Error opening the image upload field. Please try again."))
     }
   }, [imageUploading])
 
@@ -2143,7 +2194,7 @@ const OrdersList: React.FC = () => {
 
     // Validate that status is selected
     if (!updateData.status || updateData.status.trim() === "") {
-      alert("يرجى اختيار حالة الطلب")
+      alert(tl("يرجى اختيار حالة الطلب", "Please select the order status"))
       return
     }
 
@@ -2175,7 +2226,7 @@ const OrdersList: React.FC = () => {
           (r) => r.method && Number.parseFloat(r.amount) > 0,
         )
         if (validSplits.length < 1) {
-          alert("يرجى إضافة طريقة دفع واحدة على الأقل للتقسيم")
+          alert(tl("يرجى إضافة طريقة دفع واحدة على الأقل للتقسيم", "Please add at least one payment method for the split"))
           setSaving(false)
           setUpdatingOrderId(null)
           return
@@ -2189,7 +2240,10 @@ const OrdersList: React.FC = () => {
         if (partial > 0) {
           if (Math.abs(splitTotal - partial) > 0.01) {
             alert(
-              `مجموع التقسيم (${splitTotal.toFixed(2)}) لا يساوي المبلغ المحصل (${partial.toFixed(2)}). يرجى تعديل المبالغ.`,
+              tl(
+                `مجموع التقسيم (${splitTotal.toFixed(2)}) لا يساوي المبلغ المحصل (${partial.toFixed(2)}). يرجى تعديل المبالغ.`,
+                `The split total (${splitTotal.toFixed(2)}) does not equal the collected amount (${partial.toFixed(2)}). Please adjust the amounts.`,
+              ),
             )
             setSaving(false)
             setUpdatingOrderId(null)
@@ -2284,7 +2338,7 @@ const OrdersList: React.FC = () => {
           }
         } else if (updateData.status === "canceled" && fee > 0) {
           if (!updateData.payment_sub_type) {
-            alert("يرجى اختيار نوع الدفع الفرعي للمندوب عند إضافة رسوم التوصيل لطلب ملغي.")
+            alert(tl("يرجى اختيار نوع الدفع الفرعي للمندوب عند إضافة رسوم التوصيل لطلب ملغي.", "Please select the courier payment sub-type when adding a delivery fee to a canceled order."))
             setSaving(false)
             setUpdatingOrderId(null)
             return
@@ -2312,14 +2366,14 @@ const OrdersList: React.FC = () => {
             // If courier added amounts, payment method is required
             const collected = updateData.collected_by
             if (!collected) {
-              alert("يرجى اختيار طريقة تحصيل عند إضافة رسوم التوصيل.")
+              alert(tl("يرجى اختيار طريقة تحصيل عند إضافة رسوم التوصيل.", "Please select a collection method when adding a delivery fee."))
               setSaving(false)
               setUpdatingOrderId(null)
               return
             }
             if (collected === "courier") {
               if (!updateData.payment_sub_type) {
-                alert("يرجى اختيار نوع الدفع الفرعي للمندوب.")
+                alert(tl("يرجى اختيار نوع الدفع الفرعي للمندوب.", "Please select the courier payment sub-type."))
                 setSaving(false)
                 setUpdatingOrderId(null)
                 return
@@ -2334,14 +2388,14 @@ const OrdersList: React.FC = () => {
             // For other statuses, payment method is always required
             const collected = updateData.collected_by
             if (!collected) {
-              alert("يرجى اختيار طريقة تحصيل عند إضافة رسوم التوصيل.")
+              alert(tl("يرجى اختيار طريقة تحصيل عند إضافة رسوم التوصيل.", "Please select a collection method when adding a delivery fee."))
               setSaving(false)
               setUpdatingOrderId(null)
               return
             }
             if (collected === "courier") {
               if (!updateData.payment_sub_type) {
-                alert("يرجى اختيار نوع الدفع الفرعي للمندوب.")
+                alert(tl("يرجى اختيار نوع الدفع الفرعي للمندوب.", "Please select the courier payment sub-type."))
                 setSaving(false)
                 setUpdatingOrderId(null)
                 return
@@ -2561,7 +2615,7 @@ const OrdersList: React.FC = () => {
           )
         )
         console.error("Supabase error:", error.message)
-        alert("خطأ في الحفظ: " + error.message)
+        alert(tl("خطأ في الحفظ: ", "Save error: ") + error.message)
         setSaving(false)
         setUpdatingOrderId(null)
         return
@@ -2610,7 +2664,7 @@ const OrdersList: React.FC = () => {
           order.id === selectedOrder.id ? originalOrder : order
         )
       )
-      alert("خطأ: " + error.message)
+      alert(tl("خطأ: ", "Error: ") + error.message)
     } finally {
       setSaving(false)
       setUpdatingOrderId(null)
@@ -2618,14 +2672,14 @@ const OrdersList: React.FC = () => {
   }
 
   const getStatusInfo = (status: string) => {
-    return (
+    const base =
       statusLabels[status] || {
         label: status,
         icon: Clock,
         color: "text-gray-700",
         bgColor: "bg-gray-50 border-gray-200",
       }
-    )
+    return { ...base, label: statusLabelText(status) }
   }
 
   const canEditOrder = (order: Order) => {
@@ -2643,45 +2697,45 @@ const OrdersList: React.FC = () => {
         order.payment_sub_type &&
         paymentSubTypesForCourier[order.payment_sub_type]
       ) {
-        return paymentSubTypesForCourier[order.payment_sub_type]
+        return methodLabel(order.payment_sub_type)
       }
 
       // If collected_by is set but no sub-type (e.g., for online payments or non-courier collection)
-      if (order.collected_by === "valu") return `${allCollectionMethods.valu} (مدفوع)`
-      if (order.collected_by === "paymob") return `${allCollectionMethods.paymob} (مدفوع)`
-      if (order.collected_by === "fawry") return `${allCollectionMethods.fawry} (مدفوع)`
-      if (order.collected_by === "instapay") return `${allCollectionMethods.instapay} (مدفوع)`
-      if (order.collected_by === "vodafone_cash") return `${allCollectionMethods.vodafone_cash} (مدفوع)`
-      if (order.collected_by === "orange_cash") return `${allCollectionMethods.orange_cash} (مدفوع)`
-      if (order.collected_by === "we_pay") return `${allCollectionMethods.we_pay} (مدفوع)`
+      if (order.collected_by === "valu") return `${methodLabel("valu")} ${tl("(مدفوع)", "(Paid)")}`
+      if (order.collected_by === "paymob") return `${methodLabel("paymob")} ${tl("(مدفوع)", "(Paid)")}`
+      if (order.collected_by === "fawry") return `${methodLabel("fawry")} ${tl("(مدفوع)", "(Paid)")}`
+      if (order.collected_by === "instapay") return `${methodLabel("instapay")} ${tl("(مدفوع)", "(Paid)")}`
+      if (order.collected_by === "vodafone_cash") return `${methodLabel("vodafone_cash")} ${tl("(مدفوع)", "(Paid)")}`
+      if (order.collected_by === "orange_cash") return `${methodLabel("orange_cash")} ${tl("(مدفوع)", "(Paid)")}`
+      if (order.collected_by === "we_pay") return `${methodLabel("we_pay")} ${tl("(مدفوع)", "(Paid)")}`
 
-      return allCollectionMethods[order.collected_by]
+      return methodLabel(order.collected_by)
     }
 
     // Fallback to original payment method if no collected_by is set
     if (method === "valu") {
-      return `${allCollectionMethods.valu} (مدفوع)`
+      return `${methodLabel("valu")} ${tl("(مدفوع)", "(Paid)")}`
     }
     if (method === "paymob") {
-      return `${allCollectionMethods.paymob} (مدفوع)`
+      return `${methodLabel("paymob")} ${tl("(مدفوع)", "(Paid)")}`
     }
     if (method === "fawry") {
-      return `${allCollectionMethods.fawry} (مدفوع)`
+      return `${methodLabel("fawry")} ${tl("(مدفوع)", "(Paid)")}`
     }
     if (method === "instapay") {
-      return `${allCollectionMethods.instapay} (مدفوع)`
+      return `${methodLabel("instapay")} ${tl("(مدفوع)", "(Paid)")}`
     }
     if (method === "vodafone_cash") {
-      return `${allCollectionMethods.vodafone_cash} (مدفوع)`
+      return `${methodLabel("vodafone_cash")} ${tl("(مدفوع)", "(Paid)")}`
     }
     if (method === "orange_cash") {
-      return `${allCollectionMethods.orange_cash} (مدفوع)`
+      return `${methodLabel("orange_cash")} ${tl("(مدفوع)", "(Paid)")}`
     }
     if (method === "we_pay") {
-      return `${allCollectionMethods.we_pay} (مدفوع)`
+      return `${methodLabel("we_pay")} ${tl("(مدفوع)", "(Paid)")}`
     }
 
-    return order.payment_method === "cash_on_delivery" ? "الدفع عند الاستلام" : order.payment_method
+    return order.payment_method === "cash_on_delivery" ? tl("الدفع عند الاستلام", "Cash on Delivery") : order.payment_method
   }
 
   if (loading) {
@@ -2693,8 +2747,8 @@ const OrdersList: React.FC = () => {
             <Package className="w-6 h-6 text-blue-600 absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2" />
           </div>
           <div className="space-y-2">
-            <h2 className="text-xl font-semibold text-gray-800">جاري تحميل الطلبات</h2>
-            <p className="text-gray-600">يرجى الانتظار قليلاً...</p>
+            <h2 className="text-xl font-semibold text-gray-800">{tl("جاري تحميل الطلبات", "Loading orders")}</h2>
+            <p className="text-gray-600">{tl("يرجى الانتظار قليلاً...", "Please wait a moment...")}</p>
           </div>
         </div>
       </div>
@@ -2703,7 +2757,7 @@ const OrdersList: React.FC = () => {
 
 const handleRemoveImage = async (id: string) => {
   if (!selectedOrder) return;
-  if (!window.confirm("هل أنت متأكد من حذف هذه الصورة؟")) return;
+  if (!window.confirm(tl("هل أنت متأكد من حذف هذه الصورة؟", "Are you sure you want to delete this image?"))) return;
   try {
     // Remove from Supabase
     const { error } = await supabase
@@ -2729,9 +2783,9 @@ const handleRemoveImage = async (id: string) => {
           : o
       )
     );
-    alert("تم حذف الصورة بنجاح!");
+    alert(tl("تم حذف الصورة بنجاح!", "Image deleted successfully!"));
   } catch (error: any) {
-    alert("فشل حذف الصورة: " + error.message);
+    alert(tl("فشل حذف الصورة: ", "Failed to delete image: ") + error.message);
   }
 };
 
@@ -2741,12 +2795,12 @@ const duplicateOrder = async (order: Order) => {
   
   // Don't allow duplicating already duplicated orders
   if (order.order_id.includes("(نسخة)")) {
-    alert("لا يمكن نسخ طلب مكرر")
+    alert(tl("لا يمكن نسخ طلب مكرر", "Cannot duplicate an already duplicated order"))
     return
   }
   
   // Ask for confirmation
-  if (!window.confirm(`هل أنت متأكد من نسخ الطلب #${order.order_id}؟\n\nسيتم إنشاء نسخة جديدة من هذا الطلب مع:\n• إضافة "(نسخة)" للرقم\n• إعادة تعيين الحالة إلى "مكلف"\n• إعادة تعيين جميع الرسوم والتعليقات\n• تاريخ اليوم ليظهر في قائمة اليوم`)) {
+  if (!window.confirm(tl(`هل أنت متأكد من نسخ الطلب #${order.order_id}؟\n\nسيتم إنشاء نسخة جديدة من هذا الطلب مع:\n• إضافة "(نسخة)" للرقم\n• إعادة تعيين الحالة إلى "مكلف"\n• إعادة تعيين جميع الرسوم والتعليقات\n• تاريخ اليوم ليظهر في قائمة اليوم`, `Are you sure you want to duplicate order #${order.order_id}?\n\nA new copy of this order will be created with:\n• "(copy)" added to the number\n• Status reset to "Assigned"\n• All fees and comments reset\n• Today's date so it appears in today's list`))) {
     return;
   }
   
@@ -2804,8 +2858,8 @@ const duplicateOrder = async (order: Order) => {
     console.log("Successfully created duplicated order:", newOrder);
     
     // Show success message with order details
-    const duplicateOrderDate = new Date(originalDate).toLocaleDateString('ar-EG');
-    const successMessage = `تم نسخ الطلب بنجاح!
+    const duplicateOrderDate = new Date(originalDate).toLocaleDateString('en-US');
+    const successMessage = tl(`تم نسخ الطلب بنجاح!
 
 الطلب الجديد:
 • الرقم: #${duplicatedOrder.order_id}
@@ -2815,7 +2869,17 @@ const duplicateOrder = async (order: Order) => {
 • التاريخ: ${duplicateOrderDate}
 • يمكنك تعديله كما تريد
 
-سيظهر الطلب المكرر في نفس تاريخ الطلب الأصلي (${duplicateOrderDate})...`;
+سيظهر الطلب المكرر في نفس تاريخ الطلب الأصلي (${duplicateOrderDate})...`, `Order duplicated successfully!
+
+New order:
+• Number: #${duplicatedOrder.order_id}
+• Customer: ${duplicatedOrder.customer_name}
+• Address: ${duplicatedOrder.address}
+• Status: Assigned
+• Date: ${duplicateOrderDate}
+• You can edit it as you wish
+
+The duplicate will appear on the same date as the original order (${duplicateOrderDate})...`);
     
     // Show success message - duplicate appears on original order's date
     window.alert(successMessage);
@@ -2865,7 +2929,7 @@ const duplicateOrder = async (order: Order) => {
     
   } catch (error: any) {
     console.error("Error duplicating order:", error);
-    alert("فشل نسخ الطلب: " + error.message);
+    alert(tl("فشل نسخ الطلب: ", "Failed to duplicate order: ") + error.message);
   } finally {
     setDuplicatingOrderId(null)
   }
@@ -2918,25 +2982,32 @@ const testRLSPolicies = async () => {
 const deleteDuplicatedOrder = async (order: Order) => {
   // Only allow deletion of duplicated orders
   if (!order.order_id.includes("(نسخة)")) {
-    alert("يمكن حذف الطلبات المكررة فقط");
+    alert(tl("يمكن حذف الطلبات المكررة فقط", "Only duplicated orders can be deleted"));
     return;
   }
 
   // Check if the order belongs to the current courier
   if (order.assigned_courier_id !== user?.id) {
-    alert("يمكنك حذف الطلبات المكررة الخاصة بك فقط");
+    alert(tl("يمكنك حذف الطلبات المكررة الخاصة بك فقط", "You can only delete your own duplicated orders"));
     return;
   }
 
   // Ask for confirmation
-  const confirmMessage = `هل أنت متأكد من حذف الطلب المكرر #${order.order_id}؟
+  const confirmMessage = tl(`هل أنت متأكد من حذف الطلب المكرر #${order.order_id}؟
 
 تفاصيل الطلب:
 • العميل: ${order.customer_name}
 • العنوان: ${order.address}
 • المبلغ: ${order.total_order_fees} ج.م
 
-⚠️ تحذير: لا يمكن التراجع عن هذا الإجراء!`;
+⚠️ تحذير: لا يمكن التراجع عن هذا الإجراء!`, `Are you sure you want to delete the duplicated order #${order.order_id}?
+
+Order details:
+• Customer: ${order.customer_name}
+• Address: ${order.address}
+• Amount: ${order.total_order_fees} EGP
+
+⚠️ Warning: This action cannot be undone!`);
 
   if (!window.confirm(confirmMessage)) {
     return;
@@ -2967,7 +3038,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
       console.error("Error details:", error.message, error.details, error.hint);
       
       // Show user-friendly error message with solution
-      const errorMessage = `فشل في حذف الطلب بسبب سياسات الأمان.
+      const errorMessage = tl(`فشل في حذف الطلب بسبب سياسات الأمان.
 
 الخطأ: ${error.message}
 
@@ -2976,7 +3047,16 @@ const deleteDuplicatedOrder = async (order: Order) => {
 2. تحقق من أن لديك صلاحيات الحذف
 3. اتصل بالمدير لتفعيل صلاحيات الحذف
 
-سيتم إخفاء الطلب من الواجهة مؤقتاً...`;
+سيتم إخفاء الطلب من الواجهة مؤقتاً...`, `Failed to delete the order due to security policies.
+
+Error: ${error.message}
+
+To resolve this issue:
+1. Make sure the correct RLS policies are enabled in Supabase
+2. Check that you have delete permissions
+3. Contact the admin to enable delete permissions
+
+The order will be temporarily hidden from the interface...`);
       
       alert(errorMessage);
       
@@ -3002,14 +3082,21 @@ const deleteDuplicatedOrder = async (order: Order) => {
     console.log("Successfully deleted duplicated order:", order.order_id);
     
     // Show success message with more details
-    const successMessage = `تم حذف الطلب المكرر بنجاح!
+    const successMessage = tl(`تم حذف الطلب المكرر بنجاح!
 
 تفاصيل الطلب المحذوف:
 • الرقم: #${order.order_id}
 • العميل: ${order.customer_name}
 • العنوان: ${order.address}
 
-إذا لم يختف الطلب من القائمة، يرجى الضغط على زر "تحديث" في الأعلى.`;
+إذا لم يختف الطلب من القائمة، يرجى الضغط على زر "تحديث" في الأعلى.`, `Duplicated order deleted successfully!
+
+Deleted order details:
+• Number: #${order.order_id}
+• Customer: ${order.customer_name}
+• Address: ${order.address}
+
+If the order does not disappear from the list, please press the "Refresh" button at the top.`);
     
     alert(successMessage);
     
@@ -3024,7 +3111,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
     
   } catch (error: any) {
     console.error("Error deleting duplicated order:", error);
-    alert("فشل حذف الطلب المكرر: " + error.message);
+    alert(tl("فشل حذف الطلب المكرر: ", "Failed to delete duplicated order: ") + error.message);
   } finally {
     setDeletingOrderId(null);
   }
@@ -3046,7 +3133,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
           transform: none !important;
         }
       `}</style>
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100" dir="rtl">
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100" dir={language === 'ar' ? 'rtl' : 'ltr'}>
 
       {/* Header Section - Mobile Optimized */}
       <div className="bg-gradient-to-br from-blue-600 to-blue-700 border-b border-blue-800 z-10 shadow-lg">
@@ -3057,8 +3144,8 @@ const deleteDuplicatedOrder = async (order: Order) => {
                 <Package className="w-5 h-5 text-white" />
               </div>
               <div>
-                <h1 className="text-lg font-bold text-white">طلبياتي</h1>
-                <p className="text-xs text-blue-100">إدارة ومتابعة طلبات التوصيل</p>
+                <h1 className="text-lg font-bold text-white">{tl("طلبياتي", "My Orders")}</h1>
+                <p className="text-xs text-blue-100">{tl("إدارة ومتابعة طلبات التوصيل", "Manage and track delivery orders")}</p>
               </div>
             </div>
             <div className="flex items-center gap-1.5">
@@ -3071,7 +3158,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                 }}
                 disabled={refreshing}
                 className="p-2 bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white rounded-lg transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                title="تحديث"
+                title={tl("تحديث", "Refresh")}
               >
                 <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
               </button>
@@ -3115,7 +3202,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                 }}
                 className="px-2 py-1 bg-white/20 hover:bg-white/30 text-white rounded text-xs font-medium transition-all active:scale-95"
               >
-                اليوم
+                {tl("اليوم", "Today")}
               </button>
             </div>
 
@@ -3145,11 +3232,11 @@ const deleteDuplicatedOrder = async (order: Order) => {
               </div>
               <div className="space-y-2">
                 <h3 className="text-lg font-semibold text-gray-800">
-                  لا توجد طلبات{" "}
-                  {selectedDate === getTodayDateString() ? "اليوم" : `في ${formatDateInArabic(selectedDate)}`}
+                  {tl("لا توجد طلبات", "No orders")}{" "}
+                  {selectedDate === getTodayDateString() ? tl("اليوم", "today") : tl(`في ${formatDateInArabic(selectedDate)}`, `on ${formatDateInArabic(selectedDate)}`)}
                 </h3>
                 <p className="text-gray-600 max-w-xs mx-auto text-sm">
-                  لم يتم العثور على أي طلبات مخصصة لك في هذا التاريخ
+                  {tl("لم يتم العثور على أي طلبات مخصصة لك في هذا التاريخ", "No orders assigned to you were found for this date")}
                 </p>
               </div>
               <div className="flex items-center justify-center gap-2">
@@ -3163,7 +3250,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                   className="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg transition-colors text-sm active:scale-95"
                 >
                   <CalendarDays className="w-3.5 h-3.5" />
-                  عرض طلبات اليوم
+                  {tl("عرض طلبات اليوم", "Show today's orders")}
                 </button>
                 <button
                   type="button"
@@ -3176,7 +3263,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                   className="inline-flex items-center gap-1.5 bg-gray-600 hover:bg-gray-700 text-white font-medium px-4 py-2 rounded-lg transition-colors text-sm active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-                  {refreshing ? 'جاري التحديث...' : 'تحديث'}
+                  {refreshing ? tl('جاري التحديث...', 'Refreshing...') : tl('تحديث', 'Refresh')}
                 </button>
               </div>
             </div>
@@ -3523,13 +3610,13 @@ const deleteDuplicatedOrder = async (order: Order) => {
                       {isExchangeStatus && (
                         <span className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-purple-600 text-white text-xs font-semibold shadow-md">
                           <Star className="w-3.5 h-3.5" />
-                          تبديل
+                          {tl("تبديل", "Exchange")}
                         </span>
                       )}
                       {isReceivingPartStatus && (
                         <span className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-indigo-600 text-white text-xs font-semibold shadow-md">
                           <Star className="w-3.5 h-3.5" />
-                          استلام قطعة
+                          {tl("استلام قطعة", "Receive Piece")}
                         </span>
                       )}
                     </div>
@@ -3551,7 +3638,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                           {routeSeq != null && (
                             <span
                               className="flex items-center justify-center w-7 h-7 rounded-full bg-gradient-to-br from-blue-600 to-purple-600 text-white text-sm font-bold shadow flex-shrink-0"
-                              title={`ترتيب المسار رقم ${routeSeq} (حسب خريطة الطريق)`}
+                              title={tl(`ترتيب المسار رقم ${routeSeq} (حسب خريطة الطريق)`, `Route order number ${routeSeq} (per route map)`)}
                             >
                               {routeSeq}
                             </span>
@@ -3559,7 +3646,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                           <h3 className="text-lg font-bold text-gray-900">#{order.order_id}</h3>
                           {order.order_id.includes("(نسخة)") && (
                             <span className="px-2 py-1 bg-green-600 text-white text-xs rounded-full font-medium whitespace-nowrap">
-                              نسخة
+                              {tl("نسخة", "Copy")}
                             </span>
                           )}
                         </div>
@@ -3586,7 +3673,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                               {deliveryInfo.date}
                             </span>
                           )}
-                          <span className="text-[10px] text-gray-400">الموعد المطلوب من العميل</span>
+                          <span className="text-[10px] text-gray-400">{tl("الموعد المطلوب من العميل", "Customer-requested time")}</span>
                         </div>
                       )}
                       
@@ -3603,14 +3690,14 @@ const deleteDuplicatedOrder = async (order: Order) => {
                               : "bg-indigo-50 border-indigo-200 text-indigo-700"
                           }`}>
                             <Star className="w-4 h-4" />
-                            <span>{isExchangeStatus ? "تبديل" : "استلام قطعة"}</span>
+                            <span>{isExchangeStatus ? tl("تبديل", "Exchange") : tl("استلام قطعة", "Receive Piece")}</span>
                           </div>
                         )}
                         {unfulfilledItems.length > 0 && (
                           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 shadow-sm">
                             <AlertCircle className="w-4 h-4" />
-                            <span>منتجات غير منفذة</span>
-                            <span className="text-[11px] font-bold">-{unfulfilledTotal.toFixed(0)} ج.م</span>
+                            <span>{tl("منتجات غير منفذة", "Unfulfilled products")}</span>
+                            <span className="text-[11px] font-bold">-{unfulfilledTotal.toFixed(0)} {tl("ج.م", "EGP")}</span>
                           </div>
                         )}
                         <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold ${
@@ -3621,12 +3708,12 @@ const deleteDuplicatedOrder = async (order: Order) => {
                               : "bg-yellow-100 text-yellow-700 border border-yellow-300"
                         }`}>
                           {hasPartialPayment ? <DollarSign className="w-4 h-4" /> : isPaid ? <CheckCircle className="w-4 h-4" /> : <DollarSign className="w-4 h-4" />}
-                          <span>{hasPartialPayment ? "مدفوع جزئياً" : isPaid ? "مدفوع" : "غير مدفوع"}</span>
+                          <span>{hasPartialPayment ? tl("مدفوع جزئياً", "Partially Paid") : isPaid ? tl("مدفوع", "Paid") : tl("غير مدفوع", "Unpaid")}</span>
                         </div>
                         {hasRemovedItems && (
                           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-50 text-red-700 border border-red-200">
                             <Trash2 className="w-4 h-4" />
-                            <span>منتجات محذوفة</span>
+                            <span>{tl("منتجات محذوفة", "Removed products")}</span>
                           </div>
                         )}
                       </div>
@@ -3636,15 +3723,15 @@ const deleteDuplicatedOrder = async (order: Order) => {
                           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-50 text-red-700 border border-red-200">
                             <Percent className="w-4 h-4" />
                             <span>
-                              خصم
+                              {tl("خصم", "Discount")}
                               {discountInfo.percentage !== null ? ` ${discountInfo.percentage.toFixed(0)}%` : ""}
                             </span>
                             <span className="text-[11px] font-bold">
-                              -{discountInfo.amount.toFixed(2)} ج.م
+                              -{discountInfo.amount.toFixed(2)} {tl("ج.م", "EGP")}
                             </span>
                           </div>
                           <span className="text-[10px] text-red-600 bg-red-100 px-2 py-0.5 rounded">
-                            {discountInfo.source === "items" ? "من المنتجات" : "من الطلب"}
+                            {discountInfo.source === "items" ? tl("من المنتجات", "From products") : tl("من الطلب", "From order")}
                           </span>
                         </div>
                       )}
@@ -3677,52 +3764,52 @@ const deleteDuplicatedOrder = async (order: Order) => {
                           : "from-green-50 to-emerald-50 border-green-200"
                       }`}>
                         <p className={`text-xs mb-1 ${hasPartialPayment ? "text-orange-700" : "text-green-700"}`}>
-                          {hasPartialPayment ? "إجمالي الطلب" : "المبلغ للتحصيل"}
+                          {hasPartialPayment ? tl("إجمالي الطلب", "Order total") : tl("المبلغ للتحصيل", "Amount to collect")}
                         </p>
                         {discountInfo.amount > 0 && amountBeforeDiscount > collectibleAmount && (
                           <p className="text-xs text-gray-500 line-through mb-0.5">
-                            {amountBeforeDiscount.toFixed(0)} ج.م
+                            {amountBeforeDiscount.toFixed(0)} {tl("ج.م", "EGP")}
                           </p>
                         )}
                         <p className={`text-2xl font-bold ${hasPartialPayment ? "text-orange-800" : "text-green-800"}`}>
                           {collectibleAmount.toFixed(0)}
                         </p>
-                        <p className={`text-xs ${hasPartialPayment ? "text-orange-600" : "text-green-600"}`}>ج.م</p>
+                        <p className={`text-xs ${hasPartialPayment ? "text-orange-600" : "text-green-600"}`}>{tl("ج.م", "EGP")}</p>
                         {hasPartialPayment && (
                           <div className="mt-2 pt-2 border-t border-orange-200 space-y-0.5">
                             {orderPaid > 0 || orderBalance > 0 ? (
                               <>
                                 <p className="text-[11px] text-green-700 font-semibold">
-                                  مدفوع مسبقاً: {orderPaid.toFixed(2)} ج.م
+                                  {tl("مدفوع مسبقاً", "Paid in advance")}: {orderPaid.toFixed(2)} {tl("ج.م", "EGP")}
                                 </p>
                                 <p className="text-[12px] text-red-700 font-bold">
-                                  المتبقي للتحصيل: {(orderBalance > 0 ? orderBalance : Math.max(0, collectibleAmount - orderPaid)).toFixed(2)} ج.م
+                                  {tl("المتبقي للتحصيل", "Remaining to collect")}: {(orderBalance > 0 ? orderBalance : Math.max(0, collectibleAmount - orderPaid)).toFixed(2)} {tl("ج.م", "EGP")}
                                 </p>
                               </>
                             ) : (
                               <p className="text-[11px] text-orange-700 font-semibold leading-tight">
-                                ⚠️ مدفوع جزئياً — راجع Shopify للمبلغ المدفوع والمتبقي
+                                {tl("⚠️ مدفوع جزئياً — راجع Shopify للمبلغ المدفوع والمتبقي", "⚠️ Partially paid — check Shopify for the paid and remaining amounts")}
                               </p>
                             )}
                           </div>
                         )}
                         {!hasPartialPayment && !hasAdminTotal && unfulfilledTotal > 0 && (
                           <p className="text-[11px] text-amber-700 font-semibold mt-1">
-                            طرح {unfulfilledTotal.toFixed(0)} ج.م لمنتجات غير منفذة
+                            {tl(`طرح ${unfulfilledTotal.toFixed(0)} ج.م لمنتجات غير منفذة`, `Deducted ${unfulfilledTotal.toFixed(0)} EGP for unfulfilled products`)}
                           </p>
                         )}
                         {!hasPartialPayment && hasAdminTotal && (
                           <p className="text-[10px] text-gray-500 mt-1">
-                            المبلغ المحدد من الإدارة
+                            {tl("المبلغ المحدد من الإدارة", "Amount set by admin")}
                           </p>
                         )}
                       </div>
                       <div className="bg-gradient-to-br from-blue-50 to-cyan-50 border-2 border-blue-200 rounded-xl p-3 text-center">
-                        <p className="text-xs text-blue-700 mb-1">طريقة الدفع</p>
+                        <p className="text-xs text-blue-700 mb-1">{tl("طريقة الدفع", "Payment method")}</p>
                         <p className="text-sm font-semibold text-blue-800">{getDisplayPaymentMethod(order)}</p>
                         {hasPartialPayment && (
                           <p className="text-[10px] text-blue-600 mt-1">
-                            (دُفع جزء عبر هذه الطريقة)
+                            {tl("(دُفع جزء عبر هذه الطريقة)", "(Part was paid via this method)")}
                           </p>
                         )}
                       </div>
@@ -3762,7 +3849,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         className="w-full bg-gradient-to-br from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white rounded-xl p-3 flex items-center justify-center gap-2 transition-all active:scale-95 shadow-md"
                       >
                         <MessageCircle className="w-5 h-5 flex-shrink-0" />
-                        <span className="text-sm font-semibold">واتساب</span>
+                        <span className="text-sm font-semibold">{tl("واتساب", "WhatsApp")}</span>
                       </button>
                     </div>
 
@@ -3772,8 +3859,8 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         <div className="flex items-start gap-2">
                           <FileText className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" />
                           <div className="text-sm text-yellow-800 leading-relaxed flex-1">
-                            <p className="font-semibold mb-1">ملاحظات:</p>
-                            <div className="text-sm">{renderNotesWithLinks(order.notes, false)}</div>
+                            <p className="font-semibold mb-1">{tl("ملاحظات:", "Notes:")}</p>
+                            <div className="text-sm">{renderNotesWithLinks(order.notes, false, tl)}</div>
                           </div>
                         </div>
                       </div>
@@ -3827,7 +3914,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         >
                           <div className="flex items-center justify-center gap-2">
                             <Edit className="w-4 h-4" />
-                            <span>تحديث الطلب</span>
+                            <span>{tl("تحديث الطلب", "Update order")}</span>
                           </div>
                         </button>
                       )}
@@ -3845,7 +3932,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                           }}
                           disabled={duplicatingOrderId === order.id}
                           className="px-1.5 sm:px-3 py-1.5 sm:py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-md sm:rounded-xl transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center flex-shrink-0"
-                          title="نسخ الطلب"
+                          title={tl("نسخ الطلب", "Duplicate order")}
                         >
                           {duplicatingOrderId === order.id ? (
                             <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" />
@@ -3907,7 +3994,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                   <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
                     <Phone className="w-6 h-6 text-blue-600" />
                   </div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">اختر طريقة التواصل</h3>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">{tl("اختر طريقة التواصل", "Choose contact method")}</h3>
                   <p className="text-gray-600 bg-gray-50 px-3 py-2 rounded-lg font-mono">{selectedPhoneNumber}</p>
                 </div>
                 <div className="space-y-3">
@@ -3922,7 +4009,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                     className="w-full flex items-center justify-center gap-3 bg-green-600 hover:bg-green-700 text-white font-medium py-3 px-4 rounded-lg transition-colors active:scale-95"
                   >
                     <Phone className="w-5 h-5" />
-                    مكالمة هاتفية
+                    {tl("مكالمة هاتفية", "Phone call")}
                   </button>
                   <button
                     type="button"
@@ -3935,7 +4022,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                     className="w-full flex items-center justify-center gap-3 bg-green-500 hover:bg-green-600 text-white font-medium py-3 px-4 rounded-lg transition-colors active:scale-95"
                   >
                     <MessageCircle className="w-5 h-5" />
-                    رسالة واتساب
+                    {tl("رسالة واتساب", "WhatsApp message")}
                   </button>
                   <button
                     type="button"
@@ -3946,7 +4033,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                     }}
                     className="w-full bg-gray-100 hover:bg-gray-200 text-gray-800 font-medium py-3 px-4 rounded-lg transition-colors active:scale-95"
                   >
-                    إلغاء
+                    {tl("إلغاء", "Cancel")}
                   </button>
                 </div>
               </div>
@@ -4053,7 +4140,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                     right: '8px',
                     boxShadow: '0 4px 12px rgba(0,0,0,0.3), 0 0 0 2px rgba(255,255,255,0.5)',
                   }}
-                  aria-label="إغلاق"
+                  aria-label={tl("إغلاق", "Close")}
                 >
                   <XCircle className="w-7 h-7 sm:w-7 sm:h-7" strokeWidth={2.5} />
                 </button>
@@ -4083,8 +4170,8 @@ const deleteDuplicatedOrder = async (order: Order) => {
                       <div className="flex items-center gap-1 sm:gap-2 mt-1 sm:mt-3 px-1.5 py-1 sm:p-3 bg-yellow-500/20 backdrop-blur-sm rounded-lg border border-yellow-400/30">
                         <FileText className="w-3 h-3 sm:w-5 sm:h-5 text-yellow-200 flex-shrink-0" />
                         <p className="text-yellow-100 text-[9px] sm:text-sm font-bold flex items-center gap-1 sm:gap-2">
-                          <span className="truncate">ملاحظات الإدارة:</span>
-                          <span className="bg-yellow-500/30 px-1 sm:px-2 py-0.5 rounded text-[8px] sm:text-xs whitespace-nowrap">مهم</span>
+                          <span className="truncate">{tl("ملاحظات الإدارة:", "Admin notes:")}</span>
+                          <span className="bg-yellow-500/30 px-1 sm:px-2 py-0.5 rounded text-[8px] sm:text-xs whitespace-nowrap">{tl("مهم", "Important")}</span>
                         </p>
                       </div>
                     )}
@@ -4135,15 +4222,15 @@ const deleteDuplicatedOrder = async (order: Order) => {
                             <div className="w-7 h-7 sm:w-10 sm:h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg sm:rounded-xl flex items-center justify-center shadow-md">
                               <Package className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-white" />
                             </div>
-                            <h4 className="text-sm sm:text-lg font-bold text-gray-800">المنتجات</h4>
+                            <h4 className="text-sm sm:text-lg font-bold text-gray-800">{tl("المنتجات", "Products")}</h4>
                             <span className="bg-blue-100 text-blue-700 px-1.5 sm:px-2.5 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold">
-                              {allItems.length} {allItems.length === 1 ? 'منتج' : 'منتجات'}
+                              {allItems.length} {allItems.length === 1 ? tl('منتج', 'product') : tl('منتجات', 'products')}
                             </span>
                           </div>
                           <div className="space-y-2 sm:space-y-3">
                             {allItems.map((item: any, idx: number) => {
                               // Get basic item info first
-                              const itemTitle = item.title || item.name || 'منتج'
+                              const itemTitle = item.title || item.name || tl('منتج', 'Product')
                               const itemVariant = item.variant_title || item.variant?.title || ''
                               const itemSku = item.sku || ''
                               
@@ -4446,7 +4533,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                                         )}
                                         {isUnfulfilled && (
                                           <span className="px-2 py-0.5 text-[10px] sm:text-xs font-bold rounded-full bg-amber-100 text-amber-800 border border-amber-200 shadow">
-                                            غير منفذ
+                                            {tl("غير منفذ", "Unfulfilled")}
                                           </span>
                                         )}
                                       </div>
@@ -4462,7 +4549,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                                       )}
                                       <div className="flex items-center justify-between mt-1 sm:mt-2">
                                         <span className={`text-[10px] sm:text-sm ${isRemoved ? 'text-red-700' : 'text-gray-600'}`}>
-                                          الكمية:{' '}
+                                          {tl("الكمية:", "Quantity:")}{' '}
                                           <span className={`font-semibold ${isRemoved ? 'text-red-800 line-through' : 'text-gray-800'}`}>
                                             {itemQuantity}
                                           </span>
@@ -4470,23 +4557,23 @@ const deleteDuplicatedOrder = async (order: Order) => {
                                         <div className="text-right">
                                           {itemDiscount > 0 && (
                                             <div className="text-[9px] sm:text-xs text-red-600 mb-0.5">
-                                              خصم: -{itemDiscount.toFixed(2)} ج.م
+                                              {tl("خصم", "Discount")}: -{itemDiscount.toFixed(2)} {tl("ج.م", "EGP")}
                                             </div>
                                           )}
                                           <span className={`text-xs sm:text-base font-bold ${isRemoved ? 'text-red-700 line-through' : 'text-blue-600'}`}>
-                                            {itemTotal.toFixed(2)} ج.م
+                                            {itemTotal.toFixed(2)} {tl("ج.م", "EGP")}
                                           </span>
                                         </div>
                                       </div>
                                       {isNew && !isRemoved && (
                                         <div className="mt-2 sm:mt-3 bg-green-100 text-green-800 text-[10px] sm:text-xs px-2 py-1.5 rounded border border-green-200 flex items-center gap-1">
-                                          <span>✨ تم إضافة هذا المنتج إلى الطلب في Shopify</span>
+                                          <span>{tl("✨ تم إضافة هذا المنتج إلى الطلب في Shopify", "✨ This product was added to the order in Shopify")}</span>
                                         </div>
                                       )}
                                       {isRemoved && (
                                         <div className="mt-2 sm:mt-3 bg-red-100 text-red-800 text-[10px] sm:text-xs px-2 py-1.5 rounded border border-red-200 flex items-center gap-1">
                                           <AlertCircle className="w-3 h-3 sm:w-4 sm:h-4" />
-                                          <span>تم حذف هذا المنتج من الطلب في Shopify</span>
+                                          <span>{tl("تم حذف هذا المنتج من الطلب في Shopify", "This product was removed from the order in Shopify")}</span>
                                         </div>
                                       )}
                                     </div>
@@ -4507,7 +4594,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                       <div className="w-7 h-7 sm:w-10 sm:h-10 bg-gradient-to-br from-amber-500 to-orange-500 rounded-lg sm:rounded-xl flex items-center justify-center shadow-md">
                         <CreditCard className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-white" />
                       </div>
-                      <h4 className="text-sm sm:text-lg font-bold text-gray-800">تفاصيل الدفع</h4>
+                      <h4 className="text-sm sm:text-lg font-bold text-gray-800">{tl("تفاصيل الدفع", "Payment details")}</h4>
                       {(() => {
                         const fs = (selectedOrder.financial_status || '').toLowerCase()
                         const ob = (selectedOrder as any).balance || 0
@@ -4522,7 +4609,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         if (isPartial) {
                           return (
                             <span className="px-1.5 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold bg-orange-100 text-orange-700">
-                              مدفوع جزئياً
+                              {tl("مدفوع جزئياً", "Partially Paid")}
                             </span>
                           )
                         }
@@ -4533,14 +4620,14 @@ const deleteDuplicatedOrder = async (order: Order) => {
                               ? 'bg-green-100 text-green-700'
                               : 'bg-yellow-100 text-yellow-700'
                           }`}>
-                            {selectedOrder.payment_status === 'paid' ? 'مدفوع' : 'في الانتظار'}
+                            {selectedOrder.payment_status === 'paid' ? tl('مدفوع', 'Paid') : tl('في الانتظار', 'Pending')}
                           </span>
                         )
                       })()}
                     </div>
                     <div className="space-y-1.5 sm:space-y-2.5 bg-white rounded-lg sm:rounded-xl p-2 sm:p-4 border border-amber-100">
                       <div className="flex justify-between items-center py-1 sm:py-1.5 border-b border-gray-100">
-                        <span className="text-xs sm:text-sm text-gray-600">عدد المنتجات:</span>
+                        <span className="text-xs sm:text-sm text-gray-600">{tl("عدد المنتجات:", "Number of products:")}</span>
                         <span className="font-semibold text-xs sm:text-sm text-gray-800">
                           {(() => {
                             const items = selectedOrder.order_items || []
@@ -4558,7 +4645,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                             const allItems = (allItemsRaw || []).filter((i: any) => !isRemoved(i))
                             const totalQty = allItems.reduce((sum: number, item: any) => sum + (parseInt(item.quantity || 1)), 0)
                             return totalQty || 0
-                          })()} منتج
+                          })()} {tl("منتج", "product(s)")}
                         </span>
                       </div>
                       {(() => {
@@ -4568,18 +4655,18 @@ const deleteDuplicatedOrder = async (order: Order) => {
                             <div className="flex justify-between items-center py-1 sm:py-1.5 border-b border-gray-100 bg-red-50 -mx-2 sm:-mx-4 px-2 sm:px-4 rounded-lg">
                               <div className="flex items-center gap-1 sm:gap-2">
                                 <Percent className="w-4 h-4 text-red-600" />
-                                <span className="text-xs sm:text-sm font-semibold text-red-700">الخصم:</span>
+                                <span className="text-xs sm:text-sm font-semibold text-red-700">{tl("الخصم:", "Discount:")}</span>
                                 {discountInfo.percentage !== null && (
                                   <span className="text-[9px] sm:text-xs text-red-700 bg-red-100 px-1 sm:px-2 py-0.5 rounded font-bold">
                                     {discountInfo.percentage.toFixed(0)}%
                                   </span>
                                 )}
                                 <span className="text-[9px] sm:text-xs text-red-600 bg-red-100 px-1 sm:px-2 py-0.5 rounded">
-                                  {discountInfo.source === "items" ? "من المنتجات" : "من الطلب"}
+                                  {discountInfo.source === "items" ? tl("من المنتجات", "From products") : tl("من الطلب", "From order")}
                                 </span>
                               </div>
                               <span className="font-bold text-red-600 text-xs sm:text-base">
-                                -{discountInfo.amount.toFixed(2)} ج.م
+                                -{discountInfo.amount.toFixed(2)} {tl("ج.م", "EGP")}
                               </span>
                             </div>
                           )
@@ -4609,9 +4696,9 @@ const deleteDuplicatedOrder = async (order: Order) => {
                       })()} */}
                       {selectedOrder.total_tax !== undefined && selectedOrder.total_tax > 0 && (
                         <div className="flex justify-between items-center py-1 sm:py-1.5 border-b border-gray-100">
-                          <span className="text-xs sm:text-sm text-gray-600">الضريبة:</span>
+                          <span className="text-xs sm:text-sm text-gray-600">{tl("الضريبة:", "Tax:")}</span>
                           <span className="font-semibold text-xs sm:text-sm text-gray-800">
-                            {selectedOrder.total_tax.toFixed(2)} ج.م
+                            {selectedOrder.total_tax.toFixed(2)} {tl("ج.م", "EGP")}
                           </span>
                         </div>
                       )}
@@ -4622,14 +4709,14 @@ const deleteDuplicatedOrder = async (order: Order) => {
                           const showAdjustment = removedTotal > 0 || unfulfilledTotal > 0
                           return (
                             <>
-                              <span className="text-sm sm:text-base font-bold text-gray-800">الإجمالي:</span>
+                              <span className="text-sm sm:text-base font-bold text-gray-800">{tl("الإجمالي:", "Total:")}</span>
                               <div className="text-right">
                                 <span className="block text-base sm:text-xl font-bold text-green-600">
-                                  {adjustedTotal.toFixed(2)} ج.م
+                                  {adjustedTotal.toFixed(2)} {tl("ج.م", "EGP")}
                                 </span>
                                 {showAdjustment && (
                                   <span className="block text-[10px] sm:text-xs text-amber-700 font-semibold">
-                                    بعد طرح غير منفذ/محذوف
+                                    {tl("بعد طرح غير منفذ/محذوف", "After deducting unfulfilled/removed")}
                                   </span>
                                 )}
                               </div>
@@ -4639,9 +4726,9 @@ const deleteDuplicatedOrder = async (order: Order) => {
                       </div>
                       {selectedOrder.subtotal_price !== undefined && (
                         <div className="flex justify-between items-center pt-1.5 sm:pt-2 mt-1.5 sm:mt-2 border-t-2 border-gray-300">
-                          <span className="text-xs sm:text-sm font-bold text-gray-800">المجموع الفرعي:</span>
+                          <span className="text-xs sm:text-sm font-bold text-gray-800">{tl("المجموع الفرعي:", "Subtotal:")}</span>
                           <span className="text-sm sm:text-base font-bold text-gray-800">
-                            {selectedOrder.subtotal_price.toFixed(2)} ج.م
+                            {selectedOrder.subtotal_price.toFixed(2)} {tl("ج.م", "EGP")}
                           </span>
                         </div>
                       )}
@@ -4656,10 +4743,10 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         const collectibleAmount = hasAdminTotal ? adminTotal : Math.max(0, fulfilledTotal)
                         return (
                           <div className="flex justify-between items-center pt-1.5 sm:pt-2 mt-1.5 sm:mt-2 border-t-2 border-gray-300 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg px-3 py-2.5">
-                            <span className="text-xs sm:text-sm font-bold text-green-700">المبلغ للتحصيل:</span>
+                            <span className="text-xs sm:text-sm font-bold text-green-700">{tl("المبلغ للتحصيل:", "Amount to collect:")}</span>
                             <div className="text-right">
                               <span className="block text-base sm:text-xl font-bold text-green-800">
-                                {collectibleAmount.toFixed(2)} ج.م
+                                {collectibleAmount.toFixed(2)} {tl("ج.م", "EGP")}
                               </span>
                             </div>
                           </div>
@@ -4667,7 +4754,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                       })()}
                       {selectedOrder.payment_gateway_names && selectedOrder.payment_gateway_names.length > 0 && (
                         <div className="mt-2 sm:mt-3 pt-2 sm:pt-3 border-t border-gray-200">
-                          <p className="text-[10px] sm:text-xs text-gray-600 mb-0.5 sm:mb-1">بوابة الدفع:</p>
+                          <p className="text-[10px] sm:text-xs text-gray-600 mb-0.5 sm:mb-1">{tl("بوابة الدفع:", "Payment gateway:")}</p>
                           <p className="text-xs sm:text-sm font-semibold text-gray-800">
                             {selectedOrder.payment_gateway_names.join(', ')}
                           </p>
@@ -4675,7 +4762,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                       )}
                       {!selectedOrder.payment_gateway_names && (
                         <div className="mt-2 sm:mt-3 pt-2 sm:pt-3 border-t border-gray-200">
-                          <p className="text-[10px] sm:text-xs text-gray-600 mb-0.5 sm:mb-1">طريقة الدفع:</p>
+                          <p className="text-[10px] sm:text-xs text-gray-600 mb-0.5 sm:mb-1">{tl("طريقة الدفع:", "Payment method:")}</p>
                           <p className="text-xs sm:text-sm font-semibold text-gray-800">
                             {getDisplayPaymentMethod(selectedOrder)}
                           </p>
@@ -4690,7 +4777,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                       <div className="w-7 h-7 sm:w-9 sm:h-9 bg-gradient-to-br from-green-500 to-emerald-600 rounded-lg flex items-center justify-center shadow-md">
                         <MapPin className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
                       </div>
-                      <h4 className="text-sm sm:text-base font-bold text-gray-800">عنوان الشحن</h4>
+                      <h4 className="text-sm sm:text-base font-bold text-gray-800">{tl("عنوان الشحن", "Shipping address")}</h4>
                     </div>
                     <div className="bg-white rounded-lg sm:rounded-xl p-2 sm:p-3 border border-green-100 space-y-1 sm:space-y-1.5 text-xs sm:text-sm">
                       {(() => {
@@ -4747,16 +4834,17 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         <div className="w-10 h-10 bg-gradient-to-br from-yellow-500 to-amber-600 rounded-xl flex items-center justify-center shadow-md">
                           <FileText className="w-5 h-5 text-white" />
                         </div>
-                        <h4 className="text-lg font-bold text-gray-800">ملاحظات الإدارة</h4>
+                        <h4 className="text-lg font-bold text-gray-800">{tl("ملاحظات الإدارة", "Admin notes")}</h4>
                         <span className="bg-yellow-200 text-yellow-800 px-2.5 py-1 rounded-full text-xs font-bold">
-                          مهم
+                          {tl("مهم", "Important")}
                         </span>
                       </div>
                       <div className="bg-white rounded-xl p-3 sm:p-4 border border-yellow-200">
                         <div className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">
                           {renderNotesWithLinks(
-                            selectedOrder.notes || selectedOrder.order_note || selectedOrder.customer_note || '', 
-                            false
+                            selectedOrder.notes || selectedOrder.order_note || selectedOrder.customer_note || '',
+                            false,
+                            tl
                           )}
                         </div>
                       </div>
@@ -4778,8 +4866,8 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         <Calculator className="w-6 h-6 text-white" />
                       </div>
                       <div>
-                        <h4 className="text-lg font-bold text-gray-800">ملخص الطلب</h4>
-                        <p className="text-xs text-gray-500">تفاصيل المبالغ والرسوم</p>
+                        <h4 className="text-lg font-bold text-gray-800">{tl("ملخص الطلب", "Order summary")}</h4>
+                        <p className="text-xs text-gray-500">{tl("تفاصيل المبالغ والرسوم", "Amounts and fees details")}</p>
                       </div>
                     </div>
                     {(() => {
@@ -4789,11 +4877,11 @@ const deleteDuplicatedOrder = async (order: Order) => {
                       const adminPrepaidAmount = Number(selectedOrder.admin_prepaid_amount) || 0
                       const adminPrepaidMethod = selectedOrder.admin_prepaid_method || ""
                       const methodLabelMap: Record<string, string> = {
-                        cash: "كاش",
+                        cash: tl("كاش", "Cash"),
                         paymob: "Paymob",
                         instapay: "Instapay",
                         valu: "Valu",
-                        card: "بطاقة",
+                        card: tl("بطاقة", "Card"),
                       }
                       return (
                         <div className="bg-white/80 backdrop-blur-sm rounded-xl p-4 space-y-3 border border-white/50">
@@ -4803,50 +4891,50 @@ const deleteDuplicatedOrder = async (order: Order) => {
                             <div className="w-7 h-7 bg-emerald-500 rounded-lg flex items-center justify-center">
                               <CreditCard className="w-4 h-4 text-white" />
                             </div>
-                            <span className="text-sm font-bold text-emerald-800">دفع مقسم - جزء مدفوع مسبقاً</span>
+                            <span className="text-sm font-bold text-emerald-800">{tl("دفع مقسم - جزء مدفوع مسبقاً", "Split payment - part paid in advance")}</span>
                           </div>
                           <div className="flex justify-between items-center py-1 px-2 bg-white/70 rounded-lg">
                             <span className="text-xs text-gray-700 font-medium">
-                              مدفوع عبر {methodLabelMap[adminPrepaidMethod] || adminPrepaidMethod || "—"}:
+                              {tl("مدفوع عبر", "Paid via")} {methodLabelMap[adminPrepaidMethod] || adminPrepaidMethod || "—"}:
                             </span>
                             <span className="font-bold text-emerald-700 text-sm">
-                              {adminPrepaidAmount.toFixed(2)} ج.م
+                              {adminPrepaidAmount.toFixed(2)} {tl("ج.م", "EGP")}
                             </span>
                           </div>
                           <div className="flex justify-between items-center py-1 px-2 mt-1 bg-white/70 rounded-lg">
-                            <span className="text-xs text-gray-700 font-medium">المتبقي للتحصيل منك:</span>
+                            <span className="text-xs text-gray-700 font-medium">{tl("المتبقي للتحصيل منك:", "Remaining for you to collect:")}</span>
                             <span className="font-bold text-blue-700 text-sm">
-                              {Math.max(0, (Number(selectedOrder.total_order_fees) || 0) - adminPrepaidAmount).toFixed(2)} ج.م
+                              {Math.max(0, (Number(selectedOrder.total_order_fees) || 0) - adminPrepaidAmount).toFixed(2)} {tl("ج.م", "EGP")}
                             </span>
                           </div>
                           <p className="text-[11px] text-emerald-700 mt-2">
-                            اختر طريقة دفع المتبقي فقط في القسم أدناه.
+                            {tl("اختر طريقة دفع المتبقي فقط في القسم أدناه.", "Choose a payment method for the remaining amount only in the section below.")}
                           </p>
                         </div>
                       )}
                       <div className="flex justify-between items-center py-2 px-3 bg-gray-50 rounded-lg">
-                        <span className="text-sm text-gray-600 font-medium">قيمة الطلب الأساسية:</span>
+                        <span className="text-sm text-gray-600 font-medium">{tl("قيمة الطلب الأساسية:", "Base order value:")}</span>
                         <span className="font-bold text-gray-900 text-base">
-                          {fulfilledTotal.toFixed(2)} ج.م
+                          {fulfilledTotal.toFixed(2)} {tl("ج.م", "EGP")}
                         </span>
                       </div>
                       <div className="flex justify-between items-center py-2 px-3 bg-amber-50 rounded-lg border border-amber-100">
-                        <span className="text-sm text-gray-700 font-medium">رسوم التوصيل:</span>
-                        <span className="font-bold text-amber-700 text-base">{updateData.delivery_fee || "0.00"} ج.م</span>
+                        <span className="text-sm text-gray-700 font-medium">{tl("رسوم التوصيل:", "Delivery fee:")}</span>
+                        <span className="font-bold text-amber-700 text-base">{updateData.delivery_fee || "0.00"} {tl("ج.م", "EGP")}</span>
                       </div>
                       <div className="flex justify-between items-center py-2 px-3 bg-amber-50 rounded-lg border border-amber-100">
-                        <span className="text-sm text-gray-700 font-medium">مبلغ جزئي:</span>
+                        <span className="text-sm text-gray-700 font-medium">{tl("مبلغ جزئي:", "Partial amount:")}</span>
                         <span className="font-bold text-amber-700 text-base">
-                          {updateData.partial_paid_amount || "0.00"} ج.م
+                          {updateData.partial_paid_amount || "0.00"} {tl("ج.م", "EGP")}
                         </span>
                       </div>
                       <div className="border-t-2 border-gray-300 pt-3 mt-3 flex justify-between items-center bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg px-3 py-2.5">
                         <span className="text-gray-800 font-bold text-base">
                           {updateData.status === "partial"
-                            ? "المبلغ المحصل:"
+                            ? tl("المبلغ المحصل:", "Amount collected:")
                             : ["canceled", "return", "hand_to_hand", "receiving_part"].includes(updateData.status)
-                              ? "إجمالي الرسوم:"
-                              : "إجمالي الطلب:"}
+                              ? tl("إجمالي الرسوم:", "Total fees:")
+                              : tl("إجمالي الطلب:", "Order total:")}
                         </span>
                             <div className="text-right">
                               <span className="text-green-700 font-bold text-xl block">
@@ -4856,20 +4944,20 @@ const deleteDuplicatedOrder = async (order: Order) => {
                                   Number.parseFloat(updateData.partial_paid_amount) || 0,
                                   updateData.status,
                                 ).toFixed(2)}{" "}
-                                ج.م
+                                {tl("ج.م", "EGP")}
                               </span>
                               {showAdjustment && (
                                 <span className="text-[11px] text-amber-700 font-semibold block">
-                                  بعد طرح غير منفذ/محذوف
+                                  {tl("بعد طرح غير منفذ/محذوف", "After deducting unfulfilled/removed")}
                                 </span>
                               )}
                             </div>
                       </div>
                       {selectedOrder.subtotal_price !== undefined && (
                         <div className="border-t-2 border-gray-300 pt-3 mt-3 flex justify-between items-center bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg px-3 py-2.5">
-                          <span className="text-xs sm:text-sm font-bold text-gray-800">المجموع الفرعي:</span>
+                          <span className="text-xs sm:text-sm font-bold text-gray-800">{tl("المجموع الفرعي:", "Subtotal:")}</span>
                           <span className="text-sm sm:text-base font-bold text-gray-800">
-                            {selectedOrder.subtotal_price.toFixed(2)} ج.م
+                            {selectedOrder.subtotal_price.toFixed(2)} {tl("ج.م", "EGP")}
                           </span>
                         </div>
                       )}
@@ -4901,15 +4989,15 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         return (
                           <div className="border-t-2 border-gray-300 pt-3 mt-3 flex justify-between items-center bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg px-3 py-2.5">
                             <span className="text-xs sm:text-sm font-bold text-green-700">
-                              {hasPartialPayment ? 'المبلغ المتبقي (غير مدفوع):' : 'المبلغ للتحصيل:'}
+                              {hasPartialPayment ? tl('المبلغ المتبقي (غير مدفوع):', 'Remaining amount (unpaid):') : tl('المبلغ للتحصيل:', 'Amount to collect:')}
                             </span>
                             <div className="text-right">
                               <span className="block text-base sm:text-xl font-bold text-green-800">
-                                {collectibleAmount.toFixed(2)} ج.م
+                                {collectibleAmount.toFixed(2)} {tl("ج.م", "EGP")}
                               </span>
                               {hasPartialPayment && (
                                 <p className="text-[10px] sm:text-xs text-blue-600 font-semibold mt-1">
-                                  مدفوع: {orderPaid.toFixed(2)} ج.م | الإجمالي: {baseAmount.toFixed(2)} ج.م
+                                  {tl("مدفوع", "Paid")}: {orderPaid.toFixed(2)} {tl("ج.م", "EGP")} | {tl("الإجمالي", "Total")}: {baseAmount.toFixed(2)} {tl("ج.م", "EGP")}
                                 </p>
                               )}
                             </div>
@@ -4918,7 +5006,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                       })()}
                       <div className="bg-blue-50/80 border border-blue-200 p-3 rounded-lg text-xs text-blue-800 mt-2 flex items-start gap-2">
                         <AlertCircle className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
-                        <span><strong>ملاحظة:</strong> الرسوم منفصلة تماماً عن قيمة الطلب الأساسية ولا تُضاف إليها</span>
+                        <span><strong>{tl("ملاحظة:", "Note:")}</strong> {tl("الرسوم منفصلة تماماً عن قيمة الطلب الأساسية ولا تُضاف إليها", "Fees are completely separate from the base order value and are not added to it")}</span>
                       </div>
                         </div>
                       )
@@ -4932,7 +5020,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         <Clock className="w-4 h-4 text-white" />
                       </div>
                       <span className="text-base font-bold text-gray-800">
-                        حالة الطلب <span className="text-red-500">*</span>
+                        {tl("حالة الطلب", "Order status")} <span className="text-red-500">*</span>
                       </span>
                     </label>
                     <select
@@ -4943,9 +5031,9 @@ const deleteDuplicatedOrder = async (order: Order) => {
                       className="w-full rounded-xl border-2 border-gray-300 px-4 py-3.5 text-base font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white hover:border-blue-400 transition-colors shadow-sm"
                       required
                     >
-                      {Object.entries(statusLabels).map(([key, { label }]) => (
+                      {Object.entries(statusLabels).map(([key]) => (
                         <option key={key} value={key}>
-                          {label}
+                          {statusLabelText(key)}
                         </option>
                       ))}
                     </select>
@@ -4957,7 +5045,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                       <div className="w-8 h-8 bg-gradient-to-br from-amber-500 to-orange-600 rounded-lg flex items-center justify-center">
                         <DollarSign className="w-4 h-4 text-white" />
                       </div>
-                      <span className="text-base font-bold text-gray-800">رسوم التوصيل</span>
+                      <span className="text-base font-bold text-gray-800">{tl("رسوم التوصيل", "Delivery fee")}</span>
                     </label>
                     <div className="relative">
                       <input
@@ -4971,11 +5059,11 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         disabled={updateData.status === "return"}
                         placeholder="0.00"
                       />
-                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600 text-sm font-bold">ج.م</span>
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600 text-sm font-bold">{tl("ج.م", "EGP")}</span>
                     </div>
                     <p className="text-xs text-gray-500 mt-2 flex items-center gap-1.5">
                       <AlertCircle className="w-3.5 h-3.5" />
-                      رسوم التوصيل منفصلة تماماً عن قيمة الطلب الأساسية
+                      {tl("رسوم التوصيل منفصلة تماماً عن قيمة الطلب الأساسية", "The delivery fee is completely separate from the base order value")}
                     </p>
                   </div>
 
@@ -4989,8 +5077,8 @@ const deleteDuplicatedOrder = async (order: Order) => {
                           <CreditCard className="w-6 h-6 text-white" />
                         </div>
                         <div>
-                          <h4 className="text-lg font-bold text-gray-800">تفاصيل التحصيل</h4>
-                          <p className="text-xs text-gray-500">طريقة الدفع والتحصيل</p>
+                          <h4 className="text-lg font-bold text-gray-800">{tl("تفاصيل التحصيل", "Collection details")}</h4>
+                          <p className="text-xs text-gray-500">{tl("طريقة الدفع والتحصيل", "Payment and collection method")}</p>
                         </div>
                       </div>
                       <div className="bg-white/80 backdrop-blur-sm rounded-xl p-4 space-y-4 border border-white/50">
@@ -5062,11 +5150,11 @@ const deleteDuplicatedOrder = async (order: Order) => {
                               <div className="bg-green-50 border border-green-200 rounded-lg p-3">
                                 <div className="flex items-center gap-2 text-green-700">
                                   <AlertCircle className="w-4 h-4" />
-                                  <span className="text-sm font-medium">طلب مدفوع</span>
+                                  <span className="text-sm font-medium">{tl("طلب مدفوع", "Paid order")}</span>
                                 </div>
                                 <p className="text-xs text-green-600 mt-1">
-                                  هذا الطلب مدفوع بالفعل عبر {allCollectionMethods[currentMethod] || currentMethod}.
-                                  يمكنك تغيير طريقة الدفع إذا دفع العميل نقداً أو بطريقة أخرى.
+                                  {tl("هذا الطلب مدفوع بالفعل عبر", "This order is already paid via")} {methodLabel(currentMethod) || currentMethod}.
+                                  {tl(" يمكنك تغيير طريقة الدفع إذا دفع العميل نقداً أو بطريقة أخرى.", " You can change the payment method if the customer paid in cash or another way.")}
                                 </p>
                               </div>
                             )}
@@ -5075,10 +5163,10 @@ const deleteDuplicatedOrder = async (order: Order) => {
                               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
                                 <div className="flex items-center gap-2 text-yellow-700">
                                   <AlertCircle className="w-4 h-4" />
-                                  <span className="text-sm font-medium">طلب مؤجل</span>
+                                  <span className="text-sm font-medium">{tl("طلب مؤجل", "Deferred order")}</span>
                                 </div>
                                 <p className="text-xs text-yellow-600 mt-1">
-                                  الطلبات المؤجلة لا تتطلب تحصيل رسوم. سيتم حساب الإجمالي كصفر.
+                                  {tl("الطلبات المؤجلة لا تتطلب تحصيل رسوم. سيتم حساب الإجمالي كصفر.", "Deferred orders do not require fee collection. The total will be calculated as zero.")}
                                 </p>
                               </div>
                             )}
@@ -5087,13 +5175,13 @@ const deleteDuplicatedOrder = async (order: Order) => {
                               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                                 <div className="flex items-center gap-2 text-blue-700">
                                   <AlertCircle className="w-4 h-4" />
-                                  <span className="text-sm font-medium">استلام قطعة</span>
+                                  <span className="text-sm font-medium">{tl("استلام قطعة", "Receive Piece")}</span>
                                 </div>
                                 <p className="text-xs text-blue-600 mt-1">
                                   {currentFee === 0 && currentPartial === 0 ? (
-                                    "يمكنك إضافة رسوم التوصيل أو المبلغ الجزئي حسب الحاجة. إذا أضفت مبالغ، سيُطلب منك اختيار طريقة الدفع."
+                                    tl("يمكنك إضافة رسوم التوصيل أو المبلغ الجزئي حسب الحاجة. إذا أضفت مبالغ، سيُطلب منك اختيار طريقة الدفع.", "You can add the delivery fee or partial amount as needed. If you add amounts, you will be asked to choose a payment method.")
                                   ) : (
-                                    "تم إضافة مبالغ - يرجى اختيار طريقة الدفع المطلوبة."
+                                    tl("تم إضافة مبالغ - يرجى اختيار طريقة الدفع المطلوبة.", "Amounts added - please choose the required payment method.")
                                   )}
                                 </p>
                               </div>
@@ -5103,10 +5191,10 @@ const deleteDuplicatedOrder = async (order: Order) => {
                               <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
                                 <div className="flex items-center gap-2 text-purple-700">
                                   <AlertCircle className="w-4 h-4" />
-                                  <span className="text-sm font-medium">استبدال بدون رسوم</span>
+                                  <span className="text-sm font-medium">{tl("استبدال بدون رسوم", "Exchange without fees")}</span>
                                 </div>
                                 <p className="text-xs text-purple-600 mt-1">
-                                  لا يتطلب اختيار طريقة دفع عند عدم وجود رسوم توصيل أو مبلغ جزئي.
+                                  {tl("لا يتطلب اختيار طريقة دفع عند عدم وجود رسوم توصيل أو مبلغ جزئي.", "No payment method selection is required when there is no delivery fee or partial amount.")}
                                 </p>
                               </div>
                             )}
@@ -5115,10 +5203,10 @@ const deleteDuplicatedOrder = async (order: Order) => {
                               <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
                                 <div className="flex items-center gap-2 text-gray-700">
                                   <AlertCircle className="w-4 h-4" />
-                                  <span className="text-sm font-medium">طلب ملغي بدون رسوم</span>
+                                  <span className="text-sm font-medium">{tl("طلب ملغي بدون رسوم", "Canceled order without fees")}</span>
                                 </div>
                                 <p className="text-xs text-gray-600 mt-1">
-                                  الطلبات الملغاة بدون رسوم سيتم حساب إجماليها كصفر تلقائياً.
+                                  {tl("الطلبات الملغاة بدون رسوم سيتم حساب إجماليها كصفر تلقائياً.", "Canceled orders without fees will have their total automatically calculated as zero.")}
                                 </p>
                               </div>
                             )}
@@ -5127,10 +5215,10 @@ const deleteDuplicatedOrder = async (order: Order) => {
                               <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
                                 <div className="flex items-center gap-2 text-orange-700">
                                   <AlertCircle className="w-4 h-4" />
-                                  <span className="text-sm font-medium">طلب غير مدفوع</span>
+                                  <span className="text-sm font-medium">{tl("طلب غير مدفوع", "Unpaid order")}</span>
                                 </div>
                                 <p className="text-xs text-orange-600 mt-1">
-                                  يمكن للمندوب اختيار طريقة الدفع المناسبة لهذا الطلب.
+                                  {tl("يمكن للمندوب اختيار طريقة الدفع المناسبة لهذا الطلب.", "The courier can choose the appropriate payment method for this order.")}
                                 </p>
                               </div>
                             )}
@@ -5142,7 +5230,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                                     <CreditCard className="w-4 h-4 text-white" />
                                   </div>
                                   <span className="text-base font-bold text-gray-800">
-                                    طريقة الدفع {isOrderUnpaid ? "(للطلب غير المدفوع)" : "(نوع الدفع الفرعي)"}
+                                    {tl("طريقة الدفع", "Payment method")} {isOrderUnpaid ? tl("(للطلب غير المدفوع)", "(for unpaid order)") : tl("(نوع الدفع الفرعي)", "(payment sub-type)")}
                                   </span>
                                 </label>
                                 <select
@@ -5160,10 +5248,10 @@ const deleteDuplicatedOrder = async (order: Order) => {
                                       (updateData.status === "canceled" && currentFee > 0))
                                   }
                                 >
-                                  <option value="">اختر طريقة الدفع</option>
-                                  {Object.entries(paymentSubTypesForCourier).map(([key, label]) => (
+                                  <option value="">{tl("اختر طريقة الدفع", "Choose payment method")}</option>
+                                  {Object.entries(paymentSubTypesForCourier).map(([key]) => (
                                     <option key={key} value={key}>
-                                      {label}
+                                      {methodLabel(key)}
                                     </option>
                                   ))}
                                 </select>
@@ -5178,16 +5266,16 @@ const deleteDuplicatedOrder = async (order: Order) => {
                                     <CreditCard className="w-4 h-4 text-white" />
                                   </div>
                                   <span className="text-base font-bold text-emerald-800">
-                                    تقسيم الدفع على أكثر من طريقة
+                                    {tl("تقسيم الدفع على أكثر من طريقة", "Split payment across multiple methods")}
                                   </span>
                                 </div>
                                 <p className="text-xs text-emerald-700 mb-3">
-                                  أضف كل طريقة دفع والمبلغ المحصل بها. يجب أن يساوي مجموع المبالغ المبلغ الإجمالي للتحصيل.
+                                  {tl("أضف كل طريقة دفع والمبلغ المحصل بها. يجب أن يساوي مجموع المبالغ المبلغ الإجمالي للتحصيل.", "Add each payment method and the amount collected with it. The sum of the amounts must equal the total amount to collect.")}
                                 </p>
                                 <div className="space-y-2">
                                   {ontherPayments.length === 0 && (
                                     <p className="text-xs text-gray-500 italic text-center py-2">
-                                      لا توجد طرق دفع حتى الآن، اضغط "إضافة طريقة" للبدء.
+                                      {tl('لا توجد طرق دفع حتى الآن، اضغط "إضافة طريقة" للبدء.', 'No payment methods yet, press "Add method" to start.')}
                                     </p>
                                   )}
                                   {ontherPayments.map((row, idx) => (
@@ -5201,10 +5289,10 @@ const deleteDuplicatedOrder = async (order: Order) => {
                                         }}
                                         className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                                       >
-                                        <option value="">-- اختر الطريقة --</option>
-                                        {Object.entries(ontherSplitMethods).map(([key, label]) => (
+                                        <option value="">{tl("-- اختر الطريقة --", "-- Choose method --")}</option>
+                                        {Object.entries(ontherSplitMethods).map(([key]) => (
                                           <option key={key} value={key}>
-                                            {label}
+                                            {methodLabel(key)}
                                           </option>
                                         ))}
                                       </select>
@@ -5218,7 +5306,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                                           newRows[idx] = { ...newRows[idx], amount: e.target.value }
                                           setOntherPayments(newRows)
                                         }}
-                                        placeholder="المبلغ"
+                                        placeholder={tl("المبلغ", "Amount")}
                                         className="w-28 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                                       />
                                       <button
@@ -5227,7 +5315,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                                           setOntherPayments(ontherPayments.filter((_, i) => i !== idx))
                                         }}
                                         className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                        title="حذف"
+                                        title={tl("حذف", "Delete")}
                                       >
                                         <Trash2 className="w-4 h-4" />
                                       </button>
@@ -5242,15 +5330,15 @@ const deleteDuplicatedOrder = async (order: Order) => {
                                   className="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium transition-colors"
                                 >
                                   <Plus className="w-4 h-4" />
-                                  إضافة طريقة
+                                  {tl("إضافة طريقة", "Add method")}
                                 </button>
                                 <div className="mt-3 pt-3 border-t border-emerald-200 flex justify-between items-center bg-white -mx-4 px-4 py-2 rounded-b-xl">
-                                  <span className="text-sm font-bold text-emerald-800">مجموع التقسيم:</span>
+                                  <span className="text-sm font-bold text-emerald-800">{tl("مجموع التقسيم:", "Split total:")}</span>
                                   <span className="text-lg font-bold text-emerald-700">
                                     {ontherPayments
                                       .reduce((sum, r) => sum + (Number.parseFloat(r.amount) || 0), 0)
                                       .toFixed(2)}{" "}
-                                    ج.م
+                                    {tl("ج.م", "EGP")}
                                   </span>
                                 </div>
                               </div>
@@ -5262,7 +5350,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                                   <div className="w-8 h-8 bg-gradient-to-br from-teal-500 to-cyan-600 rounded-lg flex items-center justify-center">
                                     <UserCheck className="w-4 h-4 text-white" />
                                   </div>
-                                  <span className="text-base font-bold text-gray-800">تم تحصيل الدفع بواسطة</span>
+                                  <span className="text-base font-bold text-gray-800">{tl("تم تحصيل الدفع بواسطة", "Payment collected by")}</span>
                                 </label>
                                 <select
                                   value={updateData.collected_by}
@@ -5272,10 +5360,10 @@ const deleteDuplicatedOrder = async (order: Order) => {
                                   className="w-full rounded-xl border-2 border-gray-300 px-4 py-3.5 text-base font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white hover:border-teal-400 transition-colors shadow-sm"
                                   required={showCollectedByDropdown}
                                 >
-                                  <option value="">اختر الطريقة</option>
-                                  {Object.entries(collectionMethodsForCourier).map(([key, label]) => (
+                                  <option value="">{tl("اختر الطريقة", "Choose method")}</option>
+                                  {Object.entries(collectionMethodsForCourier).map(([key]) => (
                                     <option key={key} value={key}>
-                                      {label}
+                                      {methodLabel(key)}
                                     </option>
                                   ))}
                                 </select>
@@ -5291,7 +5379,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                             <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-600 rounded-lg flex items-center justify-center">
                               <DollarSign className="w-4 h-4 text-white" />
                             </div>
-                            <span className="text-base font-bold text-gray-800">المبلغ المدفوع جزئياً</span>
+                            <span className="text-base font-bold text-gray-800">{tl("المبلغ المدفوع جزئياً", "Partially paid amount")}</span>
                           </label>
                           <div className="relative">
                             <input
@@ -5305,11 +5393,11 @@ const deleteDuplicatedOrder = async (order: Order) => {
                               disabled={updateData.status === "return"}
                               placeholder="0.00"
                             />
-                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600 text-sm font-bold">ج.م</span>
+                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600 text-sm font-bold">{tl("ج.م", "EGP")}</span>
                           </div>
                           <p className="text-xs text-gray-500 mt-2 flex items-center gap-1.5">
                             <AlertCircle className="w-3.5 h-3.5" />
-                            للطلبات الجزئية - هذا المبلغ منفصل عن قيمة الطلب الأساسية
+                            {tl("للطلبات الجزئية - هذا المبلغ منفصل عن قيمة الطلب الأساسية", "For partial orders - this amount is separate from the base order value")}
                           </p>
                         </div>
 
@@ -5318,10 +5406,10 @@ const deleteDuplicatedOrder = async (order: Order) => {
                           <div className="bg-yellow-50/80 border-2 border-yellow-300 rounded-xl p-3">
                             <div className="flex items-center gap-2 text-yellow-800 mb-2">
                               <AlertCircle className="w-5 h-5" />
-                              <span className="text-sm font-bold">تنبيه</span>
+                              <span className="text-sm font-bold">{tl("تنبيه", "Warning")}</span>
                             </div>
                             <p className="text-xs text-yellow-700 leading-relaxed">
-                              إذا لم يتم وضع أي رسوم، سيتم حساب إجمالي الطلب كصفر (الرسوم منفصلة عن قيمة الطلب الأساسية)
+                              {tl("إذا لم يتم وضع أي رسوم، سيتم حساب إجمالي الطلب كصفر (الرسوم منفصلة عن قيمة الطلب الأساسية)", "If no fees are set, the order total will be calculated as zero (fees are separate from the base order value)")}
                             </p>
                           </div>
                         )}
@@ -5335,7 +5423,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                       <div className="w-8 h-8 bg-gradient-to-br from-gray-500 to-slate-600 rounded-lg flex items-center justify-center">
                         <FileText className="w-4 h-4 text-white" />
                       </div>
-                      <span className="text-base font-bold text-gray-800">التعليق الداخلي</span>
+                      <span className="text-base font-bold text-gray-800">{tl("التعليق الداخلي", "Internal comment")}</span>
                     </label>
                     <textarea
                       rows={4}
@@ -5344,7 +5432,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         setUpdateData({ ...updateData, internal_comment: e.target.value })
                       }}
                       className="w-full rounded-xl border-2 border-gray-300 px-4 py-3 text-base font-medium focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-gray-500 bg-white hover:border-gray-400 transition-colors shadow-sm resize-none"
-                      placeholder="أضف أي ملاحظات أو تعليقات..."
+                      placeholder={tl("أضف أي ملاحظات أو تعليقات...", "Add any notes or comments...")}
                     />
                   </div>
 
@@ -5354,10 +5442,10 @@ const deleteDuplicatedOrder = async (order: Order) => {
                       <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-emerald-600 rounded-lg flex items-center justify-center">
                         <Camera className="w-4 h-4 text-white" />
                       </div>
-                      <span className="text-base font-bold text-gray-800">رفع صور الإثبات</span>
+                      <span className="text-base font-bold text-gray-800">{tl("رفع صور الإثبات", "Upload proof images")}</span>
                       {selectedOrder.order_proofs && selectedOrder.order_proofs.length > 0 && (
                         <span className="bg-green-100 text-green-800 text-xs px-2.5 py-1 rounded-full font-bold">
-                          {selectedOrder.order_proofs.length} صورة
+                          {selectedOrder.order_proofs.length} {tl("صورة", "image(s)")}
                         </span>
                       )}
                     </label>
@@ -5429,7 +5517,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                             >
                               <span className="flex items-center gap-2 justify-center">
                                 <Camera className="w-4 h-4" />
-                                التقط صورة الآن
+                                {tl("التقط صورة الآن", "Take a photo now")}
                               </span>
                             </button>
                           </div>
@@ -5486,7 +5574,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                             >
                               <span className="flex items-center gap-2 justify-center">
                                 <Upload className="w-4 h-4" />
-                                اختر من المعرض
+                                {tl("اختر من المعرض", "Choose from gallery")}
                               </span>
                             </button>
                           </div>
@@ -5494,12 +5582,12 @@ const deleteDuplicatedOrder = async (order: Order) => {
 
                         <p className="text-xs text-gray-500 mt-1 flex items-center justify-center gap-1.5">
                           <AlertCircle className="w-3.5 h-3.5" />
-                          على الهاتف يمكنك فتح الكاميرا مباشرة أو اختيار صورك من المعرض
+                          {tl("على الهاتف يمكنك فتح الكاميرا مباشرة أو اختيار صورك من المعرض", "On mobile you can open the camera directly or choose your photos from the gallery")}
                         </p>
 
                         {uploadingImages.length > 0 && (
                           <div className="mt-3 space-y-1">
-                            <p className="text-xs text-blue-600 font-medium">جاري رفع:</p>
+                            <p className="text-xs text-blue-600 font-medium">{tl("جاري رفع:", "Uploading:")}</p>
                             {uploadingImages.map((fileName, idx) => (
                               <div key={idx} className="text-xs text-gray-600 bg-blue-50 px-2 py-1 rounded">
                                 {fileName}
@@ -5510,7 +5598,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         {imageUploadSuccess && (
                           <p className="text-xs text-green-600 mt-2 flex items-center justify-center gap-1.5 font-bold">
                             <CheckCircle className="w-4 h-4" />
-                            تم رفع الصور بنجاح!
+                            {tl("تم رفع الصور بنجاح!", "Images uploaded successfully!")}
                           </p>
                         )}
                       </div>
@@ -5526,11 +5614,11 @@ const deleteDuplicatedOrder = async (order: Order) => {
                             <Eye className="w-4 h-4 text-white" />
                           </div>
                           <span className="text-base font-bold text-gray-800">
-                            صور الإثبات الحالية
+                            {tl("صور الإثبات الحالية", "Current proof images")}
                           </span>
                         </label>
                         <span className="bg-blue-100 text-blue-800 text-xs px-2.5 py-1 rounded-full font-bold">
-                          {selectedOrder.order_proofs.length} {selectedOrder.order_proofs.length === 1 ? 'صورة' : 'صور'}
+                          {selectedOrder.order_proofs.length} {selectedOrder.order_proofs.length === 1 ? tl('صورة', 'image') : tl('صور', 'images')}
                         </span>
                       </div>
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -5539,7 +5627,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                             <div className="aspect-square relative">
                               <img
                                 src={proof.image_data || "/placeholder.svg"}
-                                alt={`إثبات ${idx + 1}`}
+                                alt={tl(`إثبات ${idx + 1}`, `Proof ${idx + 1}`)}
                                 className="w-full h-full object-cover cursor-pointer"
                                 onClick={(e) => {
                                   e.preventDefault()
@@ -5557,7 +5645,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                               {/* Remove button - Always visible on mobile, on hover on desktop */}
                             <button
                               type="button"
-                              title="حذف الصورة"
+                              title={tl("حذف الصورة", "Delete image")}
                               onClick={(e) => {
                                 e.preventDefault()
                                 e.stopPropagation()
@@ -5577,7 +5665,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                       </div>
                       <p className="text-xs text-gray-500 mt-3 flex items-center gap-1.5">
                         <AlertCircle className="w-3.5 h-3.5" />
-                        اضغط على الصورة لعرضها بالحجم الكامل، أو اضغط على X لحذفها
+                        {tl("اضغط على الصورة لعرضها بالحجم الكامل، أو اضغط على X لحذفها", "Tap the image to view it full size, or tap X to delete it")}
                       </p>
                     </div>
                   )}
@@ -5603,7 +5691,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         className="flex-1 px-4 py-4 rounded-xl bg-gradient-to-br from-gray-100 to-gray-200 hover:from-gray-200 hover:to-gray-300 text-gray-800 font-bold transition-all active:scale-95 text-base shadow-md border-2 border-gray-300"
                         disabled={saving}
                       >
-                        إلغاء
+                        {tl("إلغاء", "Cancel")}
                       </button>
                       <button
                         type="button"
@@ -5618,12 +5706,12 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         {saving ? (
                           <>
                             <Loader2 className="w-5 h-5 animate-spin" />
-                            <span>جاري الحفظ...</span>
+                            <span>{tl("جاري الحفظ...", "Saving...")}</span>
                           </>
                         ) : (
                           <>
                             <Save className="w-5 h-5" />
-                            <span>حفظ التغييرات</span>
+                            <span>{tl("حفظ التغييرات", "Save changes")}</span>
                           </>
                         )}
                       </button>

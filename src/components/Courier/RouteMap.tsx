@@ -27,6 +27,7 @@ import {
 import { supabase } from "../../lib/supabase"
 import { whatsappSupabase } from "../../lib/whatsappSupabase"
 import { useAuth } from "../../contexts/AuthContext"
+import { useLanguage } from "../../contexts/LanguageContext"
 import {
   START,
   type LatLng,
@@ -197,6 +198,8 @@ const ClickCatcher: React.FC<{ active: boolean; onPick: (p: LatLng) => void }> =
 
 const RouteMap: React.FC = () => {
   const { user } = useAuth()
+  const { language } = useLanguage()
+  const tl = (ar: string, en: string) => (language === 'ar' ? ar : en)
   const [selectedDate, setSelectedDate] = useState<string>(todayCairoYMD())
   const [start, setStart] = useState<LatLng>({ lat: START.lat, lng: START.lng })
 
@@ -445,7 +448,7 @@ const RouteMap: React.FC = () => {
       }
     } catch (e) {
       if (seq === reqSeq.current) {
-        setError(e instanceof Error ? e.message : "تعذر تحميل الطلبات")
+        setError(e instanceof Error ? e.message : tl("تعذر تحميل الطلبات", "Could not load orders"))
         setLoading(false)
       }
     }
@@ -557,12 +560,12 @@ const RouteMap: React.FC = () => {
       return
     }
     if (!("geolocation" in navigator)) {
-      setError("المتصفح لا يدعم تحديد الموقع")
+      setError(tl("المتصفح لا يدعم تحديد الموقع", "Your browser does not support geolocation"))
       return
     }
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => setLivePos({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-      () => setError("تعذر الوصول للموقع — تأكد من تفعيل صلاحية الموقع"),
+      () => setError(tl("تعذر الوصول للموقع — تأكد من تفعيل صلاحية الموقع", "Could not access location — make sure location permission is enabled")),
       { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 },
     )
     setTracking(true)
@@ -631,7 +634,7 @@ const RouteMap: React.FC = () => {
 
   // ------------------------------------------------------------------ render
   return (
-    <div className="p-3 sm:p-5 max-w-[1400px] mx-auto" dir="rtl">
+    <div className="p-3 sm:p-5 max-w-[1400px] mx-auto" dir={language === 'ar' ? 'rtl' : 'ltr'}>
       {/* Header */}
       <div className="flex flex-col gap-3 mb-4">
         <div className="flex items-center justify-between flex-wrap gap-3">
@@ -640,15 +643,15 @@ const RouteMap: React.FC = () => {
               <RouteIcon className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-gray-900">خريطة الطريق</h1>
+              <h1 className="text-xl font-bold text-gray-900">{tl('خريطة الطريق', 'Route Map')}</h1>
               <p className="text-xs text-gray-500 flex items-center gap-1">
-                <Flag className="w-3 h-3" /> البداية: {START.label}
+                <Flag className="w-3 h-3" /> {tl('البداية:', 'Start:')} {START.label}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-1.5 bg-white rounded-xl border border-gray-200 shadow-sm p-1">
-            <button onClick={() => shiftDate(-1)} className="p-2 hover:bg-gray-100 rounded-lg" aria-label="اليوم السابق">
+            <button onClick={() => shiftDate(-1)} className="p-2 hover:bg-gray-100 rounded-lg" aria-label={tl("اليوم السابق", "Previous day")}>
               <ChevronRight className="w-4 h-4" />
             </button>
             <input
@@ -657,7 +660,7 @@ const RouteMap: React.FC = () => {
               onChange={(e) => setSelectedDate(e.target.value)}
               className="text-sm font-semibold text-gray-800 bg-transparent outline-none px-1"
             />
-            <button onClick={() => shiftDate(1)} className="p-2 hover:bg-gray-100 rounded-lg" aria-label="اليوم التالي">
+            <button onClick={() => shiftDate(1)} className="p-2 hover:bg-gray-100 rounded-lg" aria-label={tl("اليوم التالي", "Next day")}>
               <ChevronLeft className="w-4 h-4" />
             </button>
           </div>
@@ -679,20 +682,20 @@ const RouteMap: React.FC = () => {
 
         {/* Stats + actions */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <StatCard icon={MapPin} label="عدد الطلبات" value={`${stops.length}`} sub={`${doneCount} تم`} />
-          <StatCard icon={RouteIcon} label="المسافة" value={fmtDistance(totalKm)} />
+          <StatCard icon={MapPin} label={tl("عدد الطلبات", "Orders")} value={`${stops.length}`} sub={`${doneCount} ${tl("تم", "done")}`} />
+          <StatCard icon={RouteIcon} label={tl("المسافة", "Distance")} value={fmtDistance(totalKm)} />
           <StatCard
             icon={Timer}
-            label="الوقت المقدّر"
+            label={tl("الوقت المقدّر", "Est. time")}
             value={fmtDuration(totalMin * trafficMult + located.length * SERVICE_MIN)}
-            sub={`ينتهي ~${finishClock}`}
+            sub={`${tl("ينتهي", "Ends")} ~${finishClock}`}
           />
           <StatCard
             icon={AlertTriangle}
-            label="خارج الموعد"
+            label={tl("خارج الموعد", "Late")}
             value={`${lateCount}`}
             danger={lateCount > 0}
-            sub={lateCount > 0 ? "راجع الترتيب" : "الكل بالموعد"}
+            sub={lateCount > 0 ? tl("راجع الترتيب", "Review order") : tl("الكل بالموعد", "All on time")}
           />
         </div>
 
@@ -703,7 +706,7 @@ const RouteMap: React.FC = () => {
             className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl text-sm font-semibold shadow hover:opacity-90 disabled:opacity-50"
           >
             {optimizing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-            رتّب حسب الأقرب
+            {tl("رتّب حسب الأقرب", "Sort by nearest")}
           </button>
           <a
             href={googleMapsRouteLink(
@@ -718,7 +721,7 @@ const RouteMap: React.FC = () => {
                 : "bg-gray-200 text-gray-400 pointer-events-none"
             }`}
           >
-            <Navigation className="w-4 h-4" /> تنقّل للكل
+            <Navigation className="w-4 h-4" /> {tl("تنقّل للكل", "Navigate all")}
           </a>
           <button
             onClick={toggleTracking}
@@ -726,26 +729,26 @@ const RouteMap: React.FC = () => {
               tracking ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
             }`}
           >
-            <Locate className="w-4 h-4" /> {tracking ? "التتبّع يعمل" : "تتبّع موقعي"}
+            <Locate className="w-4 h-4" /> {tracking ? tl("التتبّع يعمل", "Tracking on") : tl("تتبّع موقعي", "Track me")}
           </button>
         </div>
 
         {geocoding && (
           <div className="flex items-center gap-2 text-xs text-gray-500">
-            <Loader2 className="w-3.5 h-3.5 animate-spin" /> جارٍ تحديد مواقع العناوين ({geocoding.done}/
+            <Loader2 className="w-3.5 h-3.5 animate-spin" /> {tl("جارٍ تحديد مواقع العناوين", "Locating addresses")} ({geocoding.done}/
             {geocoding.total})…
           </div>
         )}
         {usedFallback && (
           <div className="text-xs text-amber-600 flex items-center gap-1">
-            <AlertTriangle className="w-3.5 h-3.5" /> تم الترتيب تقريبياً (خدمة الطرق غير متاحة الآن).
+            <AlertTriangle className="w-3.5 h-3.5" /> {tl("تم الترتيب تقريبياً (خدمة الطرق غير متاحة الآن).", "Sorted approximately (routing service unavailable now).")}
           </div>
         )}
         {pinStopId && (
           <div className="text-xs text-purple-700 bg-purple-50 border border-purple-200 rounded-lg px-3 py-2 flex items-center gap-1">
-            <Crosshair className="w-3.5 h-3.5" /> اضغط على الخريطة لتحديد موقع هذا الطلب.
+            <Crosshair className="w-3.5 h-3.5" /> {tl("اضغط على الخريطة لتحديد موقع هذا الطلب.", "Tap the map to set this order's location.")}
             <button className="underline mr-2" onClick={() => setPinStopId(null)}>
-              إلغاء
+              {tl("إلغاء", "Cancel")}
             </button>
           </div>
         )}
@@ -766,7 +769,7 @@ const RouteMap: React.FC = () => {
             <FitBounds points={fitPoints} />
             <ClickCatcher active={!!pinStopId} onPick={onPickPin} />
             <Marker position={[start.lat, start.lng]} icon={startIcon}>
-              <Popup>نقطة البداية — {START.label}</Popup>
+              <Popup>{tl("نقطة البداية", "Start point")} — {START.label}</Popup>
             </Marker>
             {located.map((s, i) => (
               <Marker
@@ -776,7 +779,7 @@ const RouteMap: React.FC = () => {
                 eventHandlers={{ click: () => setActiveStopId(s.id) }}
               >
                 <Popup>
-                  <div className="text-right" dir="rtl">
+                  <div className="text-right" dir={language === 'ar' ? 'rtl' : 'ltr'}>
                     <div className="font-bold">
                       {i + 1}. {s.name}
                     </div>
@@ -788,7 +791,7 @@ const RouteMap: React.FC = () => {
                       rel="noreferrer"
                       className="text-xs text-emerald-600 underline mt-1 inline-block"
                     >
-                      افتح في خرائط جوجل
+                      {tl("افتح في خرائط جوجل", "Open in Google Maps")}
                     </a>
                   </div>
                 </Popup>
@@ -799,7 +802,7 @@ const RouteMap: React.FC = () => {
             )}
             {livePos && (
               <Marker position={[livePos.lat, livePos.lng]} icon={liveIcon}>
-                <Popup>موقعك الحالي</Popup>
+                <Popup>{tl("موقعك الحالي", "Your location")}</Popup>
               </Marker>
             )}
           </MapContainer>
@@ -809,17 +812,17 @@ const RouteMap: React.FC = () => {
         <div className="lg:col-span-2">
           {loading ? (
             <div className="flex items-center justify-center h-40 text-gray-400 gap-2">
-              <Loader2 className="w-5 h-5 animate-spin" /> جارٍ التحميل…
+              <Loader2 className="w-5 h-5 animate-spin" /> {tl("جارٍ التحميل…", "Loading…")}
             </div>
           ) : located.length === 0 && unlocated.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-40 text-gray-400 text-sm">
               <MapPin className="w-8 h-8 mb-2 opacity-50" />
-              لا توجد طلبات في هذا اليوم.
+              {tl("لا توجد طلبات في هذا اليوم.", "No orders for this day.")}
             </div>
           ) : (
             <>
               <div className="text-xs text-gray-500 mb-2 flex items-center gap-1">
-                <RouteIcon className="w-3.5 h-3.5" /> اسحب لإعادة الترتيب يدوياً
+                <RouteIcon className="w-3.5 h-3.5" /> {tl("اسحب لإعادة الترتيب يدوياً", "Drag to reorder manually")}
               </div>
               <List
                 values={routeRows}
@@ -881,20 +884,20 @@ const RouteMap: React.FC = () => {
                                 }`}
                               >
                                 ⏰ {s.deliveryTime}
-                                {row.late ? " (متأخر)" : row.early ? " (مبكر)" : ""}
+                                {row.late ? tl(" (متأخر)", " (Late)") : row.early ? tl(" (مبكر)", " (Early)") : ""}
                               </span>
                             )}
                             {s.coordSource === "manual" && (
                               <span className="text-[11px] bg-purple-100 text-purple-700 rounded px-1.5 py-0.5">
-                                موقع يدوي
+                                {tl("موقع يدوي", "Manual pin")}
                               </span>
                             )}
                             {s.coordSource === "approx" && (
                               <span
                                 className="text-[11px] bg-amber-100 text-amber-700 rounded px-1.5 py-0.5"
-                                title="لم نتمكن من تحديد العنوان بدقة — الموقع تقريبي، اضغط تعديل الموقع لضبطه"
+                                title={tl("لم نتمكن من تحديد العنوان بدقة — الموقع تقريبي، اضغط تعديل الموقع لضبطه", "We couldn't pinpoint the address — location is approximate, tap Edit location to adjust it")}
                               >
-                                موقع تقريبي
+                                {tl("موقع تقريبي", "Approx. location")}
                               </span>
                             )}
                           </div>
@@ -907,7 +910,7 @@ const RouteMap: React.FC = () => {
                               onClick={(e) => e.stopPropagation()}
                               className="flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg px-2 py-1"
                             >
-                              <Navigation className="w-3 h-3" /> تنقّل
+                              <Navigation className="w-3 h-3" /> {tl("تنقّل", "Navigate")}
                             </a>
                             {s.phone && (
                               <a
@@ -915,7 +918,7 @@ const RouteMap: React.FC = () => {
                                 onClick={(e) => e.stopPropagation()}
                                 className="flex items-center gap-1 text-[11px] font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg px-2 py-1"
                               >
-                                <Phone className="w-3 h-3" /> اتصال
+                                <Phone className="w-3 h-3" /> {tl("اتصال", "Call")}
                               </a>
                             )}
                             <button
@@ -925,7 +928,7 @@ const RouteMap: React.FC = () => {
                               }}
                               className="flex items-center gap-1 text-[11px] font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-lg px-2 py-1"
                             >
-                              <Crosshair className="w-3 h-3" /> تعديل الموقع
+                              <Crosshair className="w-3 h-3" /> {tl("تعديل الموقع", "Edit location")}
                             </button>
                             <button
                               onClick={(e) => {
@@ -938,7 +941,7 @@ const RouteMap: React.FC = () => {
                                   : "text-green-700 bg-green-50 hover:bg-green-100"
                               }`}
                             >
-                              <Check className="w-3 h-3" /> {s.done ? "تراجع" : "تم"}
+                              <Check className="w-3 h-3" /> {s.done ? tl("تراجع", "Undo") : tl("تم", "Done")}
                             </button>
                           </div>
                         </div>
@@ -952,8 +955,7 @@ const RouteMap: React.FC = () => {
               {unlocated.length > 0 && (
                 <div className="mt-4">
                   <div className="text-xs font-semibold text-amber-700 flex items-center gap-1 mb-2">
-                    <AlertTriangle className="w-3.5 h-3.5" /> طلبات بدون موقع محدد ({unlocated.length}) — حدد
-                    مكانها على الخريطة
+                    <AlertTriangle className="w-3.5 h-3.5" /> {tl("طلبات بدون موقع محدد", "Orders without a set location")} ({unlocated.length}) — {tl("حدد مكانها على الخريطة", "set them on the map")}
                   </div>
                   <ul className="space-y-2">
                     {unlocated.map((s) => (
@@ -962,12 +964,12 @@ const RouteMap: React.FC = () => {
                           <span className="font-semibold text-gray-900 text-sm truncate">{s.name}</span>
                           <span className="text-[11px] text-gray-400">#{s.orderId}</span>
                         </div>
-                        <div className="text-xs text-gray-500 truncate mt-0.5">{s.address || "لا يوجد عنوان"}</div>
+                        <div className="text-xs text-gray-500 truncate mt-0.5">{s.address || tl("لا يوجد عنوان", "No address")}</div>
                         <button
                           onClick={() => setPinStopId(s.id)}
                           className="mt-2 flex items-center gap-1 text-[11px] font-medium text-purple-700 bg-purple-100 hover:bg-purple-200 rounded-lg px-2 py-1"
                         >
-                          <Crosshair className="w-3 h-3" /> تحديد الموقع على الخريطة
+                          <Crosshair className="w-3 h-3" /> {tl("تحديد الموقع على الخريطة", "Set location on map")}
                         </button>
                       </li>
                     ))}

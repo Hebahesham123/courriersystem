@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react"
 import { supabase } from "../../lib/supabase"
 import { useAuth } from "../../contexts/AuthContext"
+import { useLanguage } from "../../contexts/LanguageContext"
 import { ClipboardList, RefreshCw, Search, User as UserIcon, Calendar, Filter } from "lucide-react"
 
 interface LogRow {
@@ -21,6 +22,8 @@ const PAGE_SIZE = 50
 
 const ActivityLogs: React.FC = () => {
   const { user } = useAuth()
+  const { language } = useLanguage()
+  const tl = (ar: string, en: string) => (language === 'ar' ? ar : en)
   const [logs, setLogs] = useState<LogRow[]>([])
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState("")
@@ -98,30 +101,30 @@ const ActivityLogs: React.FC = () => {
   // Whitelist of fields we care about — anything else (Shopify raw, line_items,
   // internal flags, timestamps) is considered noise and hidden from the log view.
   const FIELD_LABELS: Record<string, string> = {
-    status: "الحالة",
-    order_id: "رقم الطلب",
-    customer_name: "اسم العميل",
-    mobile_number: "رقم الهاتف",
-    address: "العنوان",
-    total_order_fees: "إجمالي الطلب",
-    payment_method: "طريقة الدفع",
-    payment_sub_type: "نوع الدفع الفرعي",
-    collected_by: "تم التحصيل بواسطة",
-    onther_payments: "تفاصيل الدفع المقسم",
-    partial_paid_amount: "المبلغ الجزئي",
-    delivery_fee: "رسوم التوصيل",
-    admin_delivery_fee: "رسوم توصيل (إدارة)",
-    extra_fee: "رسوم إضافية",
-    hold_fee: "رسوم الحجز",
-    hold_fee_comment: "تعليق رسوم الحجز",
-    admin_prepaid_amount: "المدفوع مسبقاً (الإدارة)",
-    admin_prepaid_method: "طريقة الدفع المسبق",
-    assigned_courier_id: "المندوب المعيّن",
-    archived: "مؤرشف",
-    internal_comment: "ملاحظة داخلية",
-    notes: "ملاحظات",
-    receive_piece_or_exchange: "استلام/استبدال",
-    notes_admin: "ملاحظات الإدارة",
+    status: tl("الحالة", "Status"),
+    order_id: tl("رقم الطلب", "Order ID"),
+    customer_name: tl("اسم العميل", "Customer Name"),
+    mobile_number: tl("رقم الهاتف", "Mobile Number"),
+    address: tl("العنوان", "Address"),
+    total_order_fees: tl("إجمالي الطلب", "Total Order"),
+    payment_method: tl("طريقة الدفع", "Payment Method"),
+    payment_sub_type: tl("نوع الدفع الفرعي", "Payment Sub-type"),
+    collected_by: tl("تم التحصيل بواسطة", "Collected By"),
+    onther_payments: tl("تفاصيل الدفع المقسم", "Split Payment Details"),
+    partial_paid_amount: tl("المبلغ الجزئي", "Partial Amount"),
+    delivery_fee: tl("رسوم التوصيل", "Delivery Fee"),
+    admin_delivery_fee: tl("رسوم توصيل (إدارة)", "Delivery Fee (Admin)"),
+    extra_fee: tl("رسوم إضافية", "Extra Fee"),
+    hold_fee: tl("رسوم الحجز", "Hold Fee"),
+    hold_fee_comment: tl("تعليق رسوم الحجز", "Hold Fee Comment"),
+    admin_prepaid_amount: tl("المدفوع مسبقاً (الإدارة)", "Prepaid (Admin)"),
+    admin_prepaid_method: tl("طريقة الدفع المسبق", "Prepaid Method"),
+    assigned_courier_id: tl("المندوب المعيّن", "Assigned Courier"),
+    archived: tl("مؤرشف", "Archived"),
+    internal_comment: tl("ملاحظة داخلية", "Internal Comment"),
+    notes: tl("ملاحظات", "Notes"),
+    receive_piece_or_exchange: tl("استلام/استبدال", "Receive/Exchange"),
+    notes_admin: tl("ملاحظات الإدارة", "Admin Notes"),
   }
   const VISIBLE_FIELDS = new Set(Object.keys(FIELD_LABELS))
 
@@ -145,7 +148,7 @@ const ActivityLogs: React.FC = () => {
 
   const formatDate = (iso: string) => {
     const d = new Date(iso)
-    return d.toLocaleString("ar-EG", {
+    return d.toLocaleString("en-US", {
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
@@ -157,7 +160,7 @@ const ActivityLogs: React.FC = () => {
 
   const renderValue = (v: unknown): string => {
     if (v === null || v === undefined) return "—"
-    if (typeof v === "boolean") return v ? "نعم" : "لا"
+    if (typeof v === "boolean") return v ? tl("نعم", "Yes") : tl("لا", "No")
     if (typeof v === "string") {
       if (v.length === 0) return "—"
       return v.length > 120 ? v.slice(0, 120) + "…" : v
@@ -176,7 +179,7 @@ const ActivityLogs: React.FC = () => {
       return (
         <div className="space-y-1.5">
           {visible.length === 0 && (
-            <span className="text-xs text-gray-400">— لا توجد تغييرات مهمة —</span>
+            <span className="text-xs text-gray-400">{tl('— لا توجد تغييرات مهمة —', '— No significant changes —')}</span>
           )}
           {visible.map((c, idx) => (
             <div key={idx} className="text-xs flex flex-wrap items-center gap-1.5 bg-gray-50 rounded px-2 py-1">
@@ -210,12 +213,12 @@ const ActivityLogs: React.FC = () => {
 
   if (!user || user.role !== "admin") {
     return (
-      <div className="p-6 text-center text-gray-500">هذه الصفحة متاحة للمدير فقط.</div>
+      <div className="p-6 text-center text-gray-500">{tl('هذه الصفحة متاحة للمدير فقط.', 'This page is available to admins only.')}</div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 sm:p-6" dir="rtl">
+    <div className="min-h-screen bg-gray-50 p-4 sm:p-6" dir={language === 'ar' ? 'rtl' : 'ltr'}>
       <div className="max-w-7xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
@@ -223,8 +226,8 @@ const ActivityLogs: React.FC = () => {
               <ClipboardList className="w-6 h-6 text-purple-600" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">سجل النشاط</h1>
-              <p className="text-sm text-gray-600">جميع التعديلات التي أجراها المستخدمون</p>
+              <h1 className="text-2xl font-bold text-gray-900">{tl('سجل النشاط', 'Activity Logs')}</h1>
+              <p className="text-sm text-gray-600">{tl('جميع التعديلات التي أجراها المستخدمون', 'All changes made by users')}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -232,7 +235,7 @@ const ActivityLogs: React.FC = () => {
               onClick={insertTestLog}
               className="px-3 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-sm"
             >
-              اختبار: أضف سجل تجريبي
+              {tl('اختبار: أضف سجل تجريبي', 'Test: Add a sample log')}
             </button>
             <button
               onClick={fetchLogs}
@@ -240,13 +243,13 @@ const ActivityLogs: React.FC = () => {
               disabled={loading}
             >
               <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-              تحديث
+              {tl('تحديث', 'Refresh')}
             </button>
           </div>
         </div>
         {errorMsg && (
           <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700 font-mono break-all">
-            خطأ: {errorMsg}
+            {tl('خطأ', 'Error')}: {errorMsg}
           </div>
         )}
 
@@ -254,19 +257,19 @@ const ActivityLogs: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
             <div>
               <label className="text-xs font-semibold text-gray-700 mb-1 flex items-center gap-1">
-                <Search className="w-3 h-3" /> بحث في النتائج
+                <Search className="w-3 h-3" /> {tl('بحث في النتائج', 'Search results')}
               </label>
               <input
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="أي كلمة..."
+                placeholder={tl('أي كلمة...', 'Any word...')}
                 className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-blue-400"
               />
             </div>
             <div>
               <label className="text-xs font-semibold text-gray-700 mb-1 flex items-center gap-1">
-                <Filter className="w-3 h-3" /> نوع الإجراء
+                <Filter className="w-3 h-3" /> {tl('نوع الإجراء', 'Action Type')}
               </label>
               <input
                 type="text"
@@ -275,13 +278,13 @@ const ActivityLogs: React.FC = () => {
                   setPage(0)
                   setActionFilter(e.target.value)
                 }}
-                placeholder="مثال: update_order"
+                placeholder={tl('مثال: update_order', 'e.g. update_order')}
                 className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-blue-400"
               />
             </div>
             <div>
               <label className="text-xs font-semibold text-gray-700 mb-1 flex items-center gap-1">
-                <UserIcon className="w-3 h-3" /> المستخدم
+                <UserIcon className="w-3 h-3" /> {tl('المستخدم', 'User')}
               </label>
               <input
                 type="text"
@@ -290,14 +293,14 @@ const ActivityLogs: React.FC = () => {
                   setPage(0)
                   setUserFilter(e.target.value)
                 }}
-                placeholder="اسم أو إيميل"
+                placeholder={tl('اسم أو إيميل', 'Name or email')}
                 className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-blue-400"
               />
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="text-xs font-semibold text-gray-700 mb-1 flex items-center gap-1">
-                  <Calendar className="w-3 h-3" /> من
+                  <Calendar className="w-3 h-3" /> {tl('من', 'From')}
                 </label>
                 <input
                   type="date"
@@ -310,7 +313,7 @@ const ActivityLogs: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="text-xs font-semibold text-gray-700 mb-1">إلى</label>
+                <label className="text-xs font-semibold text-gray-700 mb-1">{tl('إلى', 'To')}</label>
                 <input
                   type="date"
                   value={toDate}
@@ -327,19 +330,19 @@ const ActivityLogs: React.FC = () => {
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
           {loading ? (
-            <div className="text-center py-12 text-gray-400">جاري التحميل...</div>
+            <div className="text-center py-12 text-gray-400">{tl('جاري التحميل...', 'Loading...')}</div>
           ) : filtered.length === 0 ? (
-            <div className="text-center py-12 text-gray-400">لا توجد سجلات</div>
+            <div className="text-center py-12 text-gray-400">{tl('لا توجد سجلات', 'No logs')}</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead className="bg-gray-50 text-gray-700">
                   <tr>
-                    <th className="px-3 py-2 text-right font-semibold">التاريخ والوقت</th>
-                    <th className="px-3 py-2 text-right font-semibold">المستخدم</th>
-                    <th className="px-3 py-2 text-right font-semibold">الإجراء</th>
-                    <th className="px-3 py-2 text-right font-semibold">العنصر</th>
-                    <th className="px-3 py-2 text-right font-semibold">التفاصيل</th>
+                    <th className="px-3 py-2 text-right font-semibold">{tl('التاريخ والوقت', 'Date & Time')}</th>
+                    <th className="px-3 py-2 text-right font-semibold">{tl('المستخدم', 'User')}</th>
+                    <th className="px-3 py-2 text-right font-semibold">{tl('الإجراء', 'Action')}</th>
+                    <th className="px-3 py-2 text-right font-semibold">{tl('العنصر', 'Entity')}</th>
+                    <th className="px-3 py-2 text-right font-semibold">{tl('التفاصيل', 'Details')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -388,15 +391,15 @@ const ActivityLogs: React.FC = () => {
             disabled={page === 0 || loading}
             className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 disabled:opacity-50"
           >
-            السابق
+            {tl('السابق', 'Previous')}
           </button>
-          <span className="text-sm text-gray-600">صفحة {page + 1}</span>
+          <span className="text-sm text-gray-600">{tl('صفحة', 'Page')} {page + 1}</span>
           <button
             onClick={() => setPage((p) => p + 1)}
             disabled={!hasMore || loading}
             className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 disabled:opacity-50"
           >
-            التالي
+            {tl('التالي', 'Next')}
           </button>
         </div>
       </div>

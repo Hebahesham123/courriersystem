@@ -39,6 +39,7 @@ import {
   Zap,
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
+import { useLanguage } from "../../contexts/LanguageContext"
 
 interface Courier {
   id: string
@@ -210,6 +211,32 @@ const paymentMethodConfig = {
 }
 
 const AdminAnalytics: React.FC = () => {
+  const { language } = useLanguage()
+  const tl = (ar: string, en: string) => (language === 'ar' ? ar : en)
+  const getStatusLabel = (key: string) => {
+    switch (key) {
+      case "pending": return tl("قيد الانتظار", "Pending")
+      case "assigned": return tl("مكلف", "Assigned")
+      case "delivered": return tl("تم التوصيل", "Delivered")
+      case "canceled": return tl("ملغي", "Canceled")
+      case "partial": return tl("جزئي", "Partial")
+      case "hand_to_hand": return tl("استبدال", "Hand to Hand")
+      case "return": return tl("مرتجع", "Returned")
+      case "card": return tl("بطاقة", "Card")
+      case "valu": return tl("فاليو", "Valu")
+      case "receiving_part": return tl("استلام جزء", "Receiving Part")
+      default: return key
+    }
+  }
+  const getPaymentLabel = (key: string) => {
+    switch (key) {
+      case "cash": return tl("نقدي", "Cash")
+      case "card": return tl("بطاقة", "Card")
+      case "valu": return tl("فاليو", "Valu")
+      case "partial": return tl("جزئي", "Partial")
+      default: return key
+    }
+  }
   const [couriers, setCouriers] = useState<Courier[]>([])
   const [selectedCourier, setSelectedCourier] = useState<Courier | null>(null)
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null)
@@ -624,7 +651,7 @@ const AdminAnalytics: React.FC = () => {
           }))
 
           // Determine final outcome
-          let finalOutcome = "Still Returned"
+          let finalOutcome = tl("لا يزال مرتجعاً", "Still Returned")
           let wasDelivered = false
           let wasCanceled = false
           let wasPartial = false
@@ -632,28 +659,28 @@ const AdminAnalytics: React.FC = () => {
 
           if (finalOrder.status === "delivered") {
             returnedThenDelivered++
-            finalOutcome = "Recovered - Delivered"
+            finalOutcome = tl("تم استردادها - تم التوصيل", "Recovered - Delivered")
             wasDelivered = true
           } else if (finalOrder.status === "canceled") {
             returnedThenCanceled++
-            finalOutcome = "Lost - Canceled"
+            finalOutcome = tl("مفقود - ملغي", "Lost - Canceled")
             wasCanceled = true
           } else if (finalOrder.status === "partial") {
             returnedThenPartial++
-            finalOutcome = "Partially Recovered"
+            finalOutcome = tl("استرداد جزئي", "Partially Recovered")
             wasPartial = true
           } else if (finalOrder.status === "return") {
             stillReturned = true
-            finalOutcome = "Still Returned"
+            finalOutcome = tl("لا يزال مرتجعاً", "Still Returned")
           } else {
-            finalOutcome = `Current: ${finalOrder.status}`
+            finalOutcome = `${tl("الحالية", "Current")}: ${finalOrder.status}`
           }
 
           // Add to details array
           returnedOrdersDetails.push({
             orderId: firstOrder.id,
             orderNumber: firstOrder.order_id || firstOrder.id,
-            customerName: firstOrder.customer_name || "Unknown",
+            customerName: firstOrder.customer_name || tl("غير معروف", "Unknown"),
             totalFees: firstOrder.total_order_fees || 0,
             currentStatus: finalOrder.status,
             statusHistory,
@@ -734,7 +761,7 @@ const AdminAnalytics: React.FC = () => {
         const statusOrders = ordersData.filter((o) => o.status === status)
         const revenue = statusOrders.reduce((sum, o) => sum + (o.total_order_fees || 0), 0)
         return {
-          status: statusConfig[status as keyof typeof statusConfig]?.label || status,
+          status: getStatusLabel(status),
           count,
           percentage: totalOrders > 0 ? (count / totalOrders) * 100 : 0,
           color: statusConfig[status as keyof typeof statusConfig]?.color || "#6B7280",
@@ -752,7 +779,7 @@ const AdminAnalytics: React.FC = () => {
       }, {} as Record<string, { count: number; revenue: number }>)
 
       const paymentMethodStats = Object.entries(paymentCounts).map(([method, data]) => ({
-        method: paymentMethodConfig[method as keyof typeof paymentMethodConfig]?.label || method,
+        method: getPaymentLabel(method),
         count: data.count,
         percentage: totalOrders > 0 ? (data.count / totalOrders) * 100 : 0,
         revenue: data.revenue,
@@ -991,7 +1018,7 @@ const AdminAnalytics: React.FC = () => {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-lg font-medium text-gray-700">Loading couriers...</p>
+          <p className="text-lg font-medium text-gray-700">{tl("جارٍ تحميل المناديب...", "Loading couriers...")}</p>
         </div>
       </div>
     )
@@ -1008,7 +1035,7 @@ const AdminAnalytics: React.FC = () => {
                 <BarChart3 className="w-3 h-3 text-white" />
               </div>
               <div>
-                <h1 className="text-lg font-semibold text-gray-900">Courier Analytics</h1>
+                <h1 className="text-lg font-semibold text-gray-900">{tl("تحليلات المناديب", "Courier Analytics")}</h1>
               </div>
             </div>
             <div className="flex items-center gap-2 flex-1 justify-end">
@@ -1076,13 +1103,13 @@ const AdminAnalytics: React.FC = () => {
                   }}
                   className="px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                 >
-                  <option value="">Quick Range</option>
-                  <option value="today">Today</option>
-                  <option value="yesterday">Yesterday</option>
-                  <option value="last7days">Last 7 Days</option>
-                  <option value="last30days">Last 30 Days</option>
-                  <option value="thisMonth">This Month</option>
-                  <option value="lastMonth">Last Month</option>
+                  <option value="">{tl("نطاق سريع", "Quick Range")}</option>
+                  <option value="today">{tl("اليوم", "Today")}</option>
+                  <option value="yesterday">{tl("أمس", "Yesterday")}</option>
+                  <option value="last7days">{tl("آخر 7 أيام", "Last 7 Days")}</option>
+                  <option value="last30days">{tl("آخر 30 يوم", "Last 30 Days")}</option>
+                  <option value="thisMonth">{tl("هذا الشهر", "This Month")}</option>
+                  <option value="lastMonth">{tl("الشهر الماضي", "Last Month")}</option>
                 </select>
               </div>
 
@@ -1096,7 +1123,7 @@ const AdminAnalytics: React.FC = () => {
                   }`}
                 >
                   <BarChart3 className="w-3 h-3" />
-                  <span>Overview</span>
+                  <span>{tl("نظرة عامة", "Overview")}</span>
                 </button>
                 <button
                   onClick={() => setViewMode("detailed")}
@@ -1107,7 +1134,7 @@ const AdminAnalytics: React.FC = () => {
                   }`}
                 >
                   <Activity className="w-3 h-3" />
-                  <span>Detailed</span>
+                  <span>{tl("تفصيلي", "Detailed")}</span>
                 </button>
                 <button
                   onClick={() => setViewMode("orders")}
@@ -1118,7 +1145,7 @@ const AdminAnalytics: React.FC = () => {
                   }`}
                 >
                   <Package className="w-3 h-3" />
-                  <span>Orders</span>
+                  <span>{tl("الطلبات", "Orders")}</span>
                 </button>
                 <button
                   onClick={() => setViewMode("rankings")}
@@ -1129,7 +1156,7 @@ const AdminAnalytics: React.FC = () => {
                   }`}
                 >
                   <Trophy className="w-3 h-3" />
-                  <span>Rankings</span>
+                  <span>{tl("الترتيب", "Rankings")}</span>
                 </button>
                 {selectedCourier && (
                   <button
@@ -1141,7 +1168,7 @@ const AdminAnalytics: React.FC = () => {
                     }`}
                   >
                     <Zap className="w-3 h-3" />
-                    <span>Flow</span>
+                    <span>{tl("المسار", "Flow")}</span>
                   </button>
                 )}
               </div>
@@ -1151,7 +1178,7 @@ const AdminAnalytics: React.FC = () => {
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-sm rounded-md hover:bg-green-700 transition-colors"
                 >
                   <Download className="w-3 h-3" />
-                  Export
+                  {tl("تصدير", "Export")}
                 </button>
               )}
               <button
@@ -1159,7 +1186,7 @@ const AdminAnalytics: React.FC = () => {
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors"
               >
                 <RefreshCw className="w-3 h-3" />
-                Refresh
+                {tl("تحديث", "Refresh")}
               </button>
             </div>
           </div>
@@ -1176,7 +1203,7 @@ const AdminAnalytics: React.FC = () => {
                   <div className="w-6 h-6 bg-blue-100 rounded-lg flex items-center justify-center">
                     <Users className="w-3 h-3 text-blue-600" />
                   </div>
-                  <h3 className="text-lg font-semibold text-gray-900">Select Courier</h3>
+                  <h3 className="text-lg font-semibold text-gray-900">{tl("اختر مندوب", "Select Courier")}</h3>
                 </div>
               </div>
               <div className="p-6">
@@ -1184,7 +1211,7 @@ const AdminAnalytics: React.FC = () => {
                   <Search className="w-4 h-4 text-gray-400 absolute right-3 top-3" />
                   <input
                     type="text"
-                    placeholder="Search couriers..."
+                    placeholder={tl("ابحث عن مندوب...", "Search couriers...")}
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="w-full pr-10 pl-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -1243,14 +1270,14 @@ const AdminAnalytics: React.FC = () => {
                 {/* Period Selection */}
                 <div className="bg-white rounded-xl border border-gray-200 p-6">
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold text-gray-900">Select Time Period</h3>
+                    <h3 className="text-lg font-semibold text-gray-900">{tl("اختر الفترة الزمنية", "Select Time Period")}</h3>
                   </div>
                   <div className="flex flex-wrap gap-3">
                     {[
-                      { key: "7d", label: "Last 7 Days" },
-                      { key: "30d", label: "Last 30 Days" },
-                      { key: "90d", label: "Last 90 Days" },
-                      { key: "custom", label: "Custom" },
+                      { key: "7d", label: tl("آخر 7 أيام", "Last 7 Days") },
+                      { key: "30d", label: tl("آخر 30 يوم", "Last 30 Days") },
+                      { key: "90d", label: tl("آخر 90 يوم", "Last 90 Days") },
+                      { key: "custom", label: tl("مخصص", "Custom") },
                     ].map((period) => (
                       <button
                         key={period.key}
@@ -1268,7 +1295,7 @@ const AdminAnalytics: React.FC = () => {
                   {selectedPeriod === "custom" && (
                     <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">من تاريخ</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">{tl("من تاريخ", "From Date")}</label>
                         <input
                           type="date"
                           value={dateRange.start}
@@ -1277,7 +1304,7 @@ const AdminAnalytics: React.FC = () => {
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">إلى تاريخ</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">{tl("إلى تاريخ", "To Date")}</label>
                         <input
                           type="date"
                           value={dateRange.end}
@@ -1293,7 +1320,7 @@ const AdminAnalytics: React.FC = () => {
                 {loadingAnalytics ? (
                   <div className="bg-white rounded-xl border border-gray-200 p-16 text-center">
                     <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4"></div>
-                    <p className="text-lg font-medium text-gray-700">جاري تحميل التحليلات...</p>
+                    <p className="text-lg font-medium text-gray-700">{tl("جارٍ تحميل التحليلات...", "Loading analytics...")}</p>
                   </div>
                 ) : viewMode === "overview" ? (
                   <div className="space-y-4">
@@ -1308,18 +1335,18 @@ const AdminAnalytics: React.FC = () => {
                             <h2 className="text-2xl font-bold">{selectedCourier.name}</h2>
                             <p className="text-blue-100">{selectedCourier.email}</p>
                             <p className="text-sm text-blue-200 mt-1">
-                              Period: {dateRange.start} - {dateRange.end}
+                              {tl("الفترة", "Period")}: {dateRange.start} - {dateRange.end}
                             </p>
                           </div>
                         </div>
                         <div className="text-right">
                           <div className="bg-white/20 backdrop-blur-sm rounded-lg px-4 py-2">
-                            <p className="text-xs text-blue-100">Performance Score</p>
+                            <p className="text-xs text-blue-100">{tl("درجة الأداء", "Performance Score")}</p>
                             <p className="text-3xl font-bold">
                               {selectedCourier ? (allCouriersPerformance.find(p => p.courierId === selectedCourier.id)?.score.toFixed(0) || "N/A") : "N/A"}
                             </p>
                             <p className="text-xs text-blue-200">
-                              Rank #{selectedCourier ? (allCouriersPerformance.find(p => p.courierId === selectedCourier.id)?.rank || "N/A") : "N/A"}
+                              {tl("المرتبة", "Rank")} #{selectedCourier ? (allCouriersPerformance.find(p => p.courierId === selectedCourier.id)?.rank || "N/A") : "N/A"}
                             </p>
                           </div>
                         </div>
@@ -1336,12 +1363,12 @@ const AdminAnalytics: React.FC = () => {
                           </div>
                           <div className="text-right">
                             <p className="text-4xl font-bold text-gray-900">{analyticsData?.totalOrders || 0}</p>
-                            <p className="text-sm font-semibold text-gray-700 mt-1">Total Orders</p>
+                            <p className="text-sm font-semibold text-gray-700 mt-1">{tl("إجمالي الطلبات", "Total Orders")}</p>
                           </div>
                         </div>
                         <div className="mt-4 pt-4 border-t border-blue-200">
                           <div className="flex items-center justify-between">
-                            <span className="text-xs font-medium text-gray-600">100% of all orders</span>
+                            <span className="text-xs font-medium text-gray-600">{tl("100% من كل الطلبات", "100% of all orders")}</span>
                             <div className="flex items-center gap-1 bg-green-100 px-2 py-1 rounded-full">
                               <TrendingUp className="w-3 h-3 text-green-600" />
                               <span className="text-xs font-bold text-green-700">100%</span>
@@ -1358,12 +1385,12 @@ const AdminAnalytics: React.FC = () => {
                           </div>
                           <div className="text-right">
                             <p className="text-4xl font-bold text-gray-900">{analyticsData?.deliveredOrders || 0}</p>
-                            <p className="text-sm font-semibold text-gray-700 mt-1">Successful Orders</p>
+                            <p className="text-sm font-semibold text-gray-700 mt-1">{tl("الطلبات الناجحة", "Successful Orders")}</p>
                           </div>
                         </div>
                         <div className="mt-4 pt-4 border-t border-green-200">
                           <div className="flex items-center justify-between mb-2">
-                            <span className="text-xs font-medium text-gray-600">{analyticsData?.completionRate.toFixed(1) || 0}% Success Rate</span>
+                            <span className="text-xs font-medium text-gray-600">{analyticsData?.completionRate.toFixed(1) || 0}% {tl("نسبة النجاح", "Success Rate")}</span>
                             <div className="flex items-center gap-1 bg-green-100 px-2 py-1 rounded-full">
                               <Percent className="w-3 h-3 text-green-600" />
                               <span className="text-xs font-bold text-green-700">{analyticsData?.completionRate.toFixed(1) || 0}%</span>
@@ -1377,34 +1404,34 @@ const AdminAnalytics: React.FC = () => {
                           </div>
                           {/* Breakdown of Successful Orders */}
                           <div className="mt-3 pt-3 border-t border-green-200">
-                            <p className="text-xs font-semibold text-gray-700 mb-2">📊 Calculation Breakdown:</p>
+                            <p className="text-xs font-semibold text-gray-700 mb-2">{tl("📊 تفصيل الحساب:", "📊 Calculation Breakdown:")}</p>
                             <div className="space-y-1.5 bg-white/50 rounded-lg p-2">
                               <div className="flex items-center justify-between text-xs">
                                 <span className="text-gray-600 flex items-center gap-1.5">
                                   <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                                  <span>Status: "delivered"</span>
+                                  <span>{tl("الحالة", "Status")}: "delivered"</span>
                                 </span>
                                 <span className="font-bold text-gray-900">
-                                  {(analyticsData?.deliveredOrders || 0) - (analyticsData?.partialOrders || 0)} orders
+                                  {(analyticsData?.deliveredOrders || 0) - (analyticsData?.partialOrders || 0)} {tl("طلب", "orders")}
                                 </span>
                               </div>
                               <div className="flex items-center justify-between text-xs">
                                 <span className="text-gray-600 flex items-center gap-1.5">
                                   <div className="w-2 h-2 rounded-full bg-yellow-500"></div>
-                                  <span>Status: "partial" (included)</span>
+                                  <span>{tl("الحالة", "Status")}: "partial" ({tl("مشمول", "included")})</span>
                                 </span>
                                 <span className="font-bold text-gray-900">
-                                  {analyticsData?.partialOrders || 0} orders
+                                  {analyticsData?.partialOrders || 0} {tl("طلب", "orders")}
                                 </span>
                               </div>
                               <div className="flex items-center justify-between text-xs pt-1.5 mt-1.5 border-t border-gray-300">
-                                <span className="font-semibold text-gray-800">✅ Total Successful:</span>
+                                <span className="font-semibold text-gray-800">{tl("✅ إجمالي الناجحة:", "✅ Total Successful:")}</span>
                                 <span className="font-bold text-green-700 text-sm">
-                                  {analyticsData?.deliveredOrders || 0} orders
+                                  {analyticsData?.deliveredOrders || 0} {tl("طلب", "orders")}
                                 </span>
                               </div>
                               <div className="text-xs text-gray-600 bg-blue-50 px-2 py-1 rounded mt-1.5">
-                                <span className="font-semibold">Formula:</span> Delivered ({analyticsData?.deliveredOrders && analyticsData?.partialOrders ? (analyticsData.deliveredOrders - analyticsData.partialOrders) : 0}) + Partial ({analyticsData?.partialOrders || 0}) = <span className="font-bold text-green-700">{analyticsData?.deliveredOrders || 0}</span>
+                                <span className="font-semibold">{tl("المعادلة:", "Formula:")}</span> {tl("تم التوصيل", "Delivered")} ({analyticsData?.deliveredOrders && analyticsData?.partialOrders ? (analyticsData.deliveredOrders - analyticsData.partialOrders) : 0}) + {tl("جزئي", "Partial")} ({analyticsData?.partialOrders || 0}) = <span className="font-bold text-green-700">{analyticsData?.deliveredOrders || 0}</span>
                               </div>
                             </div>
                           </div>
@@ -1419,13 +1446,13 @@ const AdminAnalytics: React.FC = () => {
                           </div>
                           <div className="text-right">
                             <p className="text-4xl font-bold text-gray-900">{analyticsData?.canceledOrders || 0}</p>
-                            <p className="text-sm font-semibold text-gray-700 mt-1">Canceled</p>
+                            <p className="text-sm font-semibold text-gray-700 mt-1">{tl("ملغي", "Canceled")}</p>
                           </div>
                         </div>
                         <div className="mt-4 pt-4 border-t border-red-200">
                           <div className="flex items-center justify-between">
                             <span className="text-xs font-medium text-gray-600">
-                              {analyticsData?.totalOrders ? ((analyticsData.canceledOrders / analyticsData.totalOrders) * 100).toFixed(1) : 0}% Cancel Rate
+                              {analyticsData?.totalOrders ? ((analyticsData.canceledOrders / analyticsData.totalOrders) * 100).toFixed(1) : 0}% {tl("نسبة الإلغاء", "Cancel Rate")}
                             </span>
                             <div className="flex items-center gap-1 bg-red-100 px-2 py-1 rounded-full">
                               <XCircle className="w-3 h-3 text-red-600" />
@@ -1451,19 +1478,19 @@ const AdminAnalytics: React.FC = () => {
                           </div>
                           <div className="text-right">
                             <p className="text-4xl font-bold text-gray-900">{analyticsData?.totalRevenue.toFixed(0) || 0}</p>
-                            <p className="text-sm font-semibold text-gray-700 mt-1">Revenue (EGP)</p>
+                            <p className="text-sm font-semibold text-gray-700 mt-1">{tl("الإيرادات (ج.م)", "Revenue (EGP)")}</p>
                           </div>
                         </div>
                         <div className="mt-4 pt-4 border-t border-purple-200">
                           <div className="flex items-center justify-between">
-                            <span className="text-xs font-medium text-gray-600">Avg {analyticsData?.averageOrderValue.toFixed(0) || 0} EGP/order</span>
+                            <span className="text-xs font-medium text-gray-600">{tl("متوسط", "Avg")} {analyticsData?.averageOrderValue.toFixed(0) || 0} {tl("ج.م/طلب", "EGP/order")}</span>
                             <div className="flex items-center gap-1 bg-purple-100 px-2 py-1 rounded-full">
                               <TrendingUp className="w-3 h-3 text-purple-600" />
                               <span className="text-xs font-bold text-purple-700">+{analyticsData?.deliveredRevenue && analyticsData?.totalRevenue ? ((analyticsData.deliveredRevenue / analyticsData.totalRevenue) * 100).toFixed(0) : 0}%</span>
                             </div>
                           </div>
                           <div className="mt-2 text-xs text-gray-600">
-                            Delivered: {analyticsData?.deliveredRevenue.toFixed(0) || 0} EGP
+                            {tl("تم التوصيل", "Delivered")}: {analyticsData?.deliveredRevenue.toFixed(0) || 0} {tl("ج.م", "EGP")}
                           </div>
                         </div>
                       </div>
@@ -1479,15 +1506,15 @@ const AdminAnalytics: React.FC = () => {
                           </div>
                           <div>
                             <p className="text-2xl font-bold text-gray-900">{analyticsData?.returnedOrders || 0}</p>
-                            <p className="text-sm font-medium text-gray-700">Returned Orders</p>
+                            <p className="text-sm font-medium text-gray-700">{tl("الطلبات المرتجعة", "Returned Orders")}</p>
                           </div>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-xs text-gray-600">
-                            {analyticsData?.returnRate.toFixed(1) || 0}% Return Rate
+                            {analyticsData?.returnRate.toFixed(1) || 0}% {tl("نسبة المرتجع", "Return Rate")}
                           </span>
                           <span className="text-xs font-bold text-orange-600">
-                            {analyticsData?.lifecycleStats?.returnedThenDelivered || 0} Recovered
+                            {analyticsData?.lifecycleStats?.returnedThenDelivered || 0} {tl("تم استردادها", "Recovered")}
                           </span>
                         </div>
                       </div>
@@ -1500,14 +1527,14 @@ const AdminAnalytics: React.FC = () => {
                           </div>
                           <div>
                             <p className="text-2xl font-bold text-gray-900">{analyticsData?.partialOrders || 0}</p>
-                            <p className="text-sm font-medium text-gray-700">Partial Orders</p>
+                            <p className="text-sm font-medium text-gray-700">{tl("الطلبات الجزئية", "Partial Orders")}</p>
                           </div>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-xs text-gray-600">
-                            {analyticsData?.totalOrders ? ((analyticsData.partialOrders / analyticsData.totalOrders) * 100).toFixed(1) : 0}% of total
+                            {analyticsData?.totalOrders ? ((analyticsData.partialOrders / analyticsData.totalOrders) * 100).toFixed(1) : 0}% {tl("من الإجمالي", "of total")}
                           </span>
-                          <span className="text-xs font-bold text-yellow-600">Included in Success</span>
+                          <span className="text-xs font-bold text-yellow-600">{tl("محسوبة ضمن النجاح", "Included in Success")}</span>
                         </div>
                       </div>
 
@@ -1519,14 +1546,14 @@ const AdminAnalytics: React.FC = () => {
                           </div>
                           <div>
                             <p className="text-2xl font-bold text-gray-900">{analyticsData?.handToHandOrders || 0}</p>
-                            <p className="text-sm font-medium text-gray-700">Hand to Hand</p>
+                            <p className="text-sm font-medium text-gray-700">{tl("استبدال", "Hand to Hand")}</p>
                           </div>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-xs text-gray-600">
-                            {analyticsData?.totalOrders ? ((analyticsData.handToHandOrders / analyticsData.totalOrders) * 100).toFixed(1) : 0}% of total
+                            {analyticsData?.totalOrders ? ((analyticsData.handToHandOrders / analyticsData.totalOrders) * 100).toFixed(1) : 0}% {tl("من الإجمالي", "of total")}
                           </span>
-                          <span className="text-xs font-bold text-cyan-600">Exchange Orders</span>
+                          <span className="text-xs font-bold text-cyan-600">{tl("طلبات الاستبدال", "Exchange Orders")}</span>
                         </div>
                       </div>
                     </div>
@@ -1538,10 +1565,10 @@ const AdminAnalytics: React.FC = () => {
                             <div className="w-6 h-6 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
                               <BarChart3 className="w-3 h-3 text-white" />
                             </div>
-                            Complete Status Breakdown
+                            {tl("تفصيل كامل للحالات", "Complete Status Breakdown")}
                           </h4>
                           <span className="text-sm text-gray-600 font-medium">
-                            {analyticsData?.statusDistribution.length || 0} Status Types
+                            {analyticsData?.statusDistribution.length || 0} {tl("أنواع الحالات", "Status Types")}
                           </span>
                         </div>
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
@@ -1580,8 +1607,8 @@ const AdminAnalytics: React.FC = () => {
                                     <span className="text-xs font-bold text-gray-600">{percentage.toFixed(1)}%</span>
                                   </div>
                                   <div className="mt-2 pt-2 border-t border-gray-200">
-                                    <p className="text-xs text-gray-500">Revenue</p>
-                                    <p className="text-sm font-bold text-green-600">{statusData.revenue.toFixed(0)} EGP</p>
+                                    <p className="text-xs text-gray-500">{tl("الإيرادات", "Revenue")}</p>
+                                    <p className="text-sm font-bold text-green-600">{statusData.revenue.toFixed(0)} {tl("ج.م", "EGP")}</p>
                                   </div>
                                 </div>
                               </div>
@@ -1597,7 +1624,7 @@ const AdminAnalytics: React.FC = () => {
                             <div className="w-5 h-5 bg-purple-500 rounded-lg flex items-center justify-center">
                               <Activity className="w-3 h-3 text-white" />
                             </div>
-                            <h4 className="text-sm font-semibold text-gray-900">Order Lifecycle Analysis</h4>
+                            <h4 className="text-sm font-semibold text-gray-900">{tl("تحليل دورة حياة الطلب", "Order Lifecycle Analysis")}</h4>
                           </div>
                           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                             <div className="text-center p-3 bg-white rounded-lg border border-purple-200">
@@ -1605,9 +1632,9 @@ const AdminAnalytics: React.FC = () => {
                                 <Package className="w-3 h-3 text-purple-600" />
                               </div>
                               <p className="text-xl font-bold text-gray-900">{analyticsData.lifecycleStats.totalReturnedOrders}</p>
-                              <p className="text-xs text-gray-600 font-medium mb-1">Total Returned Orders</p>
+                              <p className="text-xs text-gray-600 font-medium mb-1">{tl("إجمالي الطلبات المرتجعة", "Total Returned Orders")}</p>
                               <p className="text-xs text-gray-500">
-                                {analyticsData.totalOrders > 0 ? ((analyticsData.lifecycleStats.totalReturnedOrders / analyticsData.totalOrders) * 100).toFixed(1) : 0}% of all orders
+                                {analyticsData.totalOrders > 0 ? ((analyticsData.lifecycleStats.totalReturnedOrders / analyticsData.totalOrders) * 100).toFixed(1) : 0}% {tl("من كل الطلبات", "of all orders")}
                               </p>
                             </div>
                             <div className="text-center p-3 bg-white rounded-lg border border-green-200">
@@ -1615,9 +1642,9 @@ const AdminAnalytics: React.FC = () => {
                                 <CheckCircle className="w-3 h-3 text-green-600" />
                               </div>
                               <p className="text-lg font-bold text-gray-900">{analyticsData.lifecycleStats.returnedThenDelivered}</p>
-                              <p className="text-xs text-gray-600 font-medium">Returned → Delivered</p>
+                              <p className="text-xs text-gray-600 font-medium">{tl("مرتجع → تم التوصيل", "Returned → Delivered")}</p>
                               <p className="text-xs text-green-600 font-semibold mt-0.5">
-                                {analyticsData.lifecycleStats.returnedThenDeliveredPercentage.toFixed(1)}% recovery
+                                {analyticsData.lifecycleStats.returnedThenDeliveredPercentage.toFixed(1)}% {tl("استرداد", "recovery")}
                               </p>
                             </div>
                             <div className="text-center p-3 bg-white rounded-lg border border-red-200">
@@ -1625,9 +1652,9 @@ const AdminAnalytics: React.FC = () => {
                                 <XCircle className="w-3 h-3 text-red-600" />
                               </div>
                               <p className="text-lg font-bold text-gray-900">{analyticsData.lifecycleStats.returnedThenCanceled}</p>
-                              <p className="text-xs text-gray-600 font-medium">Returned → Canceled</p>
+                              <p className="text-xs text-gray-600 font-medium">{tl("مرتجع → ملغي", "Returned → Canceled")}</p>
                               <p className="text-xs text-red-600 font-semibold mt-0.5">
-                                {analyticsData.lifecycleStats.returnedThenCanceledPercentage.toFixed(1)}% loss
+                                {analyticsData.lifecycleStats.returnedThenCanceledPercentage.toFixed(1)}% {tl("خسارة", "loss")}
                               </p>
                             </div>
                             <div className="text-center p-3 bg-white rounded-lg border border-orange-200">
@@ -1635,9 +1662,9 @@ const AdminAnalytics: React.FC = () => {
                                 <Percent className="w-3 h-3 text-orange-600" />
                               </div>
                               <p className="text-lg font-bold text-gray-900">{analyticsData.lifecycleStats.returnedThenPartial}</p>
-                              <p className="text-xs text-gray-600 font-medium">Returned → Partial</p>
+                              <p className="text-xs text-gray-600 font-medium">{tl("مرتجع → جزئي", "Returned → Partial")}</p>
                               <p className="text-xs text-orange-600 font-semibold mt-0.5">
-                                {analyticsData.lifecycleStats.totalReturnedOrders > 0 ? ((analyticsData.lifecycleStats.returnedThenPartial / analyticsData.lifecycleStats.totalReturnedOrders) * 100).toFixed(1) : 0}% partial
+                                {analyticsData.lifecycleStats.totalReturnedOrders > 0 ? ((analyticsData.lifecycleStats.returnedThenPartial / analyticsData.lifecycleStats.totalReturnedOrders) * 100).toFixed(1) : 0}% {tl("جزئي", "partial")}
                               </p>
                             </div>
                           </div>
@@ -1651,10 +1678,10 @@ const AdminAnalytics: React.FC = () => {
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2">
                                 <Activity className="w-4 h-4" />
-                                <h3 className="text-base font-bold">Returned Orders Details</h3>
+                                <h3 className="text-base font-bold">{tl("تفاصيل الطلبات المرتجعة", "Returned Orders Details")}</h3>
                               </div>
                               <span className="text-sm bg-white/20 px-3 py-1 rounded-full font-semibold">
-                                {analyticsData.returnedOrdersDetails.length} Orders
+                                {analyticsData.returnedOrdersDetails.length} {tl("طلب", "Orders")}
                               </span>
                             </div>
                           </div>
@@ -1718,7 +1745,7 @@ const AdminAnalytics: React.FC = () => {
                                         </div>
                                       </div>
                                       <div className="flex items-center justify-between text-xs">
-                                        <span className="font-semibold text-gray-700">{order.totalFees.toFixed(0)} EGP</span>
+                                        <span className="font-semibold text-gray-700">{order.totalFees.toFixed(0)} {tl("ج.م", "EGP")}</span>
                                         <span className={`px-2 py-0.5 rounded-full text-xs font-bold border ${outcomeColor}`}>
                                           {order.finalOutcome}
                                         </span>
@@ -1731,22 +1758,22 @@ const AdminAnalytics: React.FC = () => {
                                         {/* Quick Outcome Summary */}
                                         <div className="grid grid-cols-4 gap-2">
                                           <div className={`text-center p-1.5 rounded text-xs ${order.wasDelivered ? "bg-green-100 text-green-700 font-bold" : "bg-gray-100 text-gray-400"}`}>
-                                            {order.wasDelivered ? "✓ Del" : "✗"}
+                                            {order.wasDelivered ? tl("✓ تم", "✓ Del") : "✗"}
                                           </div>
                                           <div className={`text-center p-1.5 rounded text-xs ${order.wasCanceled ? "bg-red-100 text-red-700 font-bold" : "bg-gray-100 text-gray-400"}`}>
-                                            {order.wasCanceled ? "✓ Can" : "✗"}
+                                            {order.wasCanceled ? tl("✓ ملغي", "✓ Can") : "✗"}
                                           </div>
                                           <div className={`text-center p-1.5 rounded text-xs ${order.wasPartial ? "bg-orange-100 text-orange-700 font-bold" : "bg-gray-100 text-gray-400"}`}>
-                                            {order.wasPartial ? "✓ Par" : "✗"}
+                                            {order.wasPartial ? tl("✓ جزئي", "✓ Par") : "✗"}
                                           </div>
                                           <div className={`text-center p-1.5 rounded text-xs ${order.stillReturned ? "bg-purple-100 text-purple-700 font-bold" : "bg-gray-100 text-gray-400"}`}>
-                                            {order.stillReturned ? "✓ Ret" : "✗"}
+                                            {order.stillReturned ? tl("✓ مرتجع", "✓ Ret") : "✗"}
                                           </div>
                                         </div>
 
                                         {/* Compact Status History */}
                                         <div>
-                                          <p className="text-xs font-semibold text-gray-700 mb-2">Status Flow:</p>
+                                          <p className="text-xs font-semibold text-gray-700 mb-2">{tl("مسار الحالة:", "Status Flow:")}</p>
                                           <div className="space-y-1.5">
                                             {order.statusHistory.map((historyItem, historyIndex) => {
                                               const statusConfigItem = statusConfig[historyItem.status as keyof typeof statusConfig] || { label: historyItem.status, color: "#6B7280" }
@@ -1762,7 +1789,7 @@ const AdminAnalytics: React.FC = () => {
                                                       className="px-1.5 py-0.5 rounded text-xs font-semibold text-white"
                                                       style={{ backgroundColor: statusConfigItem.color }}
                                                     >
-                                                      {statusConfigItem.label}
+                                                      {getStatusLabel(historyItem.status)}
                                                     </span>
                                                     <span className="text-gray-500 text-xs">
                                                       {new Date(historyItem.timestamp).toLocaleDateString("en-US", {
@@ -1794,12 +1821,12 @@ const AdminAnalytics: React.FC = () => {
                                 >
                                   {showAllReturnedOrders ? (
                                     <>
-                                      <span>See Less</span>
+                                      <span>{tl("عرض أقل", "See Less")}</span>
                                       <ArrowRight className="w-4 h-4 rotate-90" />
                                     </>
                                   ) : (
                                     <>
-                                      <span>See More ({analyticsData.returnedOrdersDetails.length - 6} more)</span>
+                                      <span>{tl("عرض المزيد", "See More")} ({analyticsData.returnedOrdersDetails.length - 6} {tl("أخرى", "more")})</span>
                                       <ArrowRight className="w-4 h-4 -rotate-90" />
                                     </>
                                   )}
@@ -1816,7 +1843,7 @@ const AdminAnalytics: React.FC = () => {
                           <div className="w-8 h-8 bg-gradient-to-br from-yellow-500 to-orange-600 rounded-lg flex items-center justify-center shadow-md">
                             <DollarSign className="w-4 h-4 text-white" />
                           </div>
-                          <h4 className="text-lg font-bold text-gray-900">Financial Performance Analysis</h4>
+                          <h4 className="text-lg font-bold text-gray-900">{tl("تحليل الأداء المالي", "Financial Performance Analysis")}</h4>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
                           <div className="bg-white rounded-lg p-4 border-2 border-green-200 shadow-sm hover:shadow-md transition-all">
@@ -1826,12 +1853,12 @@ const AdminAnalytics: React.FC = () => {
                               </div>
                               <div>
                                 <p className="text-2xl font-bold text-gray-900">{analyticsData?.deliveredRevenue.toFixed(0) || 0}</p>
-                                <p className="text-xs font-medium text-gray-600">Successful Revenue</p>
+                                <p className="text-xs font-medium text-gray-600">{tl("الإيرادات الناجحة", "Successful Revenue")}</p>
                               </div>
                             </div>
                             <div className="mt-3 pt-3 border-t border-gray-200">
                               <div className="flex items-center justify-between">
-                                <span className="text-xs text-gray-600">Of Total Revenue</span>
+                                <span className="text-xs text-gray-600">{tl("من إجمالي الإيرادات", "Of Total Revenue")}</span>
                                 <span className="text-sm font-bold text-green-600">
                                   {analyticsData?.totalRevenue ? ((analyticsData.deliveredRevenue / analyticsData.totalRevenue) * 100).toFixed(1) : 0}%
                                 </span>
@@ -1845,11 +1872,11 @@ const AdminAnalytics: React.FC = () => {
                               </div>
                               <div>
                                 <p className="text-2xl font-bold text-gray-900">{analyticsData?.averageOrderValue.toFixed(0) || 0}</p>
-                                <p className="text-xs font-medium text-gray-600">Avg Order Value</p>
+                                <p className="text-xs font-medium text-gray-600">{tl("متوسط قيمة الطلب", "Avg Order Value")}</p>
                               </div>
                             </div>
                             <div className="mt-3 pt-3 border-t border-gray-200">
-                              <span className="text-xs text-gray-500">EGP per order</span>
+                              <span className="text-xs text-gray-500">{tl("ج.م لكل طلب", "EGP per order")}</span>
                             </div>
                           </div>
                           <div className="bg-white rounded-lg p-4 border-2 border-purple-200 shadow-sm hover:shadow-md transition-all">
@@ -1861,7 +1888,7 @@ const AdminAnalytics: React.FC = () => {
                                 <p className="text-2xl font-bold text-gray-900">
                                   {analyticsData?.totalRevenue ? ((analyticsData.deliveredRevenue / analyticsData.totalRevenue) * 100).toFixed(1) : 0}%
                                 </p>
-                                <p className="text-xs font-medium text-gray-600">Revenue Achievement</p>
+                                <p className="text-xs font-medium text-gray-600">{tl("تحقيق الإيرادات", "Revenue Achievement")}</p>
                               </div>
                             </div>
                             <div className="mt-3 pt-3 border-t border-gray-200">
@@ -1882,7 +1909,7 @@ const AdminAnalytics: React.FC = () => {
                                 <p className="text-2xl font-bold text-gray-900">
                                   {analyticsData?.completionRate.toFixed(1) || 0}%
                                 </p>
-                                <p className="text-xs font-medium text-gray-600">Success Rate</p>
+                                <p className="text-xs font-medium text-gray-600">{tl("نسبة النجاح", "Success Rate")}</p>
                               </div>
                             </div>
                             <div className="mt-3 pt-3 border-t border-gray-200">
@@ -1901,15 +1928,15 @@ const AdminAnalytics: React.FC = () => {
                   <div className="space-y-6">
                     {/* Orders Filters */}
                     <div className="bg-white rounded-xl border border-gray-200 p-6">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4">تصفية الطلبات</h3>
+                      <h3 className="text-lg font-semibold text-gray-900 mb-4">{tl("تصفية الطلبات", "Filter Orders")}</h3>
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">البحث في الطلبات</label>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">{tl("البحث في الطلبات", "Search Orders")}</label>
                           <div className="relative">
                             <Search className="w-4 h-4 text-gray-400 absolute right-3 top-3" />
                             <input
                               type="text"
-                              placeholder="رقم الطلب، اسم العميل، الهاتف..."
+                              placeholder={tl("رقم الطلب، اسم العميل، الهاتف...", "Order number, customer name, phone...")}
                               value={orderSearchTerm}
                               onChange={(e) => setOrderSearchTerm(e.target.value)}
                               className="w-full pr-10 pl-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1917,23 +1944,23 @@ const AdminAnalytics: React.FC = () => {
                           </div>
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">تصفية حسب الحالة</label>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">{tl("تصفية حسب الحالة", "Filter by Status")}</label>
                           <select
                             multiple
                             value={statusFilter}
                             onChange={(e) => setStatusFilter(Array.from(e.target.selectedOptions, option => option.value))}
                             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                           >
-                            <option value="assigned">مكلف</option>
-                            <option value="delivered">تم التوصيل</option>
-                            <option value="canceled">ملغي</option>
-                            <option value="partial">جزئي</option>
-                            <option value="hand_to_hand">استبدال</option>
-                            <option value="return">مرتجع</option>
+                            <option value="assigned">{tl("مكلف", "Assigned")}</option>
+                            <option value="delivered">{tl("تم التوصيل", "Delivered")}</option>
+                            <option value="canceled">{tl("ملغي", "Canceled")}</option>
+                            <option value="partial">{tl("جزئي", "Partial")}</option>
+                            <option value="hand_to_hand">{tl("استبدال", "Hand to Hand")}</option>
+                            <option value="return">{tl("مرتجع", "Returned")}</option>
                           </select>
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">تصفية حسب اليوم</label>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">{tl("تصفية حسب اليوم", "Filter by Day")}</label>
                           <input
                             type="date"
                             value={selectedDay}
@@ -1950,7 +1977,7 @@ const AdminAnalytics: React.FC = () => {
                             }}
                             className="w-full px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
                           >
-                            مسح المرشحات
+                            {tl("مسح المرشحات", "Clear Filters")}
                           </button>
                         </div>
                       </div>
@@ -1959,9 +1986,9 @@ const AdminAnalytics: React.FC = () => {
                     {/* Orders Summary */}
                     <div className="bg-white rounded-xl border border-gray-200 p-6">
                       <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-lg font-semibold text-gray-900">ملخص الطلبات</h3>
+                        <h3 className="text-lg font-semibold text-gray-900">{tl("ملخص الطلبات", "Orders Summary")}</h3>
                         <div className="text-sm text-gray-600">
-                          عرض {filteredOrders.length} من {orders.length} طلب
+                          {tl("عرض", "Showing")} {filteredOrders.length} {tl("من", "of")} {orders.length} {tl("طلب", "orders")}
                         </div>
                       </div>
                       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
@@ -1975,7 +2002,7 @@ const AdminAnalytics: React.FC = () => {
                                 <div className="w-4 h-4 rounded-full" style={{ backgroundColor: config.color }}></div>
                               </div>
                               <p className="text-2xl font-bold text-gray-900">{count}</p>
-                              <p className="text-sm text-gray-600">{config.label}</p>
+                              <p className="text-sm text-gray-600">{getStatusLabel(status)}</p>
                               <p className="text-xs text-gray-500">{percentage.toFixed(1)}%</p>
                             </div>
                           )
@@ -1989,14 +2016,14 @@ const AdminAnalytics: React.FC = () => {
                         <table className="w-full">
                           <thead className="bg-gray-50">
                             <tr>
-                              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">رقم الطلب</th>
-                              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">العميل</th>
-                              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">الهاتف</th>
-                              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">المبلغ</th>
-                              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">طريقة الدفع</th>
-                              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">الحالة</th>
-                              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">التاريخ</th>
-                              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">العنوان</th>
+                              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{tl("رقم الطلب", "Order Number")}</th>
+                              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{tl("العميل", "Customer")}</th>
+                              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{tl("الهاتف", "Phone")}</th>
+                              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{tl("المبلغ", "Amount")}</th>
+                              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{tl("طريقة الدفع", "Payment Method")}</th>
+                              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{tl("الحالة", "Status")}</th>
+                              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{tl("التاريخ", "Date")}</th>
+                              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{tl("العنوان", "Address")}</th>
                             </tr>
                           </thead>
                           <tbody className="bg-white divide-y divide-gray-200">
@@ -2016,21 +2043,21 @@ const AdminAnalytics: React.FC = () => {
                                     </a>
                                   </td>
                                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                    {order.total_order_fees.toFixed(2)} ج.م
+                                    {order.total_order_fees.toFixed(2)} {tl("ج.م", "EGP")}
                                   </td>
                                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                    {paymentMethodConfig[order.payment_method as keyof typeof paymentMethodConfig]?.label || order.payment_method}
+                                    {getPaymentLabel(order.payment_method)}
                                   </td>
                                   <td className="px-6 py-4 whitespace-nowrap">
                                     <span
                                       className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
                                       style={{ backgroundColor: orderStatusConfig.color + '20', color: orderStatusConfig.color }}
                                     >
-                                      {orderStatusConfig.label}
+                                      {getStatusLabel(order.status)}
                                     </span>
                                   </td>
                                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                    {new Date(order.created_at).toLocaleDateString("ar-EG")}
+                                    {new Date(order.created_at).toLocaleDateString("en-US")}
                                   </td>
                                   <td className="px-6 py-4 text-sm text-gray-900 max-w-xs truncate">
                                     {order.address}
@@ -2044,8 +2071,8 @@ const AdminAnalytics: React.FC = () => {
                       {filteredOrders.length === 0 && (
                         <div className="text-center py-12">
                           <Package className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                          <h3 className="text-lg font-medium text-gray-900 mb-2">لا توجد طلبات</h3>
-                          <p className="text-gray-600">جرب تعديل المرشحات أو اختيار فترة زمنية أخرى</p>
+                          <h3 className="text-lg font-medium text-gray-900 mb-2">{tl("لا توجد طلبات", "No orders")}</h3>
+                          <p className="text-gray-600">{tl("جرب تعديل المرشحات أو اختيار فترة زمنية أخرى", "Try adjusting the filters or selecting another time period")}</p>
                         </div>
                       )}
                     </div>
@@ -2057,7 +2084,7 @@ const AdminAnalytics: React.FC = () => {
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <Trophy className="w-5 h-5" />
-                          <h3 className="text-lg font-bold">Courier Rankings</h3>
+                          <h3 className="text-lg font-bold">{tl("ترتيب المناديب", "Courier Rankings")}</h3>
                         </div>
                         <span className="text-xs bg-white/20 px-2 py-1 rounded">{dateRange.start} - {dateRange.end}</span>
                       </div>
@@ -2066,7 +2093,7 @@ const AdminAnalytics: React.FC = () => {
                     {loadingRankings ? (
                       <div className="text-center py-8">
                         <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-3"></div>
-                        <p className="text-sm font-medium text-gray-700">Calculating rankings...</p>
+                        <p className="text-sm font-medium text-gray-700">{tl("جارٍ حساب الترتيب...", "Calculating rankings...")}</p>
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -2096,10 +2123,10 @@ const AdminAnalytics: React.FC = () => {
                               <div className={`bg-gradient-to-r ${rankColor} p-2 rounded-t-lg flex items-center justify-between`}>
                                 <div className="flex items-center gap-2 text-white">
                                   {rankIcon}
-                                  <span className="font-bold text-sm">Rank #{perf.rank}</span>
+                                  <span className="font-bold text-sm">{tl("المرتبة", "Rank")} #{perf.rank}</span>
                                 </div>
                                 <div className="bg-white/20 backdrop-blur-sm px-2 py-0.5 rounded text-xs font-bold text-white">
-                                  {perf.score.toFixed(1)} pts
+                                  {perf.score.toFixed(1)} {tl("نقطة", "pts")}
                                 </div>
                               </div>
 
@@ -2120,27 +2147,27 @@ const AdminAnalytics: React.FC = () => {
                                   <div className="bg-green-50 rounded p-2 border border-green-200">
                                     <div className="flex items-center gap-1 mb-0.5">
                                       <CheckCircle className={`w-3 h-3 ${perf.completionRate >= 80 ? "text-green-600" : perf.completionRate >= 60 ? "text-yellow-600" : "text-red-600"}`} />
-                                      <span className="text-xs font-semibold text-gray-700">Success</span>
+                                      <span className="text-xs font-semibold text-gray-700">{tl("نجاح", "Success")}</span>
                                     </div>
                                     <p className={`text-sm font-bold ${perf.completionRate >= 80 ? "text-green-700" : perf.completionRate >= 60 ? "text-yellow-700" : "text-red-700"}`}>
                                       {perf.completionRate.toFixed(1)}%
                                     </p>
                                   </div>
                                   <div className="bg-blue-50 rounded p-2 border border-blue-200">
-                                    <p className="text-xs font-semibold text-gray-700 mb-0.5">Orders</p>
+                                    <p className="text-xs font-semibold text-gray-700 mb-0.5">{tl("الطلبات", "Orders")}</p>
                                     <p className="text-sm font-bold text-blue-700">{perf.totalOrders}</p>
                                   </div>
                                   <div className="bg-red-50 rounded p-2 border border-red-200">
                                     <div className="flex items-center gap-1 mb-0.5">
                                       <XCircle className={`w-3 h-3 ${perf.cancellationRate <= 10 ? "text-green-600" : perf.cancellationRate <= 20 ? "text-yellow-600" : "text-red-600"}`} />
-                                      <span className="text-xs font-semibold text-gray-700">Cancel</span>
+                                      <span className="text-xs font-semibold text-gray-700">{tl("ملغي", "Cancel")}</span>
                                     </div>
                                     <p className={`text-sm font-bold ${perf.cancellationRate <= 10 ? "text-green-700" : perf.cancellationRate <= 20 ? "text-yellow-700" : "text-red-700"}`}>
                                       {perf.cancellationRate.toFixed(1)}%
                                     </p>
                                   </div>
                                   <div className="bg-purple-50 rounded p-2 border border-purple-200">
-                                    <p className="text-xs font-semibold text-gray-700 mb-0.5">Revenue</p>
+                                    <p className="text-xs font-semibold text-gray-700 mb-0.5">{tl("الإيرادات", "Revenue")}</p>
                                     <p className="text-sm font-bold text-purple-700">{perf.totalRevenue.toFixed(0)}</p>
                                   </div>
                                 </div>
@@ -2148,14 +2175,14 @@ const AdminAnalytics: React.FC = () => {
                                 {/* Additional Metrics */}
                                 <div className="mt-2 pt-2 border-t border-gray-200">
                                   <div className="flex items-center justify-between text-xs">
-                                    <span className="text-gray-600">Return Rate:</span>
+                                    <span className="text-gray-600">{tl("نسبة المرتجع:", "Return Rate:")}</span>
                                     <span className={`font-semibold ${perf.returnRate <= 5 ? "text-green-600" : perf.returnRate <= 15 ? "text-yellow-600" : "text-red-600"}`}>
                                       {perf.returnRate.toFixed(1)}%
                                     </span>
                                   </div>
                                   {perf.lifecycleStats.totalReturnedOrders > 0 && (
                                     <div className="flex items-center justify-between text-xs mt-1">
-                                      <span className="text-gray-600">Recovery:</span>
+                                      <span className="text-gray-600">{tl("الاسترداد:", "Recovery:")}</span>
                                       <span className={`font-semibold ${recoveryRate >= 50 ? "text-green-600" : recoveryRate >= 30 ? "text-yellow-600" : "text-red-600"}`}>
                                         {recoveryRate.toFixed(1)}%
                                       </span>
@@ -2178,15 +2205,15 @@ const AdminAnalytics: React.FC = () => {
                             <Zap className="w-4 h-4 text-white" />
                           </div>
                           <div>
-                            <h3 className="text-xl font-bold text-gray-900">Order Status Flow & Roadmap</h3>
-                            <p className="text-sm text-gray-600">Visualization of order status transitions</p>
+                            <h3 className="text-xl font-bold text-gray-900">{tl("مسار حالة الطلب وخريطة الطريق", "Order Status Flow & Roadmap")}</h3>
+                            <p className="text-sm text-gray-600">{tl("عرض مرئي لتحولات حالة الطلب", "Visualization of order status transitions")}</p>
                           </div>
                         </div>
                       </div>
 
                       {/* Status Flow Diagram */}
                       <div className="mb-8">
-                        <h4 className="text-lg font-semibold text-gray-900 mb-4">Status Transition Flow</h4>
+                        <h4 className="text-lg font-semibold text-gray-900 mb-4">{tl("مسار تحول الحالة", "Status Transition Flow")}</h4>
                         <div className="bg-gray-50 rounded-lg p-6">
                           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                             {analyticsData.statusFlow.slice(0, 12).map((flow, index) => {
@@ -2200,7 +2227,7 @@ const AdminAnalytics: React.FC = () => {
                                       className="w-3 h-3 rounded-full"
                                       style={{ backgroundColor: fromConfig.color }}
                                     ></div>
-                                    <span className="text-xs font-medium text-gray-700">{fromConfig.label}</span>
+                                    <span className="text-xs font-medium text-gray-700">{getStatusLabel(flow.from)}</span>
                                   </div>
                                   <div className="flex items-center justify-center my-2">
                                     <ArrowRight className="w-4 h-4 text-gray-400" />
@@ -2210,7 +2237,7 @@ const AdminAnalytics: React.FC = () => {
                                       className="w-3 h-3 rounded-full"
                                       style={{ backgroundColor: toConfig.color }}
                                     ></div>
-                                    <span className="text-xs font-medium text-gray-700">{toConfig.label}</span>
+                                    <span className="text-xs font-medium text-gray-700">{getStatusLabel(flow.to)}</span>
                                   </div>
                                   <div className="text-center mt-2">
                                     <span className="text-lg font-bold text-gray-900">{flow.count}</span>
@@ -2225,7 +2252,7 @@ const AdminAnalytics: React.FC = () => {
 
                       {/* Detailed Status Breakdown with Percentages */}
                       <div className="mb-8">
-                        <h4 className="text-lg font-semibold text-gray-900 mb-4">Complete Status Breakdown</h4>
+                        <h4 className="text-lg font-semibold text-gray-900 mb-4">{tl("تفصيل كامل للحالات", "Complete Status Breakdown")}</h4>
                         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                           {analyticsData.statusDistribution.map((status, index) => (
                             <div key={index} className="bg-gradient-to-br from-white to-gray-50 rounded-lg p-4 border border-gray-200">
@@ -2241,18 +2268,18 @@ const AdminAnalytics: React.FC = () => {
                                 </div>
                                 <div className="text-right">
                                   <p className="text-2xl font-bold text-gray-900">{status.count}</p>
-                                  <p className="text-xs text-gray-500">orders</p>
+                                  <p className="text-xs text-gray-500">{tl("طلب", "orders")}</p>
                                 </div>
                               </div>
                               <div className="space-y-1">
                                 <p className="text-sm font-semibold text-gray-900">{status.status}</p>
                                 <div className="flex items-center justify-between">
-                                  <span className="text-xs text-gray-600">Percentage:</span>
+                                  <span className="text-xs text-gray-600">{tl("النسبة:", "Percentage:")}</span>
                                   <span className="text-xs font-bold text-gray-900">{status.percentage.toFixed(1)}%</span>
                                 </div>
                                 <div className="flex items-center justify-between">
-                                  <span className="text-xs text-gray-600">Revenue:</span>
-                                  <span className="text-xs font-bold text-green-600">{status.revenue.toFixed(0)} EGP</span>
+                                  <span className="text-xs text-gray-600">{tl("الإيرادات:", "Revenue:")}</span>
+                                  <span className="text-xs font-bold text-green-600">{status.revenue.toFixed(0)} {tl("ج.م", "EGP")}</span>
                                 </div>
                                 <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
                                   <div 
@@ -2272,46 +2299,46 @@ const AdminAnalytics: React.FC = () => {
                       {/* Lifecycle Statistics */}
                       {analyticsData.lifecycleStats && analyticsData.lifecycleStats.totalReturnedOrders > 0 && (
                         <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg p-6 border border-purple-200">
-                          <h4 className="text-lg font-semibold text-gray-900 mb-4">Order Lifecycle Recovery Analysis</h4>
+                          <h4 className="text-lg font-semibold text-gray-900 mb-4">{tl("تحليل استرداد دورة حياة الطلب", "Order Lifecycle Recovery Analysis")}</h4>
                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                             <div className="bg-white rounded-lg p-4 border border-purple-200">
                               <div className="flex items-center gap-2 mb-2">
                                 <Package className="w-5 h-5 text-purple-600" />
-                                <span className="text-sm font-medium text-gray-700">Total Returned</span>
+                                <span className="text-sm font-medium text-gray-700">{tl("إجمالي المرتجع", "Total Returned")}</span>
                               </div>
                               <p className="text-2xl font-bold text-gray-900">{analyticsData.lifecycleStats.totalReturnedOrders}</p>
                               <p className="text-xs text-gray-500 mt-1">
-                                {analyticsData.totalOrders > 0 ? ((analyticsData.lifecycleStats.totalReturnedOrders / analyticsData.totalOrders) * 100).toFixed(1) : 0}% of all orders
+                                {analyticsData.totalOrders > 0 ? ((analyticsData.lifecycleStats.totalReturnedOrders / analyticsData.totalOrders) * 100).toFixed(1) : 0}% {tl("من كل الطلبات", "of all orders")}
                               </p>
                             </div>
                             <div className="bg-white rounded-lg p-4 border border-green-200">
                               <div className="flex items-center gap-2 mb-2">
                                 <CheckCircle className="w-5 h-5 text-green-600" />
-                                <span className="text-sm font-medium text-gray-700">Recovered (Delivered)</span>
+                                <span className="text-sm font-medium text-gray-700">{tl("تم استردادها (تم التوصيل)", "Recovered (Delivered)")}</span>
                               </div>
                               <p className="text-2xl font-bold text-green-600">{analyticsData.lifecycleStats.returnedThenDelivered}</p>
                               <p className="text-xs text-green-600 font-semibold mt-1">
-                                {analyticsData.lifecycleStats.returnedThenDeliveredPercentage.toFixed(1)}% recovery rate
+                                {analyticsData.lifecycleStats.returnedThenDeliveredPercentage.toFixed(1)}% {tl("نسبة الاسترداد", "recovery rate")}
                               </p>
                             </div>
                             <div className="bg-white rounded-lg p-4 border border-orange-200">
                               <div className="flex items-center gap-2 mb-2">
                                 <Percent className="w-5 h-5 text-orange-600" />
-                                <span className="text-sm font-medium text-gray-700">Partially Recovered</span>
+                                <span className="text-sm font-medium text-gray-700">{tl("استرداد جزئي", "Partially Recovered")}</span>
                               </div>
                               <p className="text-2xl font-bold text-orange-600">{analyticsData.lifecycleStats.returnedThenPartial}</p>
                               <p className="text-xs text-orange-600 font-semibold mt-1">
-                                {analyticsData.lifecycleStats.totalReturnedOrders > 0 ? ((analyticsData.lifecycleStats.returnedThenPartial / analyticsData.lifecycleStats.totalReturnedOrders) * 100).toFixed(1) : 0}% partial recovery
+                                {analyticsData.lifecycleStats.totalReturnedOrders > 0 ? ((analyticsData.lifecycleStats.returnedThenPartial / analyticsData.lifecycleStats.totalReturnedOrders) * 100).toFixed(1) : 0}% {tl("استرداد جزئي", "partial recovery")}
                               </p>
                             </div>
                             <div className="bg-white rounded-lg p-4 border border-red-200">
                               <div className="flex items-center gap-2 mb-2">
                                 <XCircle className="w-5 h-5 text-red-600" />
-                                <span className="text-sm font-medium text-gray-700">Lost (Canceled)</span>
+                                <span className="text-sm font-medium text-gray-700">{tl("مفقود (ملغي)", "Lost (Canceled)")}</span>
                               </div>
                               <p className="text-2xl font-bold text-red-600">{analyticsData.lifecycleStats.returnedThenCanceled}</p>
                               <p className="text-xs text-red-600 font-semibold mt-1">
-                                {analyticsData.lifecycleStats.returnedThenCanceledPercentage.toFixed(1)}% loss rate
+                                {analyticsData.lifecycleStats.returnedThenCanceledPercentage.toFixed(1)}% {tl("نسبة الخسارة", "loss rate")}
                               </p>
                             </div>
                           </div>
@@ -2330,7 +2357,7 @@ const AdminAnalytics: React.FC = () => {
                           </div>
                           <div className="text-right">
                             <p className="text-2xl font-bold text-gray-900">{analyticsData.totalOrders}</p>
-                            <p className="text-sm text-gray-600">إجمالي الطلبات</p>
+                            <p className="text-sm text-gray-600">{tl("إجمالي الطلبات", "Total Orders")}</p>
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
@@ -2346,7 +2373,7 @@ const AdminAnalytics: React.FC = () => {
                           </div>
                           <div className="text-right">
                             <p className="text-2xl font-bold text-gray-900">{analyticsData.deliveredOrders}</p>
-                            <p className="text-sm text-gray-600">طلبات مسلمة</p>
+                            <p className="text-sm text-gray-600">{tl("طلبات مسلمة", "Delivered Orders")}</p>
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
@@ -2362,7 +2389,7 @@ const AdminAnalytics: React.FC = () => {
                           </div>
                           <div className="text-right">
                             <p className="text-2xl font-bold text-gray-900">{analyticsData.totalRevenue.toFixed(0)}</p>
-                            <p className="text-sm text-gray-600">إجمالي الإيرادات (ج.م)</p>
+                            <p className="text-sm text-gray-600">{tl("إجمالي الإيرادات (ج.م)", "Total Revenue (EGP)")}</p>
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
@@ -2378,7 +2405,7 @@ const AdminAnalytics: React.FC = () => {
                           </div>
                           <div className="text-right">
                             <p className="text-2xl font-bold text-gray-900">{analyticsData.averageOrderValue.toFixed(0)}</p>
-                            <p className="text-sm text-gray-600">متوسط قيمة الطلب (ج.م)</p>
+                            <p className="text-sm text-gray-600">{tl("متوسط قيمة الطلب (ج.م)", "Average Order Value (EGP)")}</p>
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
@@ -2393,7 +2420,7 @@ const AdminAnalytics: React.FC = () => {
                       {/* Daily Orders Chart */}
                       <div className="bg-white rounded-xl border border-gray-200 p-6">
                         <div className="flex items-center justify-between mb-6">
-                          <h3 className="text-lg font-semibold text-gray-900">الطلبات اليومية</h3>
+                          <h3 className="text-lg font-semibold text-gray-900">{tl("الطلبات اليومية", "Daily Orders")}</h3>
                           <div className="flex items-center gap-2">
                             {["bar", "line", "area"].map((type) => (
                               <button
@@ -2405,7 +2432,7 @@ const AdminAnalytics: React.FC = () => {
                                     : "bg-gray-200 text-gray-700 hover:bg-gray-300"
                                 }`}
                               >
-                                {type === "bar" ? "أعمدة" : type === "line" ? "خط" : "منطقة"}
+                                {type === "bar" ? tl("أعمدة", "Bar") : type === "line" ? tl("خط", "Line") : tl("منطقة", "Area")}
                               </button>
                             ))}
                           </div>
@@ -2443,7 +2470,7 @@ const AdminAnalytics: React.FC = () => {
 
                       {/* Status Distribution */}
                       <div className="bg-white rounded-xl border border-gray-200 p-6">
-                        <h3 className="text-lg font-semibold text-gray-900 mb-6">Order Status Distribution</h3>
+                        <h3 className="text-lg font-semibold text-gray-900 mb-6">{tl("توزيع حالات الطلبات", "Order Status Distribution")}</h3>
                         <div className="h-80">
                           <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
@@ -2477,8 +2504,8 @@ const AdminAnalytics: React.FC = () => {
                     <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                       <BarChart3 className="w-8 h-8 text-gray-400" />
                     </div>
-                    <h3 className="text-lg font-semibold text-gray-800 mb-2">لا توجد بيانات متاحة</h3>
-                    <p className="text-gray-600">لا توجد طلبات في الفترة المحددة لهذا المندوب</p>
+                    <h3 className="text-lg font-semibold text-gray-800 mb-2">{tl("لا توجد بيانات متاحة", "No data available")}</h3>
+                    <p className="text-gray-600">{tl("لا توجد طلبات في الفترة المحددة لهذا المندوب", "No orders in the selected period for this courier")}</p>
                   </div>
                 )}
               </div>
@@ -2489,7 +2516,7 @@ const AdminAnalytics: React.FC = () => {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Users className="w-4 h-4" />
-                      <h3 className="text-base font-bold">All Couriers Overview</h3>
+                      <h3 className="text-base font-bold">{tl("نظرة عامة على كل المناديب", "All Couriers Overview")}</h3>
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="text-xs bg-white/20 px-2 py-1 rounded">
@@ -2500,10 +2527,10 @@ const AdminAnalytics: React.FC = () => {
                           setRefreshKey(prev => prev + 1)
                         }}
                         className="text-xs bg-white/20 hover:bg-white/30 px-2 py-1 rounded flex items-center gap-1 transition-colors"
-                        title="Refresh data"
+                        title={tl("تحديث البيانات", "Refresh data")}
                       >
                         <RefreshCw className="w-3 h-3" />
-                        Refresh
+                        {tl("تحديث", "Refresh")}
                       </button>
                     </div>
                   </div>
@@ -2572,38 +2599,38 @@ const AdminAnalytics: React.FC = () => {
                           <div className="grid grid-cols-4 gap-2">
                             <div className="text-center p-2 bg-blue-50 rounded border border-blue-100">
                               <p className="text-lg font-bold text-blue-600">{totalOrders}</p>
-                              <p className="text-xs text-gray-600">Total</p>
+                              <p className="text-xs text-gray-600">{tl("الإجمالي", "Total")}</p>
                             </div>
                             <div className="text-center p-2 bg-green-50 rounded border border-green-100">
                               <p className="text-lg font-bold text-green-600">{successfulOrders}</p>
-                              <p className="text-xs text-gray-600">Success</p>
+                              <p className="text-xs text-gray-600">{tl("نجاح", "Success")}</p>
                             </div>
                             <div className="text-center p-2 bg-red-50 rounded border border-red-100">
                               <p className="text-lg font-bold text-red-600">{canceledOrders}</p>
-                              <p className="text-xs text-gray-600">Cancel</p>
+                              <p className="text-xs text-gray-600">{tl("ملغي", "Cancel")}</p>
                             </div>
                             <div className="text-center p-2 bg-purple-50 rounded border border-purple-100">
                               <p className="text-sm font-bold text-purple-600">{totalRevenue > 1000 ? `${(totalRevenue/1000).toFixed(0)}k` : totalRevenue.toFixed(0)}</p>
-                              <p className="text-xs text-gray-600">Revenue</p>
+                              <p className="text-xs text-gray-600">{tl("الإيرادات", "Revenue")}</p>
                             </div>
                           </div>
 
                           {/* Compact Status Details */}
                           <div className="grid grid-cols-2 gap-1.5 pt-2 border-t border-gray-100">
                             <div className="flex items-center justify-between text-xs px-2 py-1 bg-orange-50 rounded">
-                              <span className="text-gray-600">Partial:</span>
+                              <span className="text-gray-600">{tl("جزئي:", "Partial:")}</span>
                               <span className="font-bold text-orange-600">{partialOrders}</span>
                             </div>
                             <div className="flex items-center justify-between text-xs px-2 py-1 bg-purple-50 rounded">
-                              <span className="text-gray-600">Returned:</span>
+                              <span className="text-gray-600">{tl("مرتجع:", "Returned:")}</span>
                               <span className="font-bold text-purple-600">{returnedOrders}</span>
                             </div>
                             <div className="flex items-center justify-between text-xs px-2 py-1 bg-cyan-50 rounded">
-                              <span className="text-gray-600">H2H:</span>
+                              <span className="text-gray-600">{tl("استبدال:", "H2H:")}</span>
                               <span className="font-bold text-cyan-600">{handToHandOrders}</span>
                             </div>
                             <div className="flex items-center justify-between text-xs px-2 py-1 bg-blue-50 rounded">
-                              <span className="text-gray-600">Card:</span>
+                              <span className="text-gray-600">{tl("بطاقة:", "Card:")}</span>
                               <span className="font-bold text-blue-600">{cardOrders}</span>
                             </div>
                           </div>
@@ -2611,7 +2638,7 @@ const AdminAnalytics: React.FC = () => {
                           {/* Compact Progress Bars */}
                           <div className="pt-2 space-y-1">
                             <div className="flex items-center justify-between text-xs">
-                              <span className="text-gray-600">Success Rate</span>
+                              <span className="text-gray-600">{tl("نسبة النجاح", "Success Rate")}</span>
                               <span className="font-semibold text-gray-700">{completionRate.toFixed(1)}%</span>
                             </div>
                             <div className="w-full bg-gray-200 rounded-full h-1.5">
@@ -2623,7 +2650,7 @@ const AdminAnalytics: React.FC = () => {
                             {returnRate > 0 && (
                               <>
                                 <div className="flex items-center justify-between text-xs mt-1">
-                                  <span className="text-gray-600">Return Rate</span>
+                                  <span className="text-gray-600">{tl("نسبة المرتجع", "Return Rate")}</span>
                                   <span className="font-semibold text-purple-600">{returnRate.toFixed(1)}%</span>
                                 </div>
                                 <div className="w-full bg-gray-200 rounded-full h-1.5">
@@ -2648,9 +2675,9 @@ const AdminAnalytics: React.FC = () => {
                       <Users className="w-8 h-8 text-gray-400" />
                     </div>
                     <div className="space-y-2">
-                      <h3 className="text-xl font-semibold text-gray-800">اختر مندوب لعرض تحليلاته التفصيلية</h3>
+                      <h3 className="text-xl font-semibold text-gray-800">{tl("اختر مندوب لعرض تحليلاته التفصيلية", "Select a courier to view detailed analytics")}</h3>
                       <p className="text-gray-600 max-w-md mx-auto">
-                        اضغط على أي مندوب من القائمة أعلاه لعرض إحصائياته المفصلة والرسوم البيانية
+                        {tl("اضغط على أي مندوب من القائمة أعلاه لعرض إحصائياته المفصلة والرسوم البيانية", "Click any courier from the list above to view their detailed statistics and charts")}
                       </p>
                     </div>
                   </div>

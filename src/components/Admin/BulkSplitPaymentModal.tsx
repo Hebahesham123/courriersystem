@@ -4,6 +4,7 @@ import { useState } from "react"
 import { createPortal } from "react-dom"
 import { X, DollarSign, CreditCard, Save, RefreshCw, Trash2 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
+import { useLanguage } from "../../contexts/LanguageContext"
 
 interface BulkSplitPaymentModalProps {
   orderIds: string[]
@@ -12,15 +13,18 @@ interface BulkSplitPaymentModalProps {
 }
 
 const PAYMENT_METHODS = [
-  { value: "cash", label: "Cash / كاش" },
-  { value: "paymob", label: "Paymob" },
-  { value: "instapay", label: "Instapay" },
-  { value: "valu", label: "Valu" },
-  { value: "card", label: "Card / بطاقة" },
-  { value: "wallet", label: "Wallet / محفظة" },
+  { value: "cash", ar: "نقدي", en: "Cash" },
+  { value: "paymob", ar: "Paymob", en: "Paymob" },
+  { value: "instapay", ar: "Instapay", en: "Instapay" },
+  { value: "valu", ar: "Valu", en: "Valu" },
+  { value: "card", ar: "بطاقة", en: "Card" },
+  { value: "wallet", ar: "محفظة", en: "Wallet" },
 ]
 
 const BulkSplitPaymentModal: React.FC<BulkSplitPaymentModalProps> = ({ orderIds, onClose, onSaved }) => {
+  const { language } = useLanguage()
+  const tl = (ar: string, en: string) => (language === 'ar' ? ar : en)
+
   const [amount, setAmount] = useState("")
   const [method, setMethod] = useState("")
   const [saving, setSaving] = useState(false)
@@ -32,11 +36,11 @@ const BulkSplitPaymentModal: React.FC<BulkSplitPaymentModalProps> = ({ orderIds,
   const handleSave = async () => {
     setError(null)
     if (parsedAmount <= 0) {
-      setError("المبلغ يجب أن يكون أكبر من 0")
+      setError(tl("المبلغ يجب أن يكون أكبر من 0", "Amount must be greater than 0"))
       return
     }
     if (!method) {
-      setError("يرجى اختيار طريقة الدفع")
+      setError(tl("يرجى اختيار طريقة الدفع", "Please select a payment method"))
       return
     }
     setSaving(true)
@@ -55,14 +59,14 @@ const BulkSplitPaymentModal: React.FC<BulkSplitPaymentModalProps> = ({ orderIds,
       onSaved?.()
       onClose()
     } catch (e: any) {
-      setError(e?.message || "فشل الحفظ")
+      setError(e?.message || tl("فشل الحفظ", "Failed to save"))
     } finally {
       setSaving(false)
     }
   }
 
   const handleClear = async () => {
-    if (!window.confirm(`مسح الدفع المسبق من ${orderIds.length} طلب؟`)) return
+    if (!window.confirm(tl(`مسح الدفع المسبق من ${orderIds.length} طلب؟`, `Clear prepaid payment from ${orderIds.length} orders?`))) return
     setClearing(true)
     setError(null)
     try {
@@ -79,7 +83,7 @@ const BulkSplitPaymentModal: React.FC<BulkSplitPaymentModalProps> = ({ orderIds,
       onSaved?.()
       onClose()
     } catch (e: any) {
-      setError(e?.message || "فشل المسح")
+      setError(e?.message || tl("فشل المسح", "Failed to clear"))
     } finally {
       setClearing(false)
     }
@@ -99,14 +103,14 @@ const BulkSplitPaymentModal: React.FC<BulkSplitPaymentModalProps> = ({ orderIds,
           <div className="flex items-center gap-2">
             <DollarSign className="w-5 h-5" />
             <div>
-              <h3 className="font-semibold">تعيين دفع مسبق جماعي</h3>
-              <p className="text-xs text-emerald-100">{orderIds.length} طلب محدد</p>
+              <h3 className="font-semibold">{tl("تعيين دفع مسبق جماعي", "Bulk Split Payment")}</h3>
+              <p className="text-xs text-emerald-100">{orderIds.length} {tl("طلب محدد", "orders selected")}</p>
             </div>
           </div>
           <button
             onClick={onClose}
             className="p-1 rounded-full hover:bg-white/20 transition"
-            aria-label="Close"
+            aria-label={tl("إغلاق", "Close")}
           >
             <X className="w-5 h-5" />
           </button>
@@ -115,12 +119,12 @@ const BulkSplitPaymentModal: React.FC<BulkSplitPaymentModalProps> = ({ orderIds,
         {/* Body */}
         <div className="p-5 space-y-4">
           <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-sm text-emerald-800">
-            سيتم تطبيق نفس المبلغ وطريقة الدفع على جميع الـ <strong>{orderIds.length}</strong> طلبات المحددة.
+            {tl("سيتم تطبيق نفس المبلغ وطريقة الدفع على جميع الـ", "The same amount and payment method will be applied to all")} <strong>{orderIds.length}</strong> {tl("طلبات المحددة.", "selected orders.")}
           </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              المبلغ المدفوع مسبقاً (لكل طلب)
+              {tl("المبلغ المدفوع مسبقاً (لكل طلب)", "Prepaid amount (per order)")}
             </label>
             <div className="relative">
               <input
@@ -141,7 +145,7 @@ const BulkSplitPaymentModal: React.FC<BulkSplitPaymentModalProps> = ({ orderIds,
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              طريقة الدفع
+              {tl("طريقة الدفع", "Payment method")}
             </label>
             <div className="relative">
               <CreditCard className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -150,10 +154,10 @@ const BulkSplitPaymentModal: React.FC<BulkSplitPaymentModalProps> = ({ orderIds,
                 onChange={(e) => setMethod(e.target.value)}
                 className="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-base bg-white"
               >
-                <option value="">-- اختر طريقة الدفع --</option>
+                <option value="">{tl("-- اختر طريقة الدفع --", "-- Select payment method --")}</option>
                 {PAYMENT_METHODS.map((m) => (
                   <option key={m.value} value={m.value}>
-                    {m.label}
+                    {tl(m.ar, m.en)}
                   </option>
                 ))}
               </select>
@@ -175,7 +179,7 @@ const BulkSplitPaymentModal: React.FC<BulkSplitPaymentModalProps> = ({ orderIds,
             className="flex items-center gap-1.5 px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg text-sm font-medium transition disabled:opacity-50"
           >
             {clearing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-            مسح الكل
+            {tl("مسح الكل", "Clear all")}
           </button>
           <div className="flex items-center gap-2">
             <button
@@ -183,7 +187,7 @@ const BulkSplitPaymentModal: React.FC<BulkSplitPaymentModalProps> = ({ orderIds,
               disabled={saving || clearing}
               className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 text-sm font-medium transition disabled:opacity-50"
             >
-              إلغاء
+              {tl("إلغاء", "Cancel")}
             </button>
             <button
               onClick={handleSave}
@@ -191,7 +195,7 @@ const BulkSplitPaymentModal: React.FC<BulkSplitPaymentModalProps> = ({ orderIds,
               className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium transition disabled:opacity-50"
             >
               {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-              {saving ? "جاري الحفظ..." : `حفظ للـ ${orderIds.length} طلب`}
+              {saving ? tl("جارٍ الحفظ...", "Saving...") : tl(`حفظ للـ ${orderIds.length} طلب`, `Save for ${orderIds.length} orders`)}
             </button>
           </div>
         </div>

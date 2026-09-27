@@ -147,58 +147,63 @@ const UploadOrders: React.FC = () => {
   const [uploadProgress, setUploadProgress] = useState(0)
   const [validationErrors, setValidationErrors] = useState<string[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const { t } = useLanguage()
+  const { language } = useLanguage()
+  const tl = (ar: string, en: string) => (language === "ar" ? ar : en)
 
   // Enhanced translate function
   const translate = (key: string, param?: any) => {
     const translations: Record<string, string | ((param?: any) => string)> = {
-      uploadOrders: "Upload Orders / رفع الطلبات",
-      uploadExcel: "Upload Excel File / رفع ملف إكسل",
-      loading: "Loading... / جاري التحميل...",
-      uploading: "Uploading... / جاري الرفع...",
-      processing: "Processing file... / جاري معالجة الملف...",
-      orderId: "Order ID / رقم الطلب",
-      customerName: "Customer Name / اسم العميل",
-      mobile: "Mobile / الهاتف",
-      address: "Address / العنوان",
-      billingCity: "Billing City / مدينة الفاتورة",
-      totalAmount: "Total Amount / المبلغ الكلي",
-      paymentMethod: "Payment Method / طريقة الدفع",
-      paymentStatus: "Payment Status / حالة الدفع",
-      notes: "Notes / ملاحظات",
-      errorReadingFile: "Error reading file. Please check the format. / خطأ في قراءة الملف، يرجى التحقق من التنسيق.",
-      successfullyUploaded: (count: number) => `Successfully uploaded ${count} orders! / تم رفع ${count} طلب بنجاح!`,
-      errorUploading: "Error uploading orders / خطأ أثناء رفع الطلبات",
-      selected: "Selected File / الملف المختار",
-      dragDropText:
-        "Drag and drop your Excel file here, or click to browse / اسحب وأفلت ملف الإكسل هنا، أو اضغط للتصفح",
-      supportedFormats: "Supported formats: .xlsx, .xls / الصيغ المدعومة",
-      fileSize: "File size / حجم الملف",
-      totalOrders: "Total Orders / إجمالي الطلبات",
-      validOrders: "Valid Orders / الطلبات الصحيحة",
-      invalidOrders: "Invalid Orders / الطلبات غير الصحيحة",
-      previewFirst: "Preview (First 5 rows) / معاينة (أول 5 صفوف)",
-      removeFile: "Remove File / إزالة الملف",
-      uploadNow: "Upload Now / رفع الآن",
-      cancel: "Cancel / إلغاء",
-      viewAll: "View All / عرض الكل",
-      validationErrors: "Validation Errors / أخطاء التحقق",
-      shopifyInstructions:
-        "Upload a Shopify-exported Excel file. We extract order name, customer, phone, total, payment, and notes.",
-      shopifyInstructionsAr:
+      uploadOrders: tl("رفع الطلبات", "Upload Orders"),
+      uploadExcel: tl("رفع ملف إكسل", "Upload Excel File"),
+      loading: tl("جارٍ التحميل...", "Loading..."),
+      uploading: tl("جارٍ الرفع...", "Uploading..."),
+      processing: tl("جارٍ معالجة الملف...", "Processing file..."),
+      orderId: tl("رقم الطلب", "Order ID"),
+      customerName: tl("اسم العميل", "Customer Name"),
+      mobile: tl("الهاتف", "Mobile"),
+      address: tl("العنوان", "Address"),
+      billingCity: tl("مدينة الفاتورة", "Billing City"),
+      totalAmount: tl("المبلغ الكلي", "Total Amount"),
+      paymentMethod: tl("طريقة الدفع", "Payment Method"),
+      paymentStatus: tl("حالة الدفع", "Payment Status"),
+      notes: tl("ملاحظات", "Notes"),
+      errorReadingFile: tl("خطأ في قراءة الملف، يرجى التحقق من التنسيق.", "Error reading file. Please check the format."),
+      successfullyUploaded: (count: number) =>
+        tl(`تم رفع ${count} طلب بنجاح!`, `Successfully uploaded ${count} orders!`),
+      errorUploading: tl("خطأ أثناء رفع الطلبات", "Error uploading orders"),
+      selected: tl("الملف المختار", "Selected File"),
+      dragDropText: tl("اسحب وأفلت ملف الإكسل هنا، أو اضغط للتصفح", "Drag and drop your Excel file here, or click to browse"),
+      supportedFormats: tl("الصيغ المدعومة", "Supported formats"),
+      fileSize: tl("حجم الملف", "File size"),
+      totalOrders: tl("إجمالي الطلبات", "Total Orders"),
+      validOrders: tl("الطلبات الصحيحة", "Valid Orders"),
+      invalidOrders: tl("الطلبات غير الصحيحة", "Invalid Orders"),
+      previewFirst: tl("معاينة (أول 5 صفوف)", "Preview (First 5 rows)"),
+      removeFile: tl("إزالة الملف", "Remove File"),
+      uploadNow: tl("رفع الآن", "Upload Now"),
+      cancel: tl("إلغاء", "Cancel"),
+      viewAll: tl("عرض الكل", "View All"),
+      validationErrors: tl("أخطاء التحقق", "Validation Errors"),
+      shopifyInstructions: tl(
         "ارفع ملف إكسل مُصدَّر من Shopify. سنستخرج اسم الطلب والعميل والهاتف والإجمالي والدفع والملاحظات.",
-      cash: "Cash (COD) / نقداً عند التسليم",
-      card: "Card / بطاقة",
-      valu: "ValU / فاليو",
-      partial: "Partial / جزئي",
-      paid: "Paid Online / مدفوع إلكترونياً",
-      paymob: "Paymob / بايموب",
-      fawry: "Fawry / فوري",
-      vodafonecash: "Vodafone Cash / فودافون كاش",
-      orangecash: "Orange Cash / أورانج كاش",
-      instapay: "InstaPay / إنستاباي",
-      pending: "Pending / معلق",
-      cod: "Cash on Delivery / الدفع عند التسليم",
+        "Upload a Shopify-exported Excel file. We extract order name, customer, phone, total, payment, and notes.",
+      ),
+      shopifyInstructionsAr: tl(
+        "ارفع ملف إكسل مُصدَّر من Shopify. سنستخرج اسم الطلب والعميل والهاتف والإجمالي والدفع والملاحظات.",
+        "Upload a Shopify-exported Excel file. We extract order name, customer, phone, total, payment, and notes.",
+      ),
+      cash: tl("نقداً عند التسليم", "Cash (COD)"),
+      card: tl("بطاقة", "Card"),
+      valu: tl("فاليو", "ValU"),
+      partial: tl("جزئي", "Partial"),
+      paid: tl("مدفوع إلكترونياً", "Paid Online"),
+      paymob: tl("بايموب", "Paymob"),
+      fawry: tl("فوري", "Fawry"),
+      vodafonecash: tl("فودافون كاش", "Vodafone Cash"),
+      orangecash: tl("أورانج كاش", "Orange Cash"),
+      instapay: tl("إنستاباي", "InstaPay"),
+      pending: tl("معلق", "Pending"),
+      cod: tl("الدفع عند التسليم", "Cash on Delivery"),
     }
     const val = translations[key]
     if (typeof val === "function") {
@@ -210,10 +215,13 @@ const UploadOrders: React.FC = () => {
   const validateOrders = (orders: OrderData[]): string[] => {
     const errors: string[] = []
     orders.forEach((order, index) => {
-      if (!order.order_id) errors.push(`Row ${index + 1}: Missing order ID`)
-      if (!order.customer_name) errors.push(`Row ${index + 1}: Missing customer name`)
-      if (!order.mobile_number) errors.push(`Row ${index + 1}: Missing mobile number`)
-      if (order.total_order_fees <= 0) errors.push(`Row ${index + 1}: Invalid total amount`)
+      if (!order.order_id) errors.push(tl(`الصف ${index + 1}: رقم الطلب مفقود`, `Row ${index + 1}: Missing order ID`))
+      if (!order.customer_name)
+        errors.push(tl(`الصف ${index + 1}: اسم العميل مفقود`, `Row ${index + 1}: Missing customer name`))
+      if (!order.mobile_number)
+        errors.push(tl(`الصف ${index + 1}: رقم الهاتف مفقود`, `Row ${index + 1}: Missing mobile number`))
+      if (order.total_order_fees <= 0)
+        errors.push(tl(`الصف ${index + 1}: المبلغ الإجمالي غير صالح`, `Row ${index + 1}: Invalid total amount`))
     })
     return errors
   }
@@ -270,7 +278,10 @@ const UploadOrders: React.FC = () => {
     if (droppedFile && (droppedFile.name.endsWith(".xlsx") || droppedFile.name.endsWith(".xls"))) {
       processFile(droppedFile)
     } else {
-      setMessage({ type: "error", text: "Please upload a valid Excel file (.xlsx or .xls)" })
+      setMessage({
+        type: "error",
+        text: tl("يرجى رفع ملف إكسل صحيح (.xlsx أو .xls)", "Please upload a valid Excel file (.xlsx or .xls)"),
+      })
     }
   }
 
@@ -353,9 +364,9 @@ const UploadOrders: React.FC = () => {
   }
 
   const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return "0 Bytes"
+    if (bytes === 0) return tl("0 بايت", "0 Bytes")
     const k = 1024
-    const sizes = ["Bytes", "KB", "MB", "GB"]
+    const sizes = [tl("بايت", "Bytes"), "KB", "MB", "GB"]
     const i = Math.floor(Math.log(bytes) / Math.log(k))
     return Number.parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i]
   }
@@ -397,7 +408,7 @@ const UploadOrders: React.FC = () => {
     if (!status) {
       return (
         <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border bg-gray-100 text-gray-600 border-gray-200">
-          غير محدد
+          {tl("غير محدد", "Not specified")}
         </span>
       )
     }
@@ -412,12 +423,12 @@ const UploadOrders: React.FC = () => {
     }
     
     const displayStatus = {
-      paid: "مدفوع بالكامل",
-      partial: "مدفوع جزئياً",
-      pending: "معلق",
-      overdue: "متأخر",
-      refunded: "مسترد",
-      disputed: "متنازع عليه",
+      paid: tl("مدفوع بالكامل", "Fully Paid"),
+      partial: tl("مدفوع جزئياً", "Partially Paid"),
+      pending: tl("معلق", "Pending"),
+      overdue: tl("متأخر", "Overdue"),
+      refunded: tl("مسترد", "Refunded"),
+      disputed: tl("متنازع عليه", "Disputed"),
     }
     
     return (
@@ -430,7 +441,7 @@ const UploadOrders: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-6">
+    <div className="min-h-screen bg-gray-50 py-6" dir={language === "ar" ? "rtl" : "ltr"}>
       <div className="max-w-6xl mx-auto px-4">
         {/* Header */}
         <div className="mb-8">
@@ -440,11 +451,7 @@ const UploadOrders: React.FC = () => {
             </div>
             <div>
               <h1 className="text-3xl font-bold text-gray-900">{translate("uploadOrders")}</h1>
-              <p className="text-gray-600 mt-1">
-                {translate("shopifyInstructions")}
-                <br />
-                <span className="text-sm">{translate("shopifyInstructionsAr")}</span>
-              </p>
+              <p className="text-gray-600 mt-1">{translate("shopifyInstructions")}</p>
             </div>
           </div>
         </div>
@@ -560,7 +567,9 @@ const UploadOrders: React.FC = () => {
                           style={{ width: `${uploadProgress}%` }}
                         ></div>
                       </div>
-                      <p className="text-sm text-blue-600 mt-2">{uploadProgress}% complete</p>
+                      <p className="text-sm text-blue-600 mt-2">
+                        {uploadProgress}% {tl("مكتمل", "complete")}
+                      </p>
                     </div>
                   )}
 
@@ -601,7 +610,7 @@ const UploadOrders: React.FC = () => {
             {/* Stats Cards */}
             {preview.length > 0 && (
               <div className="bg-white rounded-2xl shadow-sm border p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">File Statistics</h3>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">{tl("إحصائيات الملف", "File Statistics")}</h3>
                 <div className="space-y-4">
                   <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
                     <div className="flex items-center gap-2">
@@ -613,7 +622,7 @@ const UploadOrders: React.FC = () => {
                   <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
                     <div className="flex items-center gap-2">
                       <CheckCircle className="w-5 h-5 text-green-600" />
-                      <span className="text-sm font-medium text-green-800">Paid Orders</span>
+                      <span className="text-sm font-medium text-green-800">{tl("الطلبات المدفوعة", "Paid Orders")}</span>
                     </div>
                     <span className="text-lg font-bold text-green-900">
                       {preview.filter((order) => order.payment_status === "paid").length}
@@ -622,7 +631,7 @@ const UploadOrders: React.FC = () => {
                   <div className="flex items-center justify-between p-3 bg-orange-50 rounded-lg">
                     <div className="flex items-center gap-2">
                       <CreditCard className="w-5 h-5 text-orange-600" />
-                      <span className="text-sm font-medium text-orange-800">COD Orders</span>
+                      <span className="text-sm font-medium text-orange-800">{tl("طلبات الدفع عند التسليم", "COD Orders")}</span>
                     </div>
                     <span className="text-lg font-bold text-orange-900">
                       {preview.filter((order) => order.payment_status === "cod").length}
@@ -645,49 +654,55 @@ const UploadOrders: React.FC = () => {
             <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl border border-blue-200 p-6">
               <div className="flex items-center gap-2 mb-4">
                 <Info className="w-5 h-5 text-blue-600" />
-                <h3 className="text-lg font-semibold text-blue-900">Payment Detection</h3>
+                <h3 className="text-lg font-semibold text-blue-900">{tl("كشف الدفع", "Payment Detection")}</h3>
               </div>
               <div className="space-y-3 text-sm text-blue-800">
                 <div className="flex items-start gap-2">
                   <ArrowRight className="w-4 h-4 mt-0.5 text-blue-600" />
                   <span>
-                    <strong>Paymob (Paid):</strong> Paymob, Visa, Credit, Mastercard, Sympl, Installment
+                    <strong>{tl("Paymob (مدفوع):", "Paymob (Paid):")}</strong> Paymob, Visa, Credit, Mastercard, Sympl,
+                    Installment
                   </span>
                 </div>
                 <div className="flex items-start gap-2">
                   <ArrowRight className="w-4 h-4 mt-0.5 text-blue-600" />
                   <span>
-                    <strong>ValU (Paid):</strong> ValU payments
+                    <strong>{tl("ValU (مدفوع):", "ValU (Paid):")}</strong> {tl("مدفوعات ValU", "ValU payments")}
                   </span>
                 </div>
                 <div className="flex items-start gap-2">
                   <ArrowRight className="w-4 h-4 mt-0.5 text-blue-600" />
                   <span>
-                    <strong>Other Paid:</strong> Fawry, Card, Vodafone Cash, Orange Cash, InstaPay, PayPal, Stripe
+                    <strong>{tl("مدفوعات أخرى:", "Other Paid:")}</strong> Fawry, Card, Vodafone Cash, Orange Cash,
+                    InstaPay, PayPal, Stripe
                   </span>
                 </div>
                 <div className="flex items-start gap-2">
                   <ArrowRight className="w-4 h-4 mt-0.5 text-blue-600" />
                   <span>
-                    <strong>Paid Status:</strong> Contains "paid", "completed", "success", "successful"
+                    <strong>{tl("حالة الدفع:", "Paid Status:")}</strong> {tl("يحتوي على", "Contains")} "paid",
+                    "completed", "success", "successful"
                   </span>
                 </div>
                 <div className="flex items-start gap-2">
                   <ArrowRight className="w-4 h-4 mt-0.5 text-blue-600" />
                   <span>
-                    <strong>COD:</strong> Contains "cod", "cash on delivery", or empty/cash
+                    <strong>{tl("الدفع عند التسليم:", "COD:")}</strong> {tl("يحتوي على", "Contains")} "cod", "cash on
+                    delivery", {tl("أو فارغ/نقدي", "or empty/cash")}
                   </span>
                 </div>
                 <div className="flex items-start gap-2">
                   <ArrowRight className="w-4 h-4 mt-0.5 text-blue-600" />
                   <span>
-                    <strong>Pending:</strong> Contains "pending", "processing", "awaiting"
+                    <strong>{tl("معلق:", "Pending:")}</strong> {tl("يحتوي على", "Contains")} "pending", "processing",
+                    "awaiting"
                   </span>
                 </div>
                 <div className="flex items-start gap-2">
                   <ArrowRight className="w-4 h-4 mt-0.5 text-blue-600" />
                   <span>
-                    <strong>Failed Payments:</strong> Treated as COD - "failed", "cancelled", "declined"
+                    <strong>{tl("المدفوعات الفاشلة:", "Failed Payments:")}</strong>{" "}
+                    {tl("تُعامل كدفع عند التسليم", "Treated as COD")} - "failed", "cancelled", "declined"
                   </span>
                 </div>
               </div>
@@ -765,7 +780,7 @@ const UploadOrders: React.FC = () => {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       <div className="flex items-center gap-2">
                         <DollarSign className="w-4 h-4" />
-                        الحالة المالية
+                        {tl("الحالة المالية", "Financial Status")}
                       </div>
                     </th>
                   </tr>

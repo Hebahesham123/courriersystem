@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { createPortal } from "react-dom"
 import { X, DollarSign, CreditCard, Save, RefreshCw, Trash2 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
+import { useLanguage } from "../../contexts/LanguageContext"
 
 interface SplitPaymentModalProps {
   orderId: string
@@ -16,12 +17,12 @@ interface SplitPaymentModalProps {
 }
 
 const PAYMENT_METHODS = [
-  { value: "cash", label: "Cash / كاش" },
-  { value: "paymob", label: "Paymob" },
-  { value: "instapay", label: "Instapay" },
-  { value: "valu", label: "Valu" },
-  { value: "card", label: "Card / بطاقة" },
-  { value: "wallet", label: "Wallet / محفظة" },
+  { value: "cash", ar: "نقدي", en: "Cash" },
+  { value: "paymob", ar: "Paymob", en: "Paymob" },
+  { value: "instapay", ar: "Instapay", en: "Instapay" },
+  { value: "valu", ar: "Valu", en: "Valu" },
+  { value: "card", ar: "بطاقة", en: "Card" },
+  { value: "wallet", ar: "محفظة", en: "Wallet" },
 ]
 
 const SplitPaymentModal: React.FC<SplitPaymentModalProps> = ({
@@ -33,6 +34,9 @@ const SplitPaymentModal: React.FC<SplitPaymentModalProps> = ({
   onClose,
   onSaved,
 }) => {
+  const { language } = useLanguage()
+  const tl = (ar: string, en: string) => (language === 'ar' ? ar : en)
+
   const [amount, setAmount] = useState<string>(
     currentPrepaidAmount ? String(currentPrepaidAmount) : "",
   )
@@ -97,7 +101,7 @@ const SplitPaymentModal: React.FC<SplitPaymentModalProps> = ({
         setMethod(mtd || "")
         setLastAt(at)
       } catch (e: any) {
-        if (active) setError(e?.message || "Failed to load / فشل التحميل")
+        if (active) setError(e?.message || tl("فشل التحميل", "Failed to load"))
       } finally {
         if (active) setResolving(false)
       }
@@ -116,15 +120,15 @@ const SplitPaymentModal: React.FC<SplitPaymentModalProps> = ({
     setError(null)
 
     if (parsedAmount <= 0) {
-      setError("Amount must be greater than 0 / المبلغ يجب أن يكون أكبر من 0")
+      setError(tl("المبلغ يجب أن يكون أكبر من 0", "Amount must be greater than 0"))
       return
     }
     if (parsedAmount > orderTotal) {
-      setError("Amount cannot exceed order total / المبلغ لا يمكن أن يتجاوز إجمالي الطلب")
+      setError(tl("المبلغ لا يمكن أن يتجاوز إجمالي الطلب", "Amount cannot exceed order total"))
       return
     }
     if (!method) {
-      setError("Please select a payment method / يرجى اختيار طريقة الدفع")
+      setError(tl("يرجى اختيار طريقة الدفع", "Please select a payment method"))
       return
     }
 
@@ -146,14 +150,14 @@ const SplitPaymentModal: React.FC<SplitPaymentModalProps> = ({
       onSaved?.()
       onClose()
     } catch (e: any) {
-      setError(e?.message || "Failed to save / فشل الحفظ")
+      setError(e?.message || tl("فشل الحفظ", "Failed to save"))
     } finally {
       setSaving(false)
     }
   }
 
   const handleClear = async () => {
-    if (!window.confirm("Clear the prepaid split payment? / مسح الدفع المسبق؟")) return
+    if (!window.confirm(tl("مسح الدفع المسبق؟", "Clear the prepaid split payment?"))) return
     setSaving(true)
     setError(null)
     try {
@@ -170,7 +174,7 @@ const SplitPaymentModal: React.FC<SplitPaymentModalProps> = ({
       onSaved?.()
       onClose()
     } catch (e: any) {
-      setError(e?.message || "Failed to clear / فشل المسح")
+      setError(e?.message || tl("فشل المسح", "Failed to clear"))
     } finally {
       setSaving(false)
     }
@@ -189,12 +193,12 @@ const SplitPaymentModal: React.FC<SplitPaymentModalProps> = ({
         <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-5 py-4 flex items-center justify-between text-white">
           <div className="flex items-center gap-2">
             <DollarSign className="w-5 h-5" />
-            <h3 className="font-semibold">Split Payment / دفع مقسم</h3>
+            <h3 className="font-semibold">{tl("دفع مقسم", "Split Payment")}</h3>
           </div>
           <button
             onClick={onClose}
             className="p-1 rounded-full hover:bg-white/20 transition"
-            aria-label="Close"
+            aria-label={tl("إغلاق", "Close")}
           >
             <X className="w-5 h-5" />
           </button>
@@ -203,13 +207,13 @@ const SplitPaymentModal: React.FC<SplitPaymentModalProps> = ({
         {/* Body */}
         <div className="p-5 space-y-4">
           <div className="bg-gray-50 rounded-lg p-3 flex justify-between items-center">
-            <span className="text-sm text-gray-600 font-medium">Order total / إجمالي الطلب</span>
+            <span className="text-sm text-gray-600 font-medium">{tl("إجمالي الطلب", "Order total")}</span>
             <span className="text-lg font-bold text-gray-900">{orderTotal.toFixed(2)} EGP</span>
           </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Amount already paid / المبلغ المدفوع
+              {tl("المبلغ المدفوع", "Amount already paid")}
             </label>
             <div className="relative">
               <input
@@ -231,7 +235,7 @@ const SplitPaymentModal: React.FC<SplitPaymentModalProps> = ({
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Payment method / طريقة الدفع
+              {tl("طريقة الدفع", "Payment method")}
             </label>
             <div className="relative">
               <CreditCard className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -241,10 +245,10 @@ const SplitPaymentModal: React.FC<SplitPaymentModalProps> = ({
                 disabled={resolving}
                 className="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base bg-white disabled:bg-gray-100"
               >
-                <option value="">-- Select / اختر --</option>
+                <option value="">{tl("-- اختر --", "-- Select --")}</option>
                 {PAYMENT_METHODS.map((m) => (
                   <option key={m.value} value={m.value}>
-                    {m.label}
+                    {tl(m.ar, m.en)}
                   </option>
                 ))}
               </select>
@@ -253,7 +257,7 @@ const SplitPaymentModal: React.FC<SplitPaymentModalProps> = ({
 
           <div className="border-t border-dashed border-gray-200 pt-3 flex justify-between items-center">
             <span className="text-sm text-gray-600 font-medium">
-              Courier will collect / يحصل المندوب
+              {tl("يحصل المندوب", "Courier will collect")}
             </span>
             <span className="text-xl font-bold text-green-600">{remaining.toFixed(2)} EGP</span>
           </div>
@@ -261,13 +265,13 @@ const SplitPaymentModal: React.FC<SplitPaymentModalProps> = ({
           {resolving && (
             <p className="text-xs text-gray-500 flex items-center gap-1.5">
               <RefreshCw className="w-3 h-3 animate-spin" />
-              Loading current value… / جارٍ تحميل القيمة الحالية…
+              {tl("جارٍ تحميل القيمة الحالية…", "Loading current value…")}
             </p>
           )}
 
           {lastAt && !resolving && (
             <p className="text-xs text-gray-500">
-              Last updated:{" "}
+              {tl("آخر تحديث:", "Last updated:")}{" "}
               {new Date(lastAt).toLocaleString("en-GB", {
                 day: "2-digit",
                 month: "short",
@@ -294,7 +298,7 @@ const SplitPaymentModal: React.FC<SplitPaymentModalProps> = ({
               className="flex items-center gap-1.5 px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg text-sm font-medium transition disabled:opacity-50"
             >
               <Trash2 className="w-4 h-4" />
-              Clear
+              {tl("مسح", "Clear")}
             </button>
           ) : (
             <span />
@@ -305,7 +309,7 @@ const SplitPaymentModal: React.FC<SplitPaymentModalProps> = ({
               disabled={saving}
               className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 text-sm font-medium transition disabled:opacity-50"
             >
-              Cancel
+              {tl("إلغاء", "Cancel")}
             </button>
             <button
               onClick={handleSave}
@@ -317,7 +321,7 @@ const SplitPaymentModal: React.FC<SplitPaymentModalProps> = ({
               ) : (
                 <Save className="w-4 h-4" />
               )}
-              {saving ? "Saving..." : "Save"}
+              {saving ? tl("جارٍ الحفظ...", "Saving...") : tl("حفظ", "Save")}
             </button>
           </div>
         </div>

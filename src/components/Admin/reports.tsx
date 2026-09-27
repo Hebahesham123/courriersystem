@@ -38,9 +38,10 @@ import { supabase } from "../../lib/supabase"
 import Papa from "papaparse"
 import { saveAs } from "file-saver"
 import { useAuth } from "../../contexts/AuthContext" // Import useAuth
+import { useLanguage } from "../../contexts/LanguageContext"
 
 // Utility function to render notes with clickable links
-const renderNotesWithLinks = (notes: string) => {
+const renderNotesWithLinks = (notes: string, tl: (ar: string, en: string) => string) => {
   // Regular expression to detect URLs (including Google Maps links)
   const urlRegex = /(https?:\/\/[^\s]+)/g;
   
@@ -64,7 +65,7 @@ const renderNotesWithLinks = (notes: string) => {
               ? 'text-blue-600 hover:text-blue-800 font-medium' 
               : 'text-blue-500 hover:text-blue-700'
           }`}
-          title={isGoogleMaps ? "فتح في خرائط جوجل" : "فتح الرابط"}
+          title={isGoogleMaps ? tl("فتح في خرائط جوجل", "Open in Google Maps") : tl("فتح الرابط", "Open link")}
         >
           {isGoogleMaps ? "📍 " + part : part}
         </a>
@@ -254,6 +255,24 @@ const Reports: React.FC = () => {
     setShowNotifications,
   } = useAuth() // Consume from AuthContext
 
+  const { language } = useLanguage()
+  const tl = (ar: string, en: string) => (language === 'ar' ? ar : en)
+
+  // Bilingual status labels (statusConfig above keeps colors/icons)
+  const statusLabels: Record<string, [string, string]> = {
+    assigned: ["مكلف", "Assigned"],
+    delivered: ["تم التوصيل", "Delivered"],
+    canceled: ["ملغي", "Canceled"],
+    partial: ["جزئي", "Partial"],
+    hand_to_hand: ["استبدال", "Exchange"],
+    return: ["مرتجع", "Returned"],
+    card: ["بطاقة", "Card"],
+  }
+  const getStatusLabel = (status: string) => {
+    const l = statusLabels[status]
+    return l ? tl(l[0], l[1]) : status
+  }
+
   const [couriers, setCouriers] = useState<Courier[]>([])
   const [selectedCouriers, setSelectedCouriers] = useState<Courier[]>([])
   const [orders, setOrders] = useState<Order[]>([])
@@ -287,69 +306,69 @@ const Reports: React.FC = () => {
 
   const translate = (key: string) => {
     const translations: Record<string, string> = {
-      courierReports: "تقارير المندوبين",
-      couriers: "المندوبين",
-      loadingCouriers: "جاري تحميل المندوبين...",
-      selectCourier: "اختر مندوب",
-      loadingOrders: "جاري تحميل الطلبات...",
-      noOrders: "لا توجد طلبات",
-      exportCSV: "تصدير CSV",
-      orderId: "رقم الطلب",
-      status: "الحالة",
-      customer: "العميل",
-      address: "العنوان",
-      phone: "الهاتف",
-      totalFees: "المبلغ الإجمالي",
-      deliveryFee: "رسوم التوصيل",
-      paymentMethod: "طريقة الدفع",
-      partialPaidAmount: "المبلغ المدفوع جزئياً",
-      collectedBy: "تم التحصيل بواسطة",
-      internalComment: "تعليق داخلي",
-      notes: "ملاحظات",
-      proofImages: "صور الإثبات",
-      createdAt: "تاريخ الإنشاء",
-      updatedAt: "تاريخ التحديث",
-      clickToOpen: "اضغط لفتح الصورة كاملة",
-      noImages: "لا توجد صور",
-      totalOrders: "إجمالي الطلبات",
-      deliveredOrders: "الطلبات المسلمة",
-      returnedOrders: "الطلبات المرتجعة",
-      canceledOrders: "الطلبات الملغاة",
-      totalAmount: "المبلغ الإجمالي",
-      deliveredAmount: "المبلغ المسلم",
-      averageOrderValue: "متوسط قيمة الطلب",
-      completionRate: "معدل الإنجاز",
-      searchOrders: "البحث في الطلبات...",
-      filterByStatus: "تصفية حسب الحالة",
-      allStatuses: "جميع الحالات",
-      dateFrom: "من تاريخ",
-      dateTo: "إلى تاريخ",
-      clearFilters: "مسح المرشحات",
-      resetToToday: "العودة لليوم",
-      viewDetails: "عرض التفاصيل",
-      orderDetails: "تفاصيل الطلب",
-      close: "إغلاق",
-      refresh: "تحديث",
-      courierPerformance: "أداء المندوب",
-      ordersOverview: "نظرة عامة على الطلبات",
-      noExportData: "لا توجد بيانات للتصدير",
-      exportSuccess: "تم تصدير البيانات بنجاح",
-      archivedOrders: "الطلبات المؤرشفة",
-      activeOrders: "الطلبات النشطة",
-      archive: "أرشيف",
-      viewArchive: "عرض الأرشيف",
-      backToActive: "العودة للطلبات النشطة",
-      notifications: "الإشعارات",
-      soundOn: "تشغيل الصوت",
-      soundOff: "إيقاف الصوت",
-      newOrder: "طلب جديد",
-      orderUpdated: "تم تحديث الطلب",
-      statusChanged: "تغيير حالة الطلب",
-      orderEdited: "تم تعديل الطلب", // New translation
-      showingToday: "عرض طلبات اليوم",
-      showingDateRange: "عرض النطاق المحدد",
-      allDates: "جميع التواريخ",
-      unspecified: "غير محدد", // New translation for undefined status
+      courierReports: tl("تقارير المندوبين", "Courier Reports"),
+      couriers: tl("المندوبين", "Couriers"),
+      loadingCouriers: tl("جاري تحميل المندوبين...", "Loading couriers..."),
+      selectCourier: tl("اختر مندوب", "Select a courier"),
+      loadingOrders: tl("جاري تحميل الطلبات...", "Loading orders..."),
+      noOrders: tl("لا توجد طلبات", "No orders"),
+      exportCSV: tl("تصدير CSV", "Export CSV"),
+      orderId: tl("رقم الطلب", "Order ID"),
+      status: tl("الحالة", "Status"),
+      customer: tl("العميل", "Customer"),
+      address: tl("العنوان", "Address"),
+      phone: tl("الهاتف", "Phone"),
+      totalFees: tl("المبلغ الإجمالي", "Total Amount"),
+      deliveryFee: tl("رسوم التوصيل", "Delivery Fee"),
+      paymentMethod: tl("طريقة الدفع", "Payment Method"),
+      partialPaidAmount: tl("المبلغ المدفوع جزئياً", "Partial Paid Amount"),
+      collectedBy: tl("تم التحصيل بواسطة", "Collected By"),
+      internalComment: tl("تعليق داخلي", "Internal Comment"),
+      notes: tl("ملاحظات", "Notes"),
+      proofImages: tl("صور الإثبات", "Proof Images"),
+      createdAt: tl("تاريخ الإنشاء", "Created At"),
+      updatedAt: tl("تاريخ التحديث", "Updated At"),
+      clickToOpen: tl("اضغط لفتح الصورة كاملة", "Click to open full image"),
+      noImages: tl("لا توجد صور", "No images"),
+      totalOrders: tl("إجمالي الطلبات", "Total Orders"),
+      deliveredOrders: tl("الطلبات المسلمة", "Delivered Orders"),
+      returnedOrders: tl("الطلبات المرتجعة", "Returned Orders"),
+      canceledOrders: tl("الطلبات الملغاة", "Canceled Orders"),
+      totalAmount: tl("المبلغ الإجمالي", "Total Amount"),
+      deliveredAmount: tl("المبلغ المسلم", "Delivered Amount"),
+      averageOrderValue: tl("متوسط قيمة الطلب", "Average Order Value"),
+      completionRate: tl("معدل الإنجاز", "Completion Rate"),
+      searchOrders: tl("البحث في الطلبات...", "Search orders..."),
+      filterByStatus: tl("تصفية حسب الحالة", "Filter by status"),
+      allStatuses: tl("جميع الحالات", "All statuses"),
+      dateFrom: tl("من تاريخ", "From date"),
+      dateTo: tl("إلى تاريخ", "To date"),
+      clearFilters: tl("مسح المرشحات", "Clear Filters"),
+      resetToToday: tl("العودة لليوم", "Back to Today"),
+      viewDetails: tl("عرض التفاصيل", "View Details"),
+      orderDetails: tl("تفاصيل الطلب", "Order Details"),
+      close: tl("إغلاق", "Close"),
+      refresh: tl("تحديث", "Refresh"),
+      courierPerformance: tl("أداء المندوب", "Courier Performance"),
+      ordersOverview: tl("نظرة عامة على الطلبات", "Orders Overview"),
+      noExportData: tl("لا توجد بيانات للتصدير", "No data to export"),
+      exportSuccess: tl("تم تصدير البيانات بنجاح", "Data exported successfully"),
+      archivedOrders: tl("الطلبات المؤرشفة", "Archived Orders"),
+      activeOrders: tl("الطلبات النشطة", "Active Orders"),
+      archive: tl("أرشيف", "Archive"),
+      viewArchive: tl("عرض الأرشيف", "View Archive"),
+      backToActive: tl("العودة للطلبات النشطة", "Back to Active Orders"),
+      notifications: tl("الإشعارات", "Notifications"),
+      soundOn: tl("تشغيل الصوت", "Sound On"),
+      soundOff: tl("إيقاف الصوت", "Sound Off"),
+      newOrder: tl("طلب جديد", "New Order"),
+      orderUpdated: tl("تم تحديث الطلب", "Order Updated"),
+      statusChanged: tl("تغيير حالة الطلب", "Status Changed"),
+      orderEdited: tl("تم تعديل الطلب", "Order Edited"), // New translation
+      showingToday: tl("عرض طلبات اليوم", "Showing today's orders"),
+      showingDateRange: tl("عرض النطاق المحدد", "Showing selected range"),
+      allDates: tl("جميع التواريخ", "All dates"),
+      unspecified: tl("غير محدد", "Unspecified"), // New translation for undefined status
     }
     return translations[key] || key
   }
@@ -472,7 +491,7 @@ const Reports: React.FC = () => {
       if (couriers[0]) calculateStats(couriers[0].id, dateRange.start, dateRange.end)
       addDebugInfo(`Loaded ${ordersWithCourierNames.length} orders for selected couriers`)
     } catch (error: any) {
-      alert("Error loading orders / خطأ في تحميل الطلبات: " + error.message)
+      alert(tl("خطأ في تحميل الطلبات: ", "Error loading orders: ") + error.message)
       addDebugInfo(`Error loading orders: ${error.message}`)
     } finally {
       setLoadingOrders(false)
@@ -609,7 +628,7 @@ const Reports: React.FC = () => {
           timestamp: order.updated_at || order.created_at,
         }))
 
-        let finalOutcome = "Still Returned"
+        let finalOutcome = tl("لا يزال مرتجع", "Still Returned")
         let wasDelivered = false
         let wasCanceled = false
         let wasPartial = false
@@ -617,25 +636,25 @@ const Reports: React.FC = () => {
 
         if (finalOrder.status === "delivered") {
           returnedThenDelivered++
-          finalOutcome = "Recovered - Delivered"
+          finalOutcome = tl("تم الاسترداد - تم التوصيل", "Recovered - Delivered")
           wasDelivered = true
         } else if (finalOrder.status === "canceled") {
           returnedThenCanceled++
-          finalOutcome = "Lost - Canceled"
+          finalOutcome = tl("خسارة - ملغي", "Lost - Canceled")
           wasCanceled = true
         } else if (finalOrder.status === "partial") {
           returnedThenPartial++
-          finalOutcome = "Partially Recovered"
+          finalOutcome = tl("استرداد جزئي", "Partially Recovered")
           wasPartial = true
         } else if (finalOrder.status === "return") {
           stillReturned = true
-          finalOutcome = "Still Returned"
+          finalOutcome = tl("لا يزال مرتجع", "Still Returned")
         }
 
         returnedOrdersDetails.push({
           orderId: firstOrder.id,
           orderNumber: firstOrder.order_id || firstOrder.id,
-          customerName: firstOrder.customer_name || "Unknown",
+          customerName: firstOrder.customer_name || tl("غير معروف", "Unknown"),
           totalFees: firstOrder.total_order_fees || 0,
           currentStatus: finalOrder.status,
           statusHistory,
@@ -688,7 +707,7 @@ const Reports: React.FC = () => {
       const statusOrders = activeOrders.filter((o) => o.status === status)
       const revenue = statusOrders.reduce((sum, o) => sum + (o.total_order_fees || 0), 0)
       return {
-        status: statusConfig[status]?.label || status,
+        status: getStatusLabel(status),
         count,
         percentage: totalOrders > 0 ? (count / totalOrders) * 100 : 0,
         revenue,
@@ -885,7 +904,7 @@ const Reports: React.FC = () => {
         className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium border ${config.bgColor} ${config.color}`}
       >
         <StatusIcon className="w-3 h-3" />
-        <span>{config.label}</span>
+        <span>{getStatusLabel(status)}</span>
       </div>
     )
   }
@@ -927,10 +946,10 @@ const Reports: React.FC = () => {
       return translate("showingToday")
     }
     if (dateRange.start && dateRange.end && dateRange.start === dateRange.end) {
-      return `طلبات يوم ${dateRange.start}`
+      return tl(`طلبات يوم ${dateRange.start}`, `Orders of ${dateRange.start}`)
     }
     if (dateRange.start || dateRange.end) {
-      return `${dateRange.start || "البداية"} - ${dateRange.end || "النهاية"}`
+      return `${dateRange.start || tl("البداية", "Start")} - ${dateRange.end || tl("النهاية", "End")}`
     }
     return translate("allDates") // Fallback if no dates selected
   }
@@ -947,7 +966,7 @@ const Reports: React.FC = () => {
               </div>
               <div>
                 <h1 className="text-lg font-bold text-gray-900">{translate("courierReports")}</h1>
-                <p className="text-xs text-gray-600">تقارير أداء المندوبين والطلبات</p>
+                <p className="text-xs text-gray-600">{tl("تقارير أداء المندوبين والطلبات", "Courier and order performance reports")}</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
@@ -972,14 +991,14 @@ const Reports: React.FC = () => {
                         <h3 className="font-semibold text-gray-900">{translate("notifications")}</h3>
                         {notifications.length > 0 && (
                           <button onClick={clearAllNotifications} className="text-sm text-red-600 hover:text-red-800">
-                            مسح الكل
+                            {tl("مسح الكل", "Clear all")}
                           </button>
                         )}
                       </div>
                     </div>
                     <div className="max-h-80 overflow-y-auto">
                       {notifications.length === 0 ? (
-                        <div className="p-4 text-center text-gray-500">لا توجد إشعارات جديدة</div>
+                        <div className="p-4 text-center text-gray-500">{tl("لا توجد إشعارات جديدة", "No new notifications")}</div>
                       ) : (
                         notifications.map((notification) => (
                           <div
@@ -991,10 +1010,10 @@ const Reports: React.FC = () => {
                               <div className="flex-1">
                                 <p className="text-sm text-gray-900">{notification.message}</p>
                                 {notification.courierName && (
-                                  <p className="text-xs text-gray-600 mt-1">المندوب: {notification.courierName}</p>
+                                  <p className="text-xs text-gray-600 mt-1">{tl("المندوب", "Courier")}: {notification.courierName}</p>
                                 )}
                                 <p className="text-xs text-gray-500 mt-1">
-                                  {notification.timestamp.toLocaleTimeString("ar-EG")}
+                                  {notification.timestamp.toLocaleTimeString("en-US")}
                                 </p>
                               </div>
                             </div>
@@ -1151,7 +1170,7 @@ const Reports: React.FC = () => {
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <TrendingUp className="w-4 h-4 text-green-600" />
-                          <h3 className="text-sm font-semibold text-gray-900">أداء المندوب</h3>
+                          <h3 className="text-sm font-semibold text-gray-900">{tl("أداء المندوب", "Courier Performance")}</h3>
                         </div>
                         <div className="flex items-center gap-1.5 text-xs text-gray-600">
                           <Calendar className="w-3 h-3" />
@@ -1274,7 +1293,7 @@ const Reports: React.FC = () => {
                               </p>
                             </div>
                           </div>
-                          <p className="text-xs font-medium text-pink-800">معدل الإلغاء</p>
+                          <p className="text-xs font-medium text-pink-800">{tl("معدل الإلغاء", "Cancellation Rate")}</p>
                         </div>
 
                         <div className="bg-cyan-50 border border-cyan-200 rounded-lg p-3">
@@ -1288,7 +1307,7 @@ const Reports: React.FC = () => {
                               </p>
                             </div>
                           </div>
-                          <p className="text-xs font-medium text-cyan-800">الطلبات الجزئية</p>
+                          <p className="text-xs font-medium text-cyan-800">{tl("الطلبات الجزئية", "Partial Orders")}</p>
                         </div>
                       </div>
                     </div>
@@ -1298,35 +1317,35 @@ const Reports: React.FC = () => {
                       <div className="mt-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg border border-purple-200 p-3">
                         <div className="flex items-center gap-2 mb-3">
                           <Activity className="w-4 h-4 text-purple-600" />
-                          <h4 className="text-sm font-bold text-gray-900">تحليل دورة حياة الطلبات المرتجعة</h4>
+                          <h4 className="text-sm font-bold text-gray-900">{tl("تحليل دورة حياة الطلبات المرتجعة", "Returned Orders Lifecycle Analysis")}</h4>
                         </div>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                           <div className="bg-white rounded-lg p-2 border border-purple-200">
                             <p className="text-lg font-bold text-gray-900">{courierStats.lifecycleStats.totalReturnedOrders}</p>
-                            <p className="text-xs text-gray-600">إجمالي المرتجعات</p>
+                            <p className="text-xs text-gray-600">{tl("إجمالي المرتجعات", "Total Returns")}</p>
                             <p className="text-xs text-gray-500">
                               {courierStats.totalOrders > 0 ? ((courierStats.lifecycleStats.totalReturnedOrders / courierStats.totalOrders) * 100).toFixed(1) : 0}%
                             </p>
                           </div>
                           <div className="bg-white rounded-lg p-2 border border-green-200">
                             <p className="text-lg font-bold text-green-600">{courierStats.lifecycleStats.returnedThenDelivered}</p>
-                            <p className="text-xs text-gray-600">مرتجع → تم التوصيل</p>
+                            <p className="text-xs text-gray-600">{tl("مرتجع → تم التوصيل", "Returned → Delivered")}</p>
                             <p className="text-xs text-green-600 font-semibold">
-                              {courierStats.lifecycleStats.returnedThenDeliveredPercentage.toFixed(1)}% استرداد
+                              {courierStats.lifecycleStats.returnedThenDeliveredPercentage.toFixed(1)}% {tl("استرداد", "recovery")}
                             </p>
                           </div>
                           <div className="bg-white rounded-lg p-2 border border-red-200">
                             <p className="text-lg font-bold text-red-600">{courierStats.lifecycleStats.returnedThenCanceled}</p>
-                            <p className="text-xs text-gray-600">مرتجع → ملغي</p>
+                            <p className="text-xs text-gray-600">{tl("مرتجع → ملغي", "Returned → Canceled")}</p>
                             <p className="text-xs text-red-600 font-semibold">
-                              {courierStats.lifecycleStats.returnedThenCanceledPercentage.toFixed(1)}% خسارة
+                              {courierStats.lifecycleStats.returnedThenCanceledPercentage.toFixed(1)}% {tl("خسارة", "loss")}
                             </p>
                           </div>
                           <div className="bg-white rounded-lg p-2 border border-orange-200">
                             <p className="text-lg font-bold text-orange-600">{courierStats.lifecycleStats.returnedThenPartial || 0}</p>
-                            <p className="text-xs text-gray-600">مرتجع → جزئي</p>
+                            <p className="text-xs text-gray-600">{tl("مرتجع → جزئي", "Returned → Partial")}</p>
                             <p className="text-xs text-orange-600 font-semibold">
-                              {courierStats.lifecycleStats.totalReturnedOrders > 0 ? ((courierStats.lifecycleStats.returnedThenPartial / courierStats.lifecycleStats.totalReturnedOrders) * 100).toFixed(1) : 0}% جزئي
+                              {courierStats.lifecycleStats.totalReturnedOrders > 0 ? ((courierStats.lifecycleStats.returnedThenPartial / courierStats.lifecycleStats.totalReturnedOrders) * 100).toFixed(1) : 0}% {tl("جزئي", "partial")}
                             </p>
                           </div>
                         </div>
@@ -1338,7 +1357,7 @@ const Reports: React.FC = () => {
                       <div className="mt-3 bg-white rounded-lg border border-gray-200 p-3">
                         <h4 className="text-sm font-bold text-gray-900 mb-2 flex items-center gap-1.5">
                           <BarChart3 className="w-4 h-4 text-blue-600" />
-                          توزيع الحالات
+                          {tl("توزيع الحالات", "Status Distribution")}
                         </h4>
                         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2">
                           {courierStats.statusDistribution.map((status, index) => (
@@ -1346,7 +1365,7 @@ const Reports: React.FC = () => {
                               <p className="text-lg font-bold text-gray-900">{status.count}</p>
                               <p className="text-xs font-semibold text-gray-700">{status.status}</p>
                               <p className="text-xs text-gray-500">{status.percentage.toFixed(1)}%</p>
-                              <p className="text-xs text-green-600 font-semibold">{status.revenue.toFixed(0)} ج.م</p>
+                              <p className="text-xs text-green-600 font-semibold">{status.revenue.toFixed(0)} {tl("ج.م", "EGP")}</p>
                             </div>
                           ))}
                         </div>
@@ -1358,7 +1377,7 @@ const Reports: React.FC = () => {
                       <div className="mt-3 bg-white rounded-lg border border-gray-200 p-3">
                         <h4 className="text-sm font-bold text-gray-900 mb-2 flex items-center gap-1.5">
                           <CreditCard className="w-4 h-4 text-green-600" />
-                          طرق الدفع
+                          {tl("طرق الدفع", "Payment Methods")}
                         </h4>
                         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
                           {courierStats.paymentMethodStats.map((method, index) => (
@@ -1366,7 +1385,7 @@ const Reports: React.FC = () => {
                               <p className="text-lg font-bold text-gray-900">{method.count}</p>
                               <p className="text-xs font-semibold text-gray-700">{method.method}</p>
                               <p className="text-xs text-gray-500">{method.percentage.toFixed(1)}%</p>
-                              <p className="text-xs text-green-600 font-semibold">{method.revenue.toFixed(0)} ج.م</p>
+                              <p className="text-xs text-green-600 font-semibold">{method.revenue.toFixed(0)} {tl("ج.م", "EGP")}</p>
                             </div>
                           ))}
                         </div>
@@ -1378,7 +1397,7 @@ const Reports: React.FC = () => {
                       <div className="mt-3 bg-white rounded-lg border border-gray-200 p-3">
                         <h4 className="text-sm font-bold text-gray-900 mb-2 flex items-center gap-1.5">
                           <Activity className="w-4 h-4 text-purple-600" />
-                          تدفق الحالات
+                          {tl("تدفق الحالات", "Status Flow")}
                         </h4>
                         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
                           {courierStats.statusFlow.slice(0, 12).map((flow, index) => {
@@ -1388,14 +1407,14 @@ const Reports: React.FC = () => {
                               <div key={index} className="bg-gray-50 rounded-lg p-2 border border-gray-200">
                                 <div className="flex items-center gap-1 mb-0.5">
                                   <div className={`w-1.5 h-1.5 rounded-full ${fromConfig.bgColor.replace('bg-', 'bg-').replace('-50', '-500')}`}></div>
-                                  <span className="text-xs font-medium text-gray-700">{fromConfig.label}</span>
+                                  <span className="text-xs font-medium text-gray-700">{getStatusLabel(flow.from)}</span>
                                 </div>
                                 <div className="flex items-center justify-center my-0.5">
                                   <ArrowUpRight className="w-2.5 h-2.5 text-gray-400" />
                                 </div>
                                 <div className="flex items-center gap-1 mb-0.5">
                                   <div className={`w-1.5 h-1.5 rounded-full ${toConfig.bgColor.replace('bg-', 'bg-').replace('-50', '-500')}`}></div>
-                                  <span className="text-xs font-medium text-gray-700">{toConfig.label}</span>
+                                  <span className="text-xs font-medium text-gray-700">{getStatusLabel(flow.to)}</span>
                                 </div>
                                 <div className="text-center mt-1">
                                   <span className="text-sm font-bold text-gray-900">{flow.count}</span>
@@ -1413,7 +1432,7 @@ const Reports: React.FC = () => {
                       <div className="mt-3 bg-white rounded-lg border border-purple-200 p-3">
                         <h4 className="text-sm font-bold text-gray-900 mb-2 flex items-center gap-1.5">
                           <Package className="w-4 h-4 text-purple-600" />
-                          تفاصيل الطلبات المرتجعة ({courierStats.returnedOrdersDetails.length})
+                          {tl("تفاصيل الطلبات المرتجعة", "Returned Orders Details")} ({courierStats.returnedOrdersDetails.length})
                         </h4>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-80 overflow-y-auto">
                           {courierStats.returnedOrdersDetails.map((order, index) => {
@@ -1436,12 +1455,12 @@ const Reports: React.FC = () => {
                                     {order.finalOutcome}
                                   </span>
                                 </div>
-                                <p className="text-xs font-semibold text-gray-700 mb-1">{order.totalFees.toFixed(0)} ج.م</p>
+                                <p className="text-xs font-semibold text-gray-700 mb-1">{order.totalFees.toFixed(0)} {tl("ج.م", "EGP")}</p>
                                 <div className="space-y-0.5">
                                   {order.statusHistory.slice(-3).map((history, idx) => (
                                     <div key={idx} className="flex items-center gap-1 text-xs">
                                       <div className={`w-1 h-1 rounded-full ${statusConfig[history.status]?.bgColor.replace('bg-', 'bg-').replace('-50', '-500') || 'bg-gray-500'}`}></div>
-                                      <span className="text-gray-600">{statusConfig[history.status]?.label || history.status}</span>
+                                      <span className="text-gray-600">{getStatusLabel(history.status)}</span>
                                     </div>
                                   ))}
                                 </div>
@@ -1460,7 +1479,7 @@ const Reports: React.FC = () => {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <Filter className="w-4 h-4 text-blue-600" />
-                        <h3 className="text-sm font-semibold text-gray-900">البحث والتصفية</h3>
+                        <h3 className="text-sm font-semibold text-gray-900">{tl("البحث والتصفية", "Search & Filter")}</h3>
                       </div>
                       <div className="flex items-center gap-1.5 text-xs text-gray-600">
                         <Calendar className="w-3 h-3" />
@@ -1472,7 +1491,7 @@ const Reports: React.FC = () => {
                     {/* Compact Search and Date Row */}
                     <div className="flex flex-wrap items-end gap-2 mb-3">
                       <div className="flex-1 min-w-[200px]">
-                        <label className="block text-xs font-medium text-gray-700 mb-1">البحث</label>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">{tl("بحث", "Search")}</label>
                         <div className="relative">
                           <Search className="w-3.5 h-3.5 text-gray-400 absolute right-2 top-2" />
                           <input
@@ -1487,7 +1506,7 @@ const Reports: React.FC = () => {
 
                       <div className="flex items-center gap-2">
                         <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">من</label>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">{tl("من", "From")}</label>
                           <input
                             type="date"
                             value={dateRange.start}
@@ -1497,7 +1516,7 @@ const Reports: React.FC = () => {
                         </div>
                         <span className="text-gray-400 text-xs mb-1">-</span>
                         <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">إلى</label>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">{tl("إلى", "To")}</label>
                           <input
                             type="date"
                             value={dateRange.end}
@@ -1510,7 +1529,7 @@ const Reports: React.FC = () => {
 
                     {/* Compact Status Filters - Horizontal */}
                     <div className="mb-3">
-                      <label className="block text-xs font-medium text-gray-700 mb-1.5">الحالات:</label>
+                      <label className="block text-xs font-medium text-gray-700 mb-1.5">{tl("الحالات:", "Statuses:")}</label>
                       <div className="flex flex-wrap gap-2">
                         {["assigned", "delivered", "canceled", "partial", "hand_to_hand", "return"].map(status => (
                           <label key={status} className="flex items-center gap-1.5 cursor-pointer px-2 py-1 bg-gray-50 rounded hover:bg-gray-100 transition-colors">
@@ -1526,7 +1545,7 @@ const Reports: React.FC = () => {
                               }}
                               className="form-checkbox h-3.5 w-3.5 text-blue-600 border-gray-300 rounded"
                             />
-                            <span className="text-xs">{statusConfig[status]?.label || status}</span>
+                            <span className="text-xs">{getStatusLabel(status)}</span>
                           </label>
                         ))}
                       </div>
@@ -1578,7 +1597,7 @@ const Reports: React.FC = () => {
                         </h3>
                       </div>
                       <div className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full text-xs font-medium">
-                        {filteredOrders.length} طلب
+                        {filteredOrders.length} {tl("طلب", "orders")}
                       </div>
                     </div>
                   </div>
@@ -1598,7 +1617,7 @@ const Reports: React.FC = () => {
                           )}
                         </div>
                         <h3 className="text-lg font-semibold text-gray-800 mb-2">{translate("noOrders")}</h3>
-                        <p className="text-gray-600">جرب تعديل مرشحات البحث أو اختيار تاريخ آخر</p>
+                        <p className="text-gray-600">{tl("جرب تعديل مرشحات البحث أو اختيار تاريخ آخر", "Try adjusting the search filters or choosing another date")}</p>
                       </div>
                     ) : (
                       <div className="space-y-2">
@@ -1643,7 +1662,7 @@ const Reports: React.FC = () => {
                                 >
                                   <Phone className={`w-3 h-3 ${statusStyle.color} opacity-70`} />
                                   <div>
-                                    <p className={`text-xs ${statusStyle.color} opacity-70`}>الهاتف</p>
+                                    <p className={`text-xs ${statusStyle.color} opacity-70`}>{tl("الهاتف", "Phone")}</p>
                                     <a
                                       href={`tel:${order.mobile_number}`}
                                       className={`text-xs font-medium ${statusStyle.color} hover:opacity-80`}
@@ -1658,9 +1677,9 @@ const Reports: React.FC = () => {
                                 >
                                   <DollarSign className={`w-3 h-3 ${statusStyle.color} opacity-70`} />
                                   <div>
-                                    <p className={`text-xs ${statusStyle.color} opacity-70`}>المبلغ</p>
+                                    <p className={`text-xs ${statusStyle.color} opacity-70`}>{tl("المبلغ", "Amount")}</p>
                                     <p className={`text-xs font-medium ${statusStyle.color}`}>
-                                      {order.total_order_fees.toFixed(0)} ج.م
+                                      {order.total_order_fees.toFixed(0)} {tl("ج.م", "EGP")}
                                     </p>
                                   </div>
                                 </div>
@@ -1670,7 +1689,7 @@ const Reports: React.FC = () => {
                                 >
                                   <CreditCard className={`w-3 h-3 ${statusStyle.color} opacity-70`} />
                                   <div>
-                                    <p className={`text-xs ${statusStyle.color} opacity-70`}>الدفع</p>
+                                    <p className={`text-xs ${statusStyle.color} opacity-70`}>{tl("الدفع", "Payment")}</p>
                                     <p className={`text-xs font-medium ${statusStyle.color}`}>{order.payment_method}</p>
                                   </div>
                                 </div>
@@ -1681,13 +1700,13 @@ const Reports: React.FC = () => {
                                   <Calendar className={`w-3 h-3 ${statusStyle.color} opacity-70`} />
                                   <div>
                                     <p className={`text-xs ${statusStyle.color} opacity-70`}>
-                                      {viewMode === "active" ? "التاريخ" : "الأرشفة"}
+                                      {viewMode === "active" ? tl("التاريخ", "Date") : tl("الأرشفة", "Archived")}
                                     </p>
                                     <p className={`text-xs font-medium ${statusStyle.color}`}>
                                       {viewMode === "active"
-                                        ? new Date(order.created_at).toLocaleDateString("ar-EG")
+                                        ? new Date(order.created_at).toLocaleDateString("en-US")
                                         : order.archived_at
-                                          ? new Date(order.archived_at).toLocaleDateString("ar-EG")
+                                          ? new Date(order.archived_at).toLocaleDateString("en-US")
                                           : "-"}
                                     </p>
                                   </div>
@@ -1699,7 +1718,7 @@ const Reports: React.FC = () => {
                                   >
                                     <Camera className={`w-3 h-3 ${statusStyle.color} opacity-70`} />
                                     <div>
-                                      <p className={`text-xs ${statusStyle.color} opacity-70`}>الصور</p>
+                                      <p className={`text-xs ${statusStyle.color} opacity-70`}>{tl("الصور", "Images")}</p>
                                       <p className={`text-xs font-medium ${statusStyle.color}`}>
                                         {order.order_proofs.length}
                                       </p>
@@ -1712,7 +1731,7 @@ const Reports: React.FC = () => {
                                 >
                                   <MapPin className={`w-3 h-3 ${statusStyle.color} opacity-70 mt-0.5`} />
                                   <div className="flex-1 min-w-0">
-                                    <p className={`text-xs ${statusStyle.color} opacity-70`}>العنوان</p>
+                                    <p className={`text-xs ${statusStyle.color} opacity-70`}>{tl("العنوان", "Address")}</p>
                                     <p className={`text-xs font-medium ${statusStyle.color} truncate`}>
                                       {order.address}
                                     </p>
@@ -1724,9 +1743,9 @@ const Reports: React.FC = () => {
                                   >
                                     <User className={`w-3 h-3 ${statusStyle.color} opacity-70`} />
                                     <div>
-                                      <p className={`text-xs ${statusStyle.color} opacity-70`}>المندوب</p>
+                                      <p className={`text-xs ${statusStyle.color} opacity-70`}>{tl("المندوب", "Courier")}</p>
                                       <p className={`text-xs font-medium ${statusStyle.color}`}>
-                                        {order.courier_name || "غير محدد"}
+                                        {order.courier_name || tl("غير محدد", "Unspecified")}
                                       </p>
                                     </div>
                                   </div>
@@ -1755,7 +1774,7 @@ const Reports: React.FC = () => {
                   <div className="space-y-2">
                     <h3 className="text-xl font-semibold text-gray-800">{translate("selectCourier")}</h3>
                     <p className="text-gray-600 max-w-md mx-auto">
-                      اختر مندوب من القائمة الجانبية لعرض طلباته وأدائه التفصيلي
+                      {tl("اختر مندوب من القائمة الجانبية لعرض طلباته وأدائه التفصيلي", "Select a courier from the side list to view their orders and detailed performance")}
                     </p>
                   </div>
                 </div>
@@ -1780,7 +1799,7 @@ const Reports: React.FC = () => {
                     {selectedOrder.archived && (
                       <div className="flex items-center gap-2 mt-2">
                         <Archive className="w-4 h-4" />
-                        <span className="text-sm">طلب مؤرشف</span>
+                        <span className="text-sm">{tl("طلب مؤرشف", "Archived order")}</span>
                       </div>
                     )}
                   </div>
@@ -1837,7 +1856,7 @@ const Reports: React.FC = () => {
                       <div className="flex items-center gap-2">
                         <DollarSign className="w-5 h-5 text-green-600" />
                         <span className="text-2xl font-bold text-green-700">
-                          {selectedOrder.total_order_fees.toFixed(2)} ج.م
+                          {selectedOrder.total_order_fees.toFixed(2)} {tl("ج.م", "EGP")}
                         </span>
                       </div>
                     </div>
@@ -1847,7 +1866,7 @@ const Reports: React.FC = () => {
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                           {translate("deliveryFee")}
                         </label>
-                        <span className="text-gray-900 font-medium">{selectedOrder.delivery_fee.toFixed(2)} ج.م</span>
+                        <span className="text-gray-900 font-medium">{selectedOrder.delivery_fee.toFixed(2)} {tl("ج.م", "EGP")}</span>
                       </div>
                     )}
 
@@ -1888,7 +1907,7 @@ const Reports: React.FC = () => {
                     {selectedOrder.notes && (
                       <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
                         <label className="block text-sm font-medium text-blue-700 mb-2">{translate("notes")}</label>
-                        <div className="text-gray-900">{renderNotesWithLinks(selectedOrder.notes)}</div>
+                        <div className="text-gray-900">{renderNotesWithLinks(selectedOrder.notes, tl)}</div>
                       </div>
                     )}
                   </div>
@@ -1928,20 +1947,20 @@ const Reports: React.FC = () => {
                     <div className="flex items-center gap-2">
                       <Clock className="w-4 h-4" />
                       <span>
-                        {translate("createdAt")}: {new Date(selectedOrder.created_at).toLocaleString("ar-EG")}
+                        {translate("createdAt")}: {new Date(selectedOrder.created_at).toLocaleString("en-US")}
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
                       <Clock className="w-4 h-4" />
                       <span>
-                        {translate("updatedAt")}: {new Date(selectedOrder.updated_at).toLocaleString("ar-EG")}
+                        {translate("updatedAt")}: {new Date(selectedOrder.updated_at).toLocaleString("en-US")}
                       </span>
                       
                     </div>
                     {selectedOrder.archived_at && (
                       <div className="flex items-center gap-2">
                         <Archive className="w-4 h-4" />
-                        <span>تاريخ الأرشفة: {new Date(selectedOrder.archived_at).toLocaleString("ar-EG")}</span>
+                        <span>{tl("تاريخ الأرشفة", "Archived at")}: {new Date(selectedOrder.archived_at).toLocaleString("en-US")}</span>
                       </div>
                     )}
                   </div>

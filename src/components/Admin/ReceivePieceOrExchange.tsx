@@ -19,6 +19,7 @@ import {
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
 import { useAuth } from "../../contexts/AuthContext"
+import { useLanguage } from "../../contexts/LanguageContext"
 import { OrderDetailModal } from "./OrderDetailModal"
 
 interface Order {
@@ -43,8 +44,10 @@ interface Courier {
 
 const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
   const { user } = useAuth()
+  const { language } = useLanguage()
+  const tl = (ar: string, en: string) => (language === 'ar' ? ar : en)
   const navigate = useNavigate()
-  
+
   const handleBack = () => {
     if (onBack) {
       onBack()
@@ -144,7 +147,7 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
       setOrders(mapped)
     } catch (err: any) {
       console.error("Error fetching orders:", err)
-      setError(err.message || "خطأ في جلب الطلبات")
+      setError(err.message || tl("خطأ في جلب الطلبات", "Error fetching orders"))
     } finally {
       setLoading(false)
     }
@@ -177,7 +180,7 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
       // If removing (setting to null), remove from local state
       if (status === null) {
         setOrders((prev) => prev.filter((order) => order.id !== orderId))
-        setSuccessMessage("تم إزالة الطلب من القائمة")
+        setSuccessMessage(tl("تم إزالة الطلب من القائمة", "Order removed from the list"))
       } else {
         // If adding/changing, update in local state or add if not present
         setOrders((prev) => {
@@ -193,12 +196,15 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
           }
         })
         setSuccessMessage(
-          `تم تحديث حالة الطلب إلى ${status === "receive_piece" ? "استلام قطعه" : "تبديل"}`
+          tl(
+            `تم تحديث حالة الطلب إلى ${status === "receive_piece" ? "استلام قطعه" : "تبديل"}`,
+            `Order status updated to ${status === "receive_piece" ? "Receive Piece" : "Exchange"}`
+          )
         )
       }
     } catch (err: any) {
       console.error("Error updating order status:", err)
-      setError(err.message || "خطأ في تحديث حالة الطلب")
+      setError(err.message || tl("خطأ في تحديث حالة الطلب", "Error updating order status"))
     }
   }
 
@@ -239,7 +245,7 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
       setAvailableOrders(mapped)
     } catch (err: any) {
       console.error("Error searching orders:", err)
-      setError(err.message || "خطأ في البحث")
+      setError(err.message || tl("خطأ في البحث", "Search error"))
     } finally {
       setLoadingAvailableOrders(false)
     }
@@ -480,16 +486,16 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
         )
       }
 
-      setSuccessMessage(courierId ? `تم تعيين المندوب ${courier?.name}` : "تم إلغاء تعيين المندوب")
+      setSuccessMessage(courierId ? tl(`تم تعيين المندوب ${courier?.name}`, `Courier ${courier?.name} assigned`) : tl("تم إلغاء تعيين المندوب", "Courier unassigned"))
     } catch (err: any) {
       console.error("Error assigning courier:", err)
-      setError(err.message || "خطأ في تعيين المندوب")
+      setError(err.message || tl("خطأ في تعيين المندوب", "Error assigning courier"))
     }
   }
 
   const handleBulkAssign = async () => {
     if (!selectedCourier) {
-      setError("يرجى اختيار مندوب")
+      setError(tl("يرجى اختيار مندوب", "Please select a courier"))
       return
     }
 
@@ -498,7 +504,7 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
     )
 
     if (unassignedOrders.length === 0) {
-      setError("لا توجد طلبات غير معينة")
+      setError(tl("لا توجد طلبات غير معينة", "No unassigned orders"))
       return
     }
 
@@ -716,11 +722,11 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
 
       const courier = couriers.find((c) => c.id === selectedCourier)
       await fetchOrders()
-      setSuccessMessage(`تم تعيين ${unassignedOrders.length} طلب إلى ${courier?.name}`)
+      setSuccessMessage(tl(`تم تعيين ${unassignedOrders.length} طلب إلى ${courier?.name}`, `${unassignedOrders.length} orders assigned to ${courier?.name}`))
       setSelectedCourier("")
     } catch (err: any) {
       console.error("Error bulk assigning:", err)
-      setError(err.message || "خطأ في تعيين المندوبين")
+      setError(err.message || tl("خطأ في تعيين المندوبين", "Error assigning couriers"))
     } finally {
       setAssignLoading(false)
     }
@@ -728,12 +734,12 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
 
   const handleAssignSelected = async (courierId: string) => {
     if (selectedOrderIds.length === 0) {
-      setError("يرجى اختيار طلبات أولاً")
+      setError(tl("يرجى اختيار طلبات أولاً", "Please select orders first"))
       return
     }
 
     if (!courierId) {
-      setError("يرجى اختيار مندوب")
+      setError(tl("يرجى اختيار مندوب", "Please select a courier"))
       return
     }
 
@@ -751,11 +757,11 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
 
       const courier = couriers.find((c) => c.id === courierId)
       await fetchOrders()
-      setSuccessMessage(`تم تعيين ${selectedOrderIds.length} طلب إلى ${courier?.name}`)
+      setSuccessMessage(tl(`تم تعيين ${selectedOrderIds.length} طلب إلى ${courier?.name}`, `${selectedOrderIds.length} orders assigned to ${courier?.name}`))
       setSelectedOrderIds([])
     } catch (err: any) {
       console.error("Error assigning selected orders:", err)
-      setError(err.message || "خطأ في تعيين الطلبات")
+      setError(err.message || tl("خطأ في تعيين الطلبات", "Error assigning orders"))
     } finally {
       setAssignSelectedLoading(false)
     }
@@ -789,10 +795,10 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
       if (updateError) throw updateError
 
       setOrders((prev) => prev.filter((o) => !selectedOrderIds.includes(o.id)))
-      setSuccessMessage(`تم إزالة ${selectedOrderIds.length} طلب من القائمة`)
+      setSuccessMessage(tl(`تم إزالة ${selectedOrderIds.length} طلب من القائمة`, `${selectedOrderIds.length} orders removed from the list`))
       setSelectedOrderIds([])
     } catch (err: any) {
-      setError(err.message || "خطأ في حذف الطلبات")
+      setError(err.message || tl("خطأ في حذف الطلبات", "Error removing orders"))
     } finally {
       setBulkRemoveLoading(false)
     }
@@ -818,7 +824,7 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <RefreshCw className="w-8 h-8 animate-spin mx-auto text-blue-600 mb-4" />
-          <p className="text-gray-600">جاري التحميل...</p>
+          <p className="text-gray-600">{tl("جارٍ التحميل...", "Loading...")}</p>
         </div>
       </div>
     )
@@ -834,11 +840,11 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
             className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
           >
             <ArrowRight className="w-5 h-5" />
-            <span>رجوع</span>
+            <span>{tl("رجوع", "Back")}</span>
           </button>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">استلام قطعه أو تبديل</h1>
-            <p className="text-sm text-gray-600 mt-1">إدارة طلبات الاستلام والتبديل</p>
+            <h1 className="text-2xl font-bold text-gray-900">{tl("استلام قطعه أو تبديل", "Receive Piece or Exchange")}</h1>
+            <p className="text-sm text-gray-600 mt-1">{tl("إدارة طلبات الاستلام والتبديل", "Manage receive and exchange orders")}</p>
           </div>
         </div>
         <button
@@ -846,7 +852,7 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
           className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
         >
           <RefreshCw className="w-4 h-4" />
-          تحديث
+          {tl("تحديث", "Refresh")}
         </button>
       </div>
 
@@ -875,7 +881,7 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
         <div className="flex items-center justify-between gap-4 flex-wrap">
           {/* Date Filter */}
           <div className="flex items-center gap-2">
-            <label className="text-sm font-medium text-gray-700">التاريخ:</label>
+            <label className="text-sm font-medium text-gray-700">{tl("التاريخ:", "Date:")}</label>
             <div className="relative">
               <button
                 ref={datePickerButtonRef}
@@ -892,7 +898,7 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
                 <span className="text-sm text-gray-700">
                   {dateRange.from && dateRange.to
                     ? `${dateRange.from} - ${dateRange.to}`
-                    : "الكل"}
+                    : tl("الكل", "All")}
                 </span>
               </button>
               {showDatePicker && datePickerPos && (
@@ -908,7 +914,7 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
                     <div className="space-y-3">
                       <div>
                         <label className="block text-xs font-medium text-gray-700 mb-1">
-                          من (From)
+                          {tl("من", "From")}
                         </label>
                         <input
                           type="date"
@@ -921,7 +927,7 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
                       </div>
                       <div>
                         <label className="block text-xs font-medium text-gray-700 mb-1">
-                          إلى (To)
+                          {tl("إلى", "To")}
                         </label>
                         <input
                           type="date"
@@ -940,7 +946,7 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
                           }}
                           className="flex-1 px-3 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm transition-colors"
                         >
-                          الكل
+                          {tl("الكل", "All")}
                         </button>
                         <button
                           onClick={() => {
@@ -959,7 +965,7 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
                           }}
                           className="flex-1 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm transition-colors"
                         >
-                          اليوم
+                          {tl("اليوم", "Today")}
                         </button>
                         <button
                           onClick={() => {
@@ -979,13 +985,13 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
                           }}
                           className="flex-1 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm transition-colors"
                         >
-                          آخر 3 أشهر
+                          {tl("آخر 3 أشهر", "Last 3 months")}
                         </button>
                         <button
                           onClick={() => setShowDatePicker(false)}
                           className="flex-1 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm transition-colors"
                         >
-                          تطبيق
+                          {tl("تطبيق", "Apply")}
                         </button>
                       </div>
                     </div>
@@ -999,7 +1005,7 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
             className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
           >
             <Plus className="w-4 h-4" />
-            إضافة طلب
+            {tl("إضافة طلب", "Add Order")}
           </button>
         </div>
 
@@ -1012,7 +1018,7 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
               type="text"
               value={listSearchQuery}
               onChange={(e) => setListSearchQuery(e.target.value)}
-              placeholder="بحث في القائمة (رقم الطلب، اسم العميل، رقم الهاتف)..."
+              placeholder={tl("بحث في القائمة (رقم الطلب، اسم العميل، رقم الهاتف)...", "Search the list (order number, customer name, phone number)...")}
               className="w-full pr-10 pl-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
             />
             {listSearchQuery && (
@@ -1034,14 +1040,14 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
               <div className="flex items-center gap-3">
                 <CheckCircle className="w-5 h-5 text-blue-600" />
                 <span className="font-semibold text-gray-900">
-                  {selectedOrderIds.length} طلب محدد
+                  {tl(`${selectedOrderIds.length} طلب محدد`, `${selectedOrderIds.length} orders selected`)}
                 </span>
               </div>
               <button
                 onClick={() => setSelectedOrderIds([])}
                 className="text-sm text-gray-600 hover:text-gray-900"
               >
-                إلغاء التحديد
+                {tl("إلغاء التحديد", "Clear selection")}
               </button>
             </div>
             <div className="space-y-3">
@@ -1056,14 +1062,14 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
                 ) : (
                   <Trash2 className="w-4 h-4" />
                 )}
-                إزالة {selectedOrderIds.length} طلب من القائمة
+                {tl(`إزالة ${selectedOrderIds.length} طلب من القائمة`, `Remove ${selectedOrderIds.length} orders from the list`)}
               </button>
 
               <div className="pt-3 border-t border-blue-200">
                 <div className="flex items-center gap-4">
                   <div className="flex-1">
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      أو تعيين جميع الطلبات المحددة إلى مندوب واحد:
+                      {tl("أو تعيين جميع الطلبات المحددة إلى مندوب واحد:", "Or assign all selected orders to one courier:")}
                     </label>
                     <select
                       onChange={(e) => {
@@ -1074,7 +1080,7 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       defaultValue=""
                     >
-                      <option value="">اختر المندوب</option>
+                      <option value="">{tl("اختر المندوب", "Select courier")}</option>
                       {couriers.map((courier) => (
                         <option key={courier.id} value={courier.id}>
                           {courier.name}
@@ -1084,7 +1090,7 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
                   </div>
                 </div>
                 <p className="text-sm text-gray-600 mt-2">
-                  أو قم بتعيين كل طلب إلى مندوب مختلف من خلال القائمة أدناه:
+                  {tl("أو قم بتعيين كل طلب إلى مندوب مختلف من خلال القائمة أدناه:", "Or assign each order to a different courier from the list below:")}
                 </p>
               </div>
             </div>
@@ -1096,14 +1102,14 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
           <div className="flex items-center gap-4">
             <div className="flex-1">
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                تعيين جميع الطلبات غير المعينة إلى مندوب:
+                {tl("تعيين جميع الطلبات غير المعينة إلى مندوب:", "Assign all unassigned orders to a courier:")}
               </label>
               <select
                 value={selectedCourier}
                 onChange={(e) => setSelectedCourier(e.target.value)}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="">اختر المندوب</option>
+                <option value="">{tl("اختر المندوب", "Select courier")}</option>
                 {couriers.map((courier) => (
                   <option key={courier.id} value={courier.id}>
                     {courier.name}
@@ -1121,7 +1127,7 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
               ) : (
                 <UserPlus className="w-4 h-4" />
               )}
-              تعيين الكل
+              {tl("تعيين الكل", "Assign All")}
             </button>
           </div>
         </div>
@@ -1140,7 +1146,7 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
           />
           <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-xl border border-gray-200 p-6 z-50 w-full max-w-2xl max-h-[80vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-gray-900">إضافة طلب</h3>
+              <h3 className="text-lg font-bold text-gray-900">{tl("إضافة طلب", "Add Order")}</h3>
               <button
                 onClick={() => {
                   setShowAddOrderModal(false)
@@ -1156,7 +1162,7 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  البحث عن طلب (رقم الطلب، اسم العميل، أو رقم الهاتف):
+                  {tl("البحث عن طلب (رقم الطلب، اسم العميل، أو رقم الهاتف):", "Search for an order (order number, customer name, or phone number):")}
                 </label>
                 <div className="relative">
                   <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -1164,7 +1170,7 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
                     type="text"
                     value={searchQuery}
                     onChange={(e) => handleSearchOrders(e.target.value)}
-                    placeholder="ابحث..."
+                    placeholder={tl("ابحث...", "Search...")}
                     className="w-full border border-gray-300 rounded-lg px-10 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -1196,13 +1202,13 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
                           onClick={() => handleAddOrder(order.id, "receive_piece")}
                           className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 transition-colors"
                         >
-                          استلام قطعه
+                          {tl("استلام قطعه", "Receive Piece")}
                         </button>
                         <button
                           onClick={() => handleAddOrder(order.id, "exchange")}
                           className="px-3 py-1.5 bg-orange-600 text-white text-xs rounded-lg hover:bg-orange-700 transition-colors"
                         >
-                          تبديل
+                          {tl("تبديل", "Exchange")}
                         </button>
                       </div>
                     </div>
@@ -1211,7 +1217,7 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
               )}
 
               {searchQuery.length >= 2 && !loadingAvailableOrders && availableOrders.length === 0 && (
-                <p className="text-center text-gray-500 py-4">لا توجد نتائج</p>
+                <p className="text-center text-gray-500 py-4">{tl("لا توجد نتائج", "No results")}</p>
               )}
             </div>
           </div>
@@ -1227,11 +1233,11 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
               <Package className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-blue-900">استلام قطعه</h2>
+              <h2 className="text-xl font-bold text-blue-900">{tl("استلام قطعه", "Receive Piece")}</h2>
               <p className="text-sm text-blue-700">
                 {listSearchQuery
-                  ? `${receivePieceOrders.length} من ${orders.filter(o => o.receive_piece_or_exchange === "receive_piece").length} طلب`
-                  : `${receivePieceOrders.length} طلب`}
+                  ? tl(`${receivePieceOrders.length} من ${orders.filter(o => o.receive_piece_or_exchange === "receive_piece").length} طلب`, `${receivePieceOrders.length} of ${orders.filter(o => o.receive_piece_or_exchange === "receive_piece").length} orders`)
+                  : tl(`${receivePieceOrders.length} طلب`, `${receivePieceOrders.length} orders`)}
               </p>
             </div>
           </div>
@@ -1240,8 +1246,8 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
             {receivePieceOrders.length === 0 ? (
               <p className="text-blue-600 text-center py-8">
                 {listSearchQuery
-                  ? "لا توجد نتائج تطابق الفلتر الحالي"
-                  : "لا توجد طلبات"}
+                  ? tl("لا توجد نتائج تطابق الفلتر الحالي", "No results match the current filter")
+                  : tl("لا توجد طلبات", "No orders")}
               </p>
             ) : (
               <>
@@ -1254,7 +1260,7 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
                       className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-4 h-4"
                     />
                     <span className="text-xs text-blue-700 font-medium">
-                      تحديد الكل ({receivePieceOrders.length})
+                      {tl(`تحديد الكل (${receivePieceOrders.length})`, `Select all (${receivePieceOrders.length})`)}
                     </span>
                   </div>
                 )}
@@ -1304,11 +1310,11 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
               <Package className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-orange-900">تبديل</h2>
+              <h2 className="text-xl font-bold text-orange-900">{tl("تبديل", "Exchange")}</h2>
               <p className="text-sm text-orange-700">
                 {listSearchQuery
-                  ? `${exchangeOrders.length} من ${orders.filter(o => o.receive_piece_or_exchange === "exchange").length} طلب`
-                  : `${exchangeOrders.length} طلب`}
+                  ? tl(`${exchangeOrders.length} من ${orders.filter(o => o.receive_piece_or_exchange === "exchange").length} طلب`, `${exchangeOrders.length} of ${orders.filter(o => o.receive_piece_or_exchange === "exchange").length} orders`)
+                  : tl(`${exchangeOrders.length} طلب`, `${exchangeOrders.length} orders`)}
               </p>
             </div>
           </div>
@@ -1317,8 +1323,8 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
             {exchangeOrders.length === 0 ? (
               <p className="text-orange-600 text-center py-8">
                 {listSearchQuery
-                  ? "لا توجد نتائج تطابق الفلتر الحالي"
-                  : "لا توجد طلبات"}
+                  ? tl("لا توجد نتائج تطابق الفلتر الحالي", "No results match the current filter")
+                  : tl("لا توجد طلبات", "No orders")}
               </p>
             ) : (
               <>
@@ -1331,7 +1337,7 @@ const ReceivePieceOrExchange: React.FC<{ onBack?: () => void }> = ({ onBack }) =
                       className="rounded border-gray-300 text-orange-600 focus:ring-orange-500 w-4 h-4"
                     />
                     <span className="text-xs text-orange-700 font-medium">
-                      تحديد الكل ({exchangeOrders.length})
+                      {tl(`تحديد الكل (${exchangeOrders.length})`, `Select all (${exchangeOrders.length})`)}
                     </span>
                   </div>
                 )}
@@ -1433,6 +1439,8 @@ const OrderCard: React.FC<OrderCardProps> = ({
   onToggleSelect,
   showQuickAssign = false,
 }) => {
+  const { language } = useLanguage()
+  const tl = (ar: string, en: string) => (language === 'ar' ? ar : en)
   const [showActions, setShowActions] = useState(false)
   const [selectedCourier, setSelectedCourier] = useState<string>(order.assigned_courier_id || "")
 
@@ -1490,7 +1498,7 @@ const OrderCard: React.FC<OrderCardProps> = ({
             <p className="text-sm text-gray-700 mb-1">{order.address}</p>
             <p className="text-xs text-gray-600">{order.mobile_number}</p>
             <p className={`text-sm font-semibold ${classes.text} mt-2`}>
-              {order.total_order_fees.toFixed(2)} ج.م
+              {order.total_order_fees.toFixed(2)} {tl("ج.م", "EGP")}
             </p>
           </div>
         </div>
@@ -1500,7 +1508,7 @@ const OrderCard: React.FC<OrderCardProps> = ({
             setShowActions(!showActions)
           }}
           className="p-2 hover:bg-white/50 rounded-lg transition-colors"
-          title={showActions ? "إخفاء الإعدادات" : "إظهار الإعدادات"}
+          title={showActions ? tl("إخفاء الإعدادات", "Hide settings") : tl("إظهار الإعدادات", "Show settings")}
         >
           {showActions ? (
             <X className={`w-4 h-4 ${classes.text}`} />
@@ -1521,7 +1529,7 @@ const OrderCard: React.FC<OrderCardProps> = ({
           )}
           {isSelected && showQuickAssign && (
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">تعيين إلى:</label>
+              <label className="block text-xs font-medium text-gray-700 mb-1">{tl("تعيين إلى:", "Assign to:")}</label>
               <select
                 value={order.assigned_courier_id || ""}
                 onChange={(e) => {
@@ -1530,7 +1538,7 @@ const OrderCard: React.FC<OrderCardProps> = ({
                 onClick={(e) => e.stopPropagation()}
                 className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
               >
-                <option value="">اختر المندوب</option>
+                <option value="">{tl("اختر المندوب", "Select courier")}</option>
                 {couriers.map((courier) => (
                   <option key={courier.id} value={courier.id}>
                     {courier.name}
@@ -1548,7 +1556,7 @@ const OrderCard: React.FC<OrderCardProps> = ({
           onClick={(e) => e.stopPropagation()}
         >
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">تغيير الحالة:</label>
+            <label className="block text-xs font-medium text-gray-700 mb-1">{tl("تغيير الحالة:", "Change status:")}</label>
             <div className="flex gap-2">
               <button
                 onClick={(e) => {
@@ -1558,7 +1566,7 @@ const OrderCard: React.FC<OrderCardProps> = ({
                 }}
                 className={`flex-1 px-3 py-1.5 text-xs ${order.receive_piece_or_exchange === "receive_piece" ? "bg-blue-600 text-white" : "bg-blue-100 text-blue-700"} rounded-lg transition-colors`}
               >
-                استلام قطعه
+                {tl("استلام قطعه", "Receive Piece")}
               </button>
               <button
                 onClick={(e) => {
@@ -1568,13 +1576,13 @@ const OrderCard: React.FC<OrderCardProps> = ({
                 }}
                 className={`flex-1 px-3 py-1.5 text-xs ${order.receive_piece_or_exchange === "exchange" ? "bg-orange-600 text-white" : "bg-orange-100 text-orange-700"} rounded-lg transition-colors`}
               >
-                تبديل
+                {tl("تبديل", "Exchange")}
               </button>
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">تعيين مندوب:</label>
+            <label className="block text-xs font-medium text-gray-700 mb-1">{tl("تعيين مندوب:", "Assign courier:")}</label>
             <select
               value={selectedCourier}
               onChange={(e) => {
@@ -1585,7 +1593,7 @@ const OrderCard: React.FC<OrderCardProps> = ({
               onClick={(e) => e.stopPropagation()}
               className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              <option value="">لا يوجد</option>
+              <option value="">{tl("لا يوجد", "None")}</option>
               {couriers.map((courier) => (
                 <option key={courier.id} value={courier.id}>
                   {courier.name}
@@ -1603,7 +1611,7 @@ const OrderCard: React.FC<OrderCardProps> = ({
             className="w-full flex items-center justify-center gap-2 px-3 py-1.5 bg-red-600 text-white text-xs rounded-lg hover:bg-red-700 transition-colors"
           >
             <Trash2 className="w-3 h-3" />
-            إزالة من القائمة
+            {tl("إزالة من القائمة", "Remove from list")}
           </button>
         </div>
       )}

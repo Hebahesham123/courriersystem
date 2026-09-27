@@ -26,6 +26,7 @@ import {
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
 import SplitPaymentModal from "./SplitPaymentModal"
+import { useLanguage } from "../../contexts/LanguageContext"
 
 interface OrderItem {
   id: string
@@ -120,6 +121,25 @@ interface OrderHistoryEntry {
 }
 
 const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onUpdate }) => {
+  const { language } = useLanguage()
+  const tl = (ar: string, en: string) => (language === 'ar' ? ar : en)
+  const statusText = (s?: string) => {
+    const key = (s || '').toLowerCase().trim()
+    const map: Record<string, string> = {
+      delivered: tl('تم التوصيل', 'Delivered'),
+      pending: tl('قيد الانتظار', 'Pending'),
+      assigned: tl('معين', 'Assigned'),
+      canceled: tl('ملغي', 'Canceled'),
+      cancelled: tl('ملغي', 'Canceled'),
+      partial: tl('جزئي', 'Partial'),
+      return: tl('مرتجع', 'Returned'),
+      returned: tl('مرتجع', 'Returned'),
+      exchange: tl('تبديل', 'Exchange'),
+      void: tl('ملغي', 'Void'),
+      voided: tl('ملغي', 'Void'),
+    }
+    return map[key] || s || ''
+  }
   const [orderItems, setOrderItems] = useState<OrderItem[]>([])
   const [loadingItems, setLoadingItems] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -151,7 +171,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
   }
 
   const handleRemoveItem = async (itemId: string) => {
-    if (!confirm('Are you sure you want to remove this item? You can restore it later. / هل أنت متأكد من حذف هذا الصنف؟ يمكنك استعادته لاحقاً.')) {
+    if (!confirm(tl('هل أنت متأكد من حذف هذا الصنف؟ يمكنك استعادته لاحقاً.', 'Are you sure you want to remove this item? You can restore it later.'))) {
       return
     }
 
@@ -203,10 +223,10 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
       }))
       if (onUpdate) onUpdate()
       
-      alert('Item removed and total updated successfully. You can restore it anytime. / تم حذف الصنف وتحديث الإجمالي بنجاح. يمكنك استعادته في أي وقت.')
+      alert(tl('تم حذف الصنف وتحديث الإجمالي بنجاح. يمكنك استعادته في أي وقت.', 'Item removed and total updated successfully. You can restore it anytime.'))
     } catch (e: any) {
       console.error('Error removing item:', e)
-      alert(`Error: ${e.message}`)
+      alert(`${tl('خطأ', 'Error')}: ${e.message}`)
     } finally {
       setRemovingItemId(null)
     }
@@ -270,10 +290,10 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
       }))
       if (onUpdate) onUpdate()
       
-      alert('Item restored and total updated successfully. / تم استعادة الصنف وتحديث الإجمالي بنجاح.')
+      alert(tl('تم استعادة الصنف وتحديث الإجمالي بنجاح.', 'Item restored and total updated successfully.'))
     } catch (e: any) {
       console.error('Error restoring item:', e)
-      alert(`Error: ${e.message}`)
+      alert(`${tl('خطأ', 'Error')}: ${e.message}`)
     } finally {
       setRestoringItemId(null)
     }
@@ -303,7 +323,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
       if (onUpdate) onUpdate()
     } catch (err: any) {
       console.error('Error updating item fulfillment:', err)
-      alert('فشل تحديث حالة تنفيذ الصنف / Failed to update item fulfillment')
+      alert(tl('فشل تحديث حالة تنفيذ الصنف', 'Failed to update item fulfillment'))
     } finally {
       setUpdatingItemFulfillmentId(null)
     }
@@ -316,7 +336,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
   const handleSaveHoldFee = async () => {
     const amount = Number.parseFloat(holdFeeAmount) || 0
     if (amount <= 0) {
-      alert("Enter a hold-fee amount greater than 0 / أدخل قيمة رسوم تعليق أكبر من صفر")
+      alert(tl("أدخل قيمة رسوم تعليق أكبر من صفر", "Enter a hold-fee amount greater than 0"))
       return
     }
     setHoldFeeSaving(true)
@@ -338,7 +358,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
       if (onUpdate) onUpdate()
     } catch (e: any) {
       console.error("Hold fee save error:", e)
-      alert(`Failed to save hold fee: ${e?.message || "Unknown error"}`)
+      alert(`${tl('فشل حفظ رسوم التعليق', 'Failed to save hold fee')}: ${e?.message || tl('خطأ غير معروف', 'Unknown error')}`)
     } finally {
       setHoldFeeSaving(false)
     }
@@ -348,7 +368,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
   // daily/calendar views key the order's "effective date" off it so the order
   // reappears on the day it was originally held.
   const handleRemoveHoldFee = async () => {
-    if (!confirm("Remove hold fee? The order will reappear on the day it was held. / إزالة رسوم التعليق؟ سيظهر الطلب في اليوم الذي تم تعليقه فيه.")) return
+    if (!confirm(tl("إزالة رسوم التعليق؟ سيظهر الطلب في اليوم الذي تم تعليقه فيه.", "Remove hold fee? The order will reappear on the day it was held."))) return
     setHoldFeeSaving(true)
     try {
       const { error } = await supabase
@@ -366,7 +386,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
       if (onUpdate) onUpdate()
     } catch (e: any) {
       console.error("Hold fee remove error:", e)
-      alert(`Failed to remove hold fee: ${e?.message || "Unknown error"}`)
+      alert(`${tl('فشل إزالة رسوم التعليق', 'Failed to remove hold fee')}: ${e?.message || tl('خطأ غير معروف', 'Unknown error')}`)
     } finally {
       setHoldFeeSaving(false)
     }
@@ -374,7 +394,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
 
   const handleManualSync = async () => {
     if (!order.shopify_order_id) {
-      alert("This order does not have a Shopify ID linked / هذا الطلب ليس له معرف Shopify")
+      alert(tl("هذا الطلب ليس له معرف Shopify", "This order does not have a Shopify ID linked"))
       return
     }
 
@@ -391,7 +411,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
       })
       
       if (response.ok) {
-        alert("Sync triggered successfully! / تم تشغيل المزامنة بنجاح")
+        alert(tl("تم تشغيل المزامنة بنجاح", "Sync triggered successfully!"))
         
         // Refresh everything after a short delay
         setTimeout(async () => {
@@ -414,7 +434,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
         }, 2000)
       } else {
         // Fallback message if endpoint doesn't exist
-        alert("Sync requested. The system updates every 5 minutes automatically. / تم طلب المزامنة. النظام يتحدث كل 5 دقائق تلقائياً.")
+        alert(tl("تم طلب المزامنة. النظام يتحدث كل 5 دقائق تلقائياً.", "Sync requested. The system updates every 5 minutes automatically."))
       }
     } catch (e) {
       console.error("Sync error:", e)
@@ -624,7 +644,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
         console.log('Price field is empty, skipping price update')
       } else {
         // Invalid price value
-        alert('يرجى إدخال سعر صحيح / Please enter a valid price')
+        alert(tl('يرجى إدخال سعر صحيح', 'Please enter a valid price'))
         setSaving(false)
         return
       }
@@ -649,7 +669,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
 
       if (Object.keys(updateData).length === 1) {
         // Only updated_at was set, no actual changes
-        alert('لم يتم إجراء أي تغييرات / No changes detected')
+        alert(tl('لم يتم إجراء أي تغييرات', 'No changes detected'))
         setIsEditing(false)
         setSaving(false)
         return
@@ -686,10 +706,10 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
       }
 
       setIsEditing(false)
-      alert('تم حفظ التغييرات بنجاح / Changes saved successfully')
+      alert(tl('تم حفظ التغييرات بنجاح', 'Changes saved successfully'))
     } catch (error: any) {
       console.error('Error saving order:', error)
-      alert(`خطأ في الحفظ / Error saving: ${error.message || 'Unknown error'}`)
+      alert(`${tl('خطأ في الحفظ', 'Error saving')}: ${error.message || tl('خطأ غير معروف', 'Unknown error')}`)
     } finally {
       setSaving(false)
     }
@@ -943,12 +963,12 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
       }
 
       const successMessage = courierId
-        ? `تم تعيين الطلب إلى المندوب بنجاح / Order assigned to courier successfully`
-        : `تم إلغاء تعيين الطلب بنجاح / Order unassigned successfully`
+        ? tl('تم تعيين الطلب إلى المندوب بنجاح', 'Order assigned to courier successfully')
+        : tl('تم إلغاء تعيين الطلب بنجاح', 'Order unassigned successfully')
       alert(successMessage)
     } catch (error: any) {
       console.error('Error assigning courier:', error)
-      alert(`خطأ في تعيين المندوب / Error assigning courier: ${error.message || 'Unknown error'}`)
+      alert(`${tl('خطأ في تعيين المندوب', 'Error assigning courier')}: ${error.message || tl('خطأ غير معروف', 'Unknown error')}`)
     } finally {
       setAssigningCourier(false)
     }
@@ -1364,7 +1384,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
 
         return {
           id: `item-${index}`,
-          title: item.title || item.name || 'Unknown Product',
+          title: item.title || item.name || tl('منتج غير معروف', 'Unknown Product'),
           variant_title: item.variant_title || item.variant?.title || null,
           quantity: item.quantity || 1,
           price: parseFloat(item.price || item.variant?.price || 0),
@@ -1510,7 +1530,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
 
   // Format date
   const formatDate = (dateString?: string) => {
-    if (!dateString) return 'N/A'
+    if (!dateString) return tl('غير متاح', 'N/A')
     try {
       const date = new Date(dateString)
       return date.toLocaleDateString('en-US', {
@@ -1540,15 +1560,15 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
     }
 
     const statusLabels: Record<string, string> = {
-      paid: 'Paid',
-      pending: 'Payment pending',
-      partially_paid: 'Partially paid',
-      'partially paid': 'Partially paid',
-      unpaid: 'Unpaid',
-      cod: 'Cash on Delivery',
-      unfulfilled: 'Unfulfilled',
-      fulfilled: 'Fulfilled',
-      partial: 'Partially Fulfilled',
+      paid: tl('مدفوع', 'Paid'),
+      pending: tl('بانتظار الدفع', 'Payment pending'),
+      partially_paid: tl('مدفوع جزئياً', 'Partially paid'),
+      'partially paid': tl('مدفوع جزئياً', 'Partially paid'),
+      unpaid: tl('غير مدفوع', 'Unpaid'),
+      cod: tl('الدفع عند الاستلام', 'Cash on Delivery'),
+      unfulfilled: tl('غير منفذ', 'Unfulfilled'),
+      fulfilled: tl('تم التنفيذ', 'Fulfilled'),
+      partial: tl('تم التنفيذ جزئياً', 'Partially Fulfilled'),
     }
 
     const color = statusColors[status] || statusColors.pending
@@ -1570,7 +1590,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
         <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-red-600">Error Loading Order</h3>
+            <h3 className="text-lg font-semibold text-red-600">{tl('خطأ في تحميل الطلب', 'Error Loading Order')}</h3>
             <button
               onClick={onClose}
               className="text-gray-400 hover:text-gray-600"
@@ -1583,7 +1603,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
             onClick={onClose}
             className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
           >
-            Close
+            {tl('إغلاق', 'Close')}
           </button>
         </div>
       </div>,
@@ -1640,14 +1660,14 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
             <div className="flex-1">
               <div className="flex items-center gap-3 mb-2">
                 <h2 className={`text-2xl font-bold ${isCanceled ? 'line-through opacity-80' : ''}`}>
-                  Order #{order.order_id}
+                  {tl('طلب', 'Order')} #{order.order_id}
                 </h2>
                 {order.shopify_order_name && (
                   <span className="text-blue-200 text-sm">({order.shopify_order_name})</span>
                 )}
                 {isCanceled && (
                   <span className="px-3 py-1 text-xs font-semibold bg-white/20 border border-white/50 border-dashed rounded-full">
-                    Cancelled / ملغي
+                    {tl('ملغي', 'Cancelled')}
                   </span>
                 )}
               </div>
@@ -1669,10 +1689,10 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                       setIsEditing(true)
                     }}
                     className="flex items-center gap-1.5 px-3 py-1 bg-white/20 hover:bg-white/30 rounded-full text-xs font-medium transition-colors"
-                    title="Edit order / تعديل الطلب"
+                    title={tl('تعديل الطلب', 'Edit order')}
                   >
                     <Edit3 className="w-3.5 h-3.5" />
-                    Edit
+                    {tl('تعديل', 'Edit')}
                   </button>
                 ) : (
                   <div className="flex items-center gap-2">
@@ -1680,23 +1700,23 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                       onClick={handleSaveEdit}
                       disabled={saving}
                       className="flex items-center gap-1.5 px-3 py-1 bg-green-500 hover:bg-green-600 rounded-full text-xs font-medium transition-colors disabled:opacity-50"
-                      title="Save changes / حفظ التغييرات"
+                      title={tl('حفظ التغييرات', 'Save changes')}
                     >
                       {saving ? (
                         <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                       ) : (
                         <Save className="w-3.5 h-3.5" />
                       )}
-                      {saving ? 'Saving...' : 'Save'}
+                      {saving ? tl('جارٍ الحفظ...', 'Saving...') : tl('حفظ', 'Save')}
                     </button>
                     <button
                       onClick={handleCancelEdit}
                       disabled={saving}
                       className="flex items-center gap-1.5 px-3 py-1 bg-red-500 hover:bg-red-600 rounded-full text-xs font-medium transition-colors disabled:opacity-50"
-                      title="Cancel / إلغاء"
+                      title={tl('إلغاء', 'Cancel')}
                     >
                       <X className="w-3.5 h-3.5" />
-                      Cancel
+                      {tl('إلغاء', 'Cancel')}
                     </button>
                   </div>
                 )}
@@ -1704,18 +1724,18 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                   onClick={handleManualSync}
                   disabled={isSyncing}
                   className={`flex items-center gap-1.5 px-3 py-1 bg-white/20 hover:bg-white/30 rounded-full text-xs font-medium transition-colors ${isSyncing ? 'animate-pulse cursor-not-allowed' : ''}`}
-                  title="Sync with Shopify / مزامنة مع شوبيفاي"
+                  title={tl('مزامنة مع شوبيفاي', 'Sync with Shopify')}
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-                  {isSyncing ? 'Syncing...' : 'Sync with Shopify'}
+                  {isSyncing ? tl('جارٍ المزامنة...', 'Syncing...') : tl('مزامنة مع شوبيفاي', 'Sync with Shopify')}
                 </button>
                 <button
                   onClick={() => setShowSplitModal(true)}
                   className="flex items-center gap-1.5 px-3 py-1 bg-emerald-500 hover:bg-emerald-600 rounded-full text-xs font-medium transition-colors"
-                  title="Split Payment / دفع مقسم"
+                  title={tl('تقسيم الدفع', 'Split Payment')}
                 >
                   <CreditCard className="w-3.5 h-3.5" />
-                  {order.admin_prepaid_amount ? `Split: ${Number(order.admin_prepaid_amount).toFixed(2)}` : 'Split Payment'}
+                  {order.admin_prepaid_amount ? `${tl('مقسم', 'Split')}: ${Number(order.admin_prepaid_amount).toFixed(2)}` : tl('تقسيم الدفع', 'Split Payment')}
                 </button>
               </div>
               <div className="flex items-center gap-4 mt-3 text-blue-100 text-sm">
@@ -1725,7 +1745,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                 </div>
                 <div className="flex items-center gap-1">
                   <ShoppingBag className="w-4 h-4" />
-                  <span>Online Store</span>
+                  <span>{tl('المتجر الإلكتروني', 'Online Store')}</span>
                 </div>
               </div>
             </div>
@@ -1746,23 +1766,23 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
               {/* Fulfillment Status */}
               <div className="bg-white border border-gray-200 rounded-lg p-4">
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-semibold text-gray-900">Fulfillment</h3>
+                  <h3 className="font-semibold text-gray-900">{tl('التنفيذ', 'Fulfillment')}</h3>
                   {order.fulfillment_status && getStatusBadge(order.fulfillment_status, 'fulfillment')}
                 </div>
                 {isEditing && (
                   <div className="space-y-3 mb-3">
-                    <label className="text-sm font-medium text-gray-700">Fulfillment status</label>
+                    <label className="text-sm font-medium text-gray-700">{tl('حالة التنفيذ', 'Fulfillment status')}</label>
                     <select
                       className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                       value={editingFulfillmentStatus}
                       onChange={(e) => setEditingFulfillmentStatus(e.target.value)}
                     >
-                      <option value="fulfilled">Fulfilled</option>
-                      <option value="unfulfilled">Unfulfilled</option>
-                      <option value="partial">Partial</option>
-                      <option value="scheduled">Scheduled</option>
-                      <option value="on_hold">On hold</option>
-                      <option value="request_fulfillment">Request fulfillment</option>
+                      <option value="fulfilled">{tl('تم التنفيذ', 'Fulfilled')}</option>
+                      <option value="unfulfilled">{tl('غير منفذ', 'Unfulfilled')}</option>
+                      <option value="partial">{tl('جزئي', 'Partial')}</option>
+                      <option value="scheduled">{tl('مجدول', 'Scheduled')}</option>
+                      <option value="on_hold">{tl('معلّق', 'On hold')}</option>
+                      <option value="request_fulfillment">{tl('طلب التنفيذ', 'Request fulfillment')}</option>
                     </select>
                   </div>
                 )}
@@ -1774,7 +1794,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                 )}
                 {order.tracking_number && (
                   <div className="mt-2 text-sm">
-                    <span className="text-gray-600">Tracking: </span>
+                    <span className="text-gray-600">{tl('التتبع: ', 'Tracking: ')}</span>
                     {order.tracking_url ? (
                       <a href={order.tracking_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
                         {order.tracking_number}
@@ -1803,12 +1823,12 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                   if (newItems.length > 0 || removedItems.length > 0) {
                     return (
                       <div className="mb-4 space-y-2 p-3 bg-gray-50 border-2 border-gray-300 rounded-lg">
-                        <div className="text-sm font-bold text-gray-900 mb-2">Shopify Changes:</div>
+                        <div className="text-sm font-bold text-gray-900 mb-2">{tl('تغييرات Shopify:', 'Shopify Changes:')}</div>
                         {newItems.length > 0 && (
                           <div className="flex items-center gap-2 p-2 bg-green-100 border-2 border-green-500 rounded-lg">
                             <span className="text-lg font-bold text-green-700">+</span>
                             <span className="font-bold text-green-800">
-                              {newItems.length} Item{newItems.length > 1 ? 's' : ''} ADDED in Shopify
+                              {tl(`${newItems.length} صنف مُضاف في Shopify`, `${newItems.length} Item${newItems.length > 1 ? 's' : ''} ADDED in Shopify`)}
                             </span>
                           </div>
                         )}
@@ -1816,7 +1836,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                           <div className="flex items-center gap-2 p-2 bg-red-100 border-2 border-red-500 rounded-lg">
                             <span className="text-lg font-bold text-red-700">-</span>
                             <span className="font-bold text-red-800">
-                              {removedItems.length} Item{removedItems.length > 1 ? 's' : ''} REMOVED from Shopify
+                              {tl(`${removedItems.length} صنف محذوف من Shopify`, `${removedItems.length} Item${removedItems.length > 1 ? 's' : ''} REMOVED from Shopify`)}
                             </span>
                           </div>
                         )}
@@ -1826,9 +1846,9 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                   return null
                 })()}
                 
-                <h3 className="font-semibold text-gray-900 mb-4">Products</h3>
+                <h3 className="font-semibold text-gray-900 mb-4">{tl('المنتجات', 'Products')}</h3>
                 {loadingItems ? (
-                  <div className="text-center py-8 text-gray-500">Loading products...</div>
+                  <div className="text-center py-8 text-gray-500">{tl('جارٍ تحميل المنتجات...', 'Loading products...')}</div>
                 ) : sortedItems.length > 0 ? (
                   <div className="space-y-4">
                     {sortedItems.map((item, index) => {
@@ -1918,12 +1938,12 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                                   <h4 className={`font-medium truncate ${isRemoved ? 'line-through text-gray-400' : isNew ? 'text-green-800' : 'text-gray-900'}`}>{item.title}</h4>
                                   {isNew && !isRemoved && (
                                     <span className="px-2 py-0.5 bg-green-600 text-white text-[10px] font-bold rounded-full uppercase shadow-sm whitespace-nowrap">
-                                      New
+                                      {tl('جديد', 'New')}
                                     </span>
                                   )}
                                   {isRemoved && (
                                     <span className="px-2 py-0.5 bg-red-100 text-red-600 text-[10px] font-bold rounded-full border border-red-300 whitespace-nowrap">
-                                      Removed
+                                      {tl('محذوف', 'Removed')}
                                     </span>
                                   )}
                                   {(() => {
@@ -1935,13 +1955,13 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                                     if (fulfillmentStatus === 'fulfilled') {
                                       return (
                                         <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-bold rounded-full uppercase border border-blue-200 whitespace-nowrap">
-                                          Fulfilled
+                                          {tl('تم التنفيذ', 'Fulfilled')}
                                         </span>
                                       )
                                     }
                                     return (
                                       <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-[10px] font-bold rounded-full uppercase border border-yellow-200 whitespace-nowrap">
-                                        Unfulfilled
+                                        {tl('غير منفذ', 'Unfulfilled')}
                                       </span>
                                     )
                                   })()}
@@ -1953,7 +1973,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                                   onClick={() => handleRemoveItem(item.id)}
                                   disabled={removingItemId === item.id}
                                   className="text-red-500 hover:text-red-700 p-1 hover:bg-red-50 rounded transition-colors disabled:opacity-50 flex-shrink-0"
-                                  title="Remove item from order / حذف الصنف من الطلب"
+                                  title={tl('حذف الصنف من الطلب', 'Remove item from order')}
                                 >
                                   {removingItemId === item.id ? (
                                     <RefreshCw className="w-4 h-4 animate-spin" />
@@ -1966,7 +1986,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                                   onClick={() => handleRestoreItem(item.id)}
                                   disabled={restoringItemId === item.id}
                                   className="text-green-600 hover:text-green-700 p-1 hover:bg-green-50 rounded transition-colors disabled:opacity-50 flex-shrink-0"
-                                  title="Restore item to order / استعادة الصنف إلى الطلب"
+                                  title={tl('استعادة الصنف إلى الطلب', 'Restore item to order')}
                                 >
                                   {restoringItemId === item.id ? (
                                     <RefreshCw className="w-4 h-4 animate-spin" />
@@ -1980,12 +2000,12 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                               <p className={`text-sm mb-1 ${isRemoved ? 'line-through text-gray-400' : 'text-gray-500'}`}>{item.variant_title}</p>
                             )}
                             {item.sku && (
-                              <p className={`text-xs mb-1 ${isRemoved ? 'line-through text-gray-400' : 'text-gray-400'}`}>SKU: {item.sku}</p>
+                              <p className={`text-xs mb-1 ${isRemoved ? 'line-through text-gray-400' : 'text-gray-400'}`}>{tl('رمز المنتج', 'SKU')}: {item.sku}</p>
                             )}
 
                             {isEditing && !isRemoved && (
                               <div className="mt-2 flex items-center gap-2">
-                                <span className="text-xs text-gray-600">Fulfillment:</span>
+                                <span className="text-xs text-gray-600">{tl('التنفيذ:', 'Fulfillment:')}</span>
                                 <select
                                   className="border border-gray-300 rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
                                   value={((item as any).fulfillment_status ||
@@ -1995,15 +2015,15 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                                   onChange={(e) => handleToggleItemFulfillment(item.id, e.target.value)}
                                   disabled={updatingItemFulfillmentId === item.id}
                                 >
-                                  <option value="fulfilled">Fulfilled</option>
-                                  <option value="unfulfilled">Unfulfilled</option>
-                                  <option value="partial">Partial</option>
-                                  <option value="scheduled">Scheduled</option>
-                                  <option value="on_hold">On hold</option>
-                                  <option value="request_fulfillment">Request fulfillment</option>
+                                  <option value="fulfilled">{tl('تم التنفيذ', 'Fulfilled')}</option>
+                                  <option value="unfulfilled">{tl('غير منفذ', 'Unfulfilled')}</option>
+                                  <option value="partial">{tl('جزئي', 'Partial')}</option>
+                                  <option value="scheduled">{tl('مجدول', 'Scheduled')}</option>
+                                  <option value="on_hold">{tl('معلّق', 'On hold')}</option>
+                                  <option value="request_fulfillment">{tl('طلب التنفيذ', 'Request fulfillment')}</option>
                                 </select>
                                 {updatingItemFulfillmentId === item.id && (
-                                  <span className="text-xs text-gray-500">Saving...</span>
+                                  <span className="text-xs text-gray-500">{tl('جارٍ الحفظ...', 'Saving...')}</span>
                                 )}
                               </div>
                             )}
@@ -2039,7 +2059,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                                 })
                                 return (
                                   <p className="text-xs text-blue-600 mb-1 font-medium">
-                                    Fulfilled: {formattedDate}
+                                    {tl('تم التنفيذ', 'Fulfilled')}: {formattedDate}
                                   </p>
                                 )
                               }
@@ -2048,7 +2068,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                             
                             <div className="flex items-center justify-between mt-2">
                               <span className={`text-sm ${isRemoved ? 'line-through text-gray-400' : isNew ? 'text-green-600 font-medium' : 'text-gray-600'}`}>
-                                Quantity: {item.quantity}
+                                {tl('الكمية', 'Quantity')}: {item.quantity}
                               </span>
                               <span className={`font-semibold text-lg ${isRemoved ? 'line-through text-gray-400' : isNew ? 'text-green-700' : 'text-gray-900'}`}>
                                 {order.currency || 'EGP'} {(item.price * item.quantity).toFixed(2)}
@@ -2056,12 +2076,12 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                             </div>
                             {isNew && !isRemoved && (
                               <div className="mt-2 p-2 bg-green-100 border border-green-300 rounded-lg">
-                                <p className="text-xs font-bold text-green-700">✨ This item was newly added to the order in Shopify</p>
+                                <p className="text-xs font-bold text-green-700">{tl('✨ تمت إضافة هذا الصنف حديثاً إلى الطلب في Shopify', '✨ This item was newly added to the order in Shopify')}</p>
                               </div>
                             )}
                             {item.total_discount > 0 && !isRemoved && (
                               <p className="text-xs text-green-600 mt-1">
-                                Discount: -{order.currency || 'EGP'} {item.total_discount.toFixed(2)}
+                                {tl('الخصم', 'Discount')}: -{order.currency || 'EGP'} {item.total_discount.toFixed(2)}
                               </p>
                             )}
                           </div>
@@ -2072,7 +2092,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                 ) : (
                   <div className="text-center py-8 text-gray-500">
                     <Package className="w-12 h-12 mx-auto mb-2 text-gray-400" />
-                    <p>No products found</p>
+                    <p>{tl('لا توجد منتجات', 'No products found')}</p>
                   </div>
                 )}
               </div>
@@ -2080,7 +2100,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
               {/* Payment Summary */}
               <div className="bg-white border border-gray-200 rounded-lg p-4">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-semibold text-gray-900">Payment</h3>
+                  <h3 className="font-semibold text-gray-900">{tl('الدفع', 'Payment')}</h3>
                   {(() => {
                     const fs = (order.financial_status || '').toLowerCase()
                     const orderBalance = (order as any).balance || balance || 0
@@ -2099,37 +2119,37 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                 </div>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-gray-600">Subtotal</span>
+                    <span className="text-gray-600">{tl('المجموع الفرعي', 'Subtotal')}</span>
                     <span className="text-gray-900">
-                      {activeItems.length} {activeItems.length === 1 ? 'item' : 'items'}
+                      {activeItems.length} {activeItems.length === 1 ? tl('صنف', 'item') : tl('أصناف', 'items')}
                     </span>
                     <span className="font-medium text-gray-900">{order.currency || 'EGP'} {subtotal.toFixed(2)}</span>
                   </div>
                   {shipping > 0 && (
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Shipping</span>
-                      <span className="text-gray-600">{order.shipping_method || 'Standard'}</span>
+                      <span className="text-gray-600">{tl('الشحن', 'Shipping')}</span>
+                      <span className="text-gray-600">{order.shipping_method || tl('قياسي', 'Standard')}</span>
                       <span className="text-gray-900">{order.currency || 'EGP'} {shipping.toFixed(2)}</span>
                     </div>
                   )}
                   {tax > 0 && (
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Tax</span>
+                      <span className="text-gray-600">{tl('الضريبة', 'Tax')}</span>
                       <span className="text-gray-900">{order.currency || 'EGP'} {tax.toFixed(2)}</span>
                     </div>
                   )}
                   {discounts > 0 && (
                     <div className="flex justify-between text-green-600">
-                      <span>Discounts</span>
+                      <span>{tl('الخصومات', 'Discounts')}</span>
                       <span>-{order.currency || 'EGP'} {discounts.toFixed(2)}</span>
                     </div>
                   )}
                   {fulfillmentTotals.removedTotal > 0 && (
                     <div className="flex justify-between text-amber-700">
                       <span className="flex items-center gap-2">
-                        Removed items (محذوف)
+                        {tl('الأصناف المحذوفة', 'Removed items')}
                         <span className="text-[11px] bg-amber-100 px-2 py-0.5 rounded-full font-semibold text-amber-800">
-                          {fulfillmentTotals.removedCount} items / {fulfillmentTotals.removedQuantity} qty
+                          {fulfillmentTotals.removedCount} {tl('صنف', 'items')} / {fulfillmentTotals.removedQuantity} {tl('كمية', 'qty')}
                         </span>
                       </span>
                       <span>-{order.currency || 'EGP'} {fulfillmentTotals.removedTotal.toFixed(2)}</span>
@@ -2137,7 +2157,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                   )}
                   <div className="border-t border-gray-200 pt-2 mt-2">
                     <div className="flex justify-between font-semibold text-lg">
-                      <span>Total</span>
+                      <span>{tl('الإجمالي', 'Total')}</span>
                       {isEditing ? (
                         <div className="flex items-center gap-2">
                           <span>{order.currency || 'EGP'}</span>
@@ -2165,26 +2185,26 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
 
                             return (
                               <>
-                                <span className="text-xs text-gray-600 block mb-1">المجموع:</span>
+                                <span className="text-xs text-gray-600 block mb-1">{tl('المجموع:', 'Total:')}</span>
                                 <span className="block font-bold text-lg">{order.currency || 'EGP'} {orderTotal.toFixed(2)}</span>
                                 {hasPartialPayment && (orderPaid > 0 || orderBalance > 0) && (
                                   <div className="mt-1 space-y-0.5">
                                     <p className="text-xs text-green-700 font-semibold">
-                                      مدفوع: {order.currency || 'EGP'} {orderPaid.toFixed(2)}
+                                      {tl('مدفوع', 'Paid')}: {order.currency || 'EGP'} {orderPaid.toFixed(2)}
                                     </p>
                                     <p className="text-xs text-red-700 font-bold">
-                                      المتبقي للتحصيل: {order.currency || 'EGP'} {(orderBalance > 0 ? orderBalance : Math.max(0, orderTotal - orderPaid)).toFixed(2)}
+                                      {tl('المتبقي للتحصيل', 'Balance due')}: {order.currency || 'EGP'} {(orderBalance > 0 ? orderBalance : Math.max(0, orderTotal - orderPaid)).toFixed(2)}
                                     </p>
                                   </div>
                                 )}
                                 {hasPartialPayment && orderPaid === 0 && orderBalance === 0 && (
                                   <p className="text-xs text-orange-700 font-semibold mt-1">
-                                    ⚠️ مدفوع جزئياً — راجع Shopify للمبلغ المدفوع والمتبقي
+                                    {tl('⚠️ مدفوع جزئياً — راجع Shopify للمبلغ المدفوع والمتبقي', '⚠️ Partially paid — check Shopify for the paid and remaining amounts')}
                                   </p>
                                 )}
                                 {(fulfillmentTotals.removedTotal > 0 || fulfillmentTotals.unfulfilledTotal > 0) && !hasPartialPayment && (
                                   <p className="text-xs text-amber-700 font-semibold">
-                                    بعد طرح غير منفذ/محذوف
+                                    {tl('بعد طرح غير منفذ/محذوف', 'After deducting unfulfilled/removed')}
                                   </p>
                                 )}
                               </>
@@ -2198,11 +2218,11 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                   {/* Shopify Paid/Balance Info */}
                   <div className="mt-4 space-y-2 pt-4 border-t border-gray-100">
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Paid Amount (المبلغ المدفوع)</span>
+                      <span className="text-gray-600">{tl('المبلغ المدفوع', 'Paid Amount')}</span>
                       <span className="text-green-700 font-bold">{order.currency || 'EGP'} {((order as any).total_paid || paid).toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between text-sm p-3 bg-amber-50 rounded-xl border-2 border-amber-200">
-                      <span className="text-amber-900 font-bold">Balance (المتبقي للتحصيل)</span>
+                      <span className="text-amber-900 font-bold">{tl('المتبقي للتحصيل', 'Balance')}</span>
                       <span className="text-amber-900 font-black text-base">{order.currency || 'EGP'} {((order as any).balance || balance).toFixed(2)}</span>
                     </div>
                   </div>
@@ -2210,7 +2230,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                 {order.payment_gateway_names && order.payment_gateway_names.length > 0 && (
                   <div className="mt-3 pt-3 border-t border-gray-200">
                     <p className="text-xs text-gray-500">
-                      Payment Gateway: {order.payment_gateway_names.join(', ')}
+                      {tl('بوابة الدفع', 'Payment Gateway')}: {order.payment_gateway_names.join(', ')}
                     </p>
                   </div>
                 )}
@@ -2230,10 +2250,10 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                     <div className="flex items-center justify-between mb-3">
                       <h3 className="font-semibold text-gray-900 flex items-center gap-2">
                         <Clock className={`w-5 h-5 ${isOnHold ? "text-orange-600" : "text-gray-500"}`} />
-                        Hold Fee / رسوم التعليق
+                        {tl('رسوم التعليق', 'Hold Fee')}
                         {isOnHold && (
                           <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-200 text-orange-900">
-                            ON HOLD
+                            {tl('معلّق', 'ON HOLD')}
                           </span>
                         )}
                       </h3>
@@ -2247,42 +2267,42 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                           }}
                           className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-orange-600 hover:bg-orange-700 text-white"
                         >
-                          {isOnHold ? "Edit / تعديل" : "Put on Hold / تعليق"}
+                          {isOnHold ? tl('تعديل', 'Edit') : tl('تعليق', 'Put on Hold')}
                         </button>
                       )}
                     </div>
                     {isOnHold && !holdFeeEditing && (
                       <div className="space-y-2 text-sm">
                         <div className="flex justify-between">
-                          <span className="text-gray-700">المبلغ المحتجز:</span>
+                          <span className="text-gray-700">{tl('المبلغ المحتجز:', 'Held amount:')}</span>
                           <span className="font-bold text-orange-800">{order.currency || "EGP"} {holdAmount.toFixed(2)}</span>
                         </div>
                         {heldOnDate && (
                           <div className="flex justify-between">
-                            <span className="text-gray-700">تاريخ التعليق:</span>
+                            <span className="text-gray-700">{tl('تاريخ التعليق:', 'Hold date:')}</span>
                             <span className="font-medium text-gray-900">{heldOnDate}</span>
                           </div>
                         )}
                         {(order as any).hold_fee_comment && (
                           <div className="pt-2 border-t border-orange-200">
-                            <p className="text-xs text-gray-600 mb-1">السبب / Reason:</p>
+                            <p className="text-xs text-gray-600 mb-1">{tl('السبب:', 'Reason:')}</p>
                             <p className="text-sm text-gray-900">{(order as any).hold_fee_comment}</p>
                           </div>
                         )}
                         <p className="text-[11px] text-orange-700 pt-2 leading-snug">
-                          ⓘ هذا الطلب مخفي من قائمة اليوم. عند إزالة التعليق سيظهر في يوم {heldOnDate || "التعليق"}.
+                          {tl(`ⓘ هذا الطلب مخفي من قائمة اليوم. عند إزالة التعليق سيظهر في يوم ${heldOnDate || 'التعليق'}.`, `ⓘ This order is hidden from today's list. When the hold is removed it will reappear on ${heldOnDate || 'the hold day'}.`)}
                         </p>
                       </div>
                     )}
                     {!isOnHold && !holdFeeEditing && (
                       <p className="text-xs text-gray-500">
-                        لا توجد رسوم تعليق على هذا الطلب. اضغط "تعليق" لتأجيله من قائمة اليوم.
+                        {tl('لا توجد رسوم تعليق على هذا الطلب. اضغط "تعليق" لتأجيله من قائمة اليوم.', 'No hold fee on this order. Press "Put on Hold" to defer it from today\'s list.')}
                       </p>
                     )}
                     {holdFeeEditing && (
                       <div className="space-y-3">
                         <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">المبلغ / Amount</label>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">{tl('المبلغ', 'Amount')}</label>
                           <input
                             type="number"
                             step="0.01"
@@ -2294,13 +2314,13 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">السبب / Reason (optional)</label>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">{tl('السبب (اختياري)', 'Reason (optional)')}</label>
                           <textarea
                             value={holdFeeComment}
                             onChange={(e) => setHoldFeeComment(e.target.value)}
                             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 resize-none"
                             rows={2}
-                            placeholder="سبب التعليق..."
+                            placeholder={tl('سبب التعليق...', 'Reason for hold...')}
                           />
                         </div>
                         <div className="flex gap-2">
@@ -2310,7 +2330,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                             onClick={handleSaveHoldFee}
                             className="flex-1 px-3 py-2 text-sm font-semibold rounded-lg bg-orange-600 hover:bg-orange-700 text-white disabled:opacity-50"
                           >
-                            {holdFeeSaving ? "Saving..." : "Apply Hold / تطبيق"}
+                            {holdFeeSaving ? tl('جارٍ الحفظ...', 'Saving...') : tl('تطبيق', 'Apply Hold')}
                           </button>
                           {isOnHold && (
                             <button
@@ -2319,7 +2339,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                               onClick={handleRemoveHoldFee}
                               className="px-3 py-2 text-sm font-semibold rounded-lg bg-red-600 hover:bg-red-700 text-white disabled:opacity-50"
                             >
-                              Remove / إزالة
+                              {tl('إزالة', 'Remove')}
                             </button>
                           )}
                           <button
@@ -2332,7 +2352,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                             }}
                             className="px-3 py-2 text-sm font-semibold rounded-lg bg-gray-200 hover:bg-gray-300 text-gray-800"
                           >
-                            Cancel
+                            {tl('إلغاء', 'Cancel')}
                           </button>
                         </div>
                       </div>
@@ -2349,7 +2369,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="font-semibold text-gray-900 flex items-center gap-2">
                     <User className="w-5 h-5" />
-                    Customer
+                    {tl('العميل', 'Customer')}
                   </h3>
                 </div>
                 <div className="space-y-3">
@@ -2376,23 +2396,23 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="font-semibold text-gray-900 flex items-center gap-2">
                     <Truck className="w-5 h-5" />
-                    Courier Assignment
+                    {tl('تعيين المندوب', 'Courier Assignment')}
                   </h3>
                 </div>
                 <div className="space-y-3">
                   {order.courier_name ? (
                     <div className="mb-3">
-                      <p className="text-sm text-gray-600 mb-2">Current Courier:</p>
+                      <p className="text-sm text-gray-600 mb-2">{tl('المندوب الحالي:', 'Current Courier:')}</p>
                       <p className="font-medium text-gray-900">{order.courier_name}</p>
                     </div>
                   ) : (
                     <div className="mb-3">
-                      <p className="text-sm text-gray-500">No courier assigned</p>
+                      <p className="text-sm text-gray-500">{tl('لا يوجد مندوب معين', 'No courier assigned')}</p>
                     </div>
                   )}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      {order.courier_name ? 'Change Courier / تغيير المندوب' : 'Assign Courier / تعيين مندوب'}
+                      {order.courier_name ? tl('تغيير المندوب', 'Change Courier') : tl('تعيين مندوب', 'Assign Courier')}
                     </label>
                     <select
                       value={order.assigned_courier_id || ""}
@@ -2400,7 +2420,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                       disabled={assigningCourier || loadingCouriers}
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <option value="">{order.courier_name ? 'Unassign / إلغاء التعيين' : 'Select Courier / اختر المندوب'}</option>
+                      <option value="">{order.courier_name ? tl('إلغاء التعيين', 'Unassign') : tl('اختر المندوب', 'Select Courier')}</option>
                       {couriers.map((courier) => (
                         <option key={courier.id} value={courier.id}>
                           {courier.name}
@@ -2408,7 +2428,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                       ))}
                     </select>
                     {assigningCourier && (
-                      <p className="text-xs text-gray-500 mt-2">Updating...</p>
+                      <p className="text-xs text-gray-500 mt-2">{tl('جارٍ التحديث...', 'Updating...')}</p>
                     )}
                   </div>
                 </div>
@@ -2418,7 +2438,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
               <div className="bg-white border border-gray-200 rounded-lg p-4">
                 <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
                   <MapPin className="w-5 h-5" />
-                  Shipping Address
+                  {tl('عنوان الشحن', 'Shipping Address')}
                 </h3>
                 <div className="space-y-1 text-sm">
                   {shippingAddr.name && <p className="font-medium text-gray-900">{shippingAddr.name}</p>}
@@ -2437,7 +2457,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                     </p>
                   )}
                   {!shippingAddr.name && !shippingAddr.address1 && (
-                    <p className="text-gray-500">{order.address || 'No address provided'}</p>
+                    <p className="text-gray-500">{order.address || tl('لا يوجد عنوان', 'No address provided')}</p>
                   )}
                 </div>
               </div>
@@ -2447,7 +2467,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                 <div className="bg-white border border-gray-200 rounded-lg p-4">
                   <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
                     <CreditCard className="w-5 h-5" />
-                    Billing Address
+                    {tl('عنوان الفوترة', 'Billing Address')}
                   </h3>
                   <div className="space-y-1 text-sm">
                     {billingAddr.name && <p className="font-medium text-gray-900">{billingAddr.name}</p>}
@@ -2468,55 +2488,55 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="font-semibold text-gray-900 flex items-center gap-2">
                     <FileText className="w-5 h-5" />
-                    Notes
+                    {tl('ملاحظات', 'Notes')}
                   </h3>
                 </div>
                 <div className="space-y-3 text-sm">
                   <div>
-                    <label className="block text-gray-600 mb-1 font-medium">Order Note:</label>
+                    <label className="block text-gray-600 mb-1 font-medium">{tl('ملاحظة الطلب:', 'Order Note:')}</label>
                     {isEditing ? (
                       <textarea
                         value={editingOrderNote}
                         onChange={(e) => setEditingOrderNote(e.target.value)}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                         rows={3}
-                        placeholder="Order note..."
+                        placeholder={tl('ملاحظة الطلب...', 'Order note...')}
                       />
                     ) : (
                       <p className="text-gray-900 whitespace-pre-wrap min-h-[3rem]">
-                        {order.order_note || <span className="text-gray-400 italic">No order note</span>}
+                        {order.order_note || <span className="text-gray-400 italic">{tl('لا توجد ملاحظة للطلب', 'No order note')}</span>}
                       </p>
                     )}
                   </div>
                   <div>
-                    <label className="block text-gray-600 mb-1 font-medium">Customer Note:</label>
+                    <label className="block text-gray-600 mb-1 font-medium">{tl('ملاحظة العميل:', 'Customer Note:')}</label>
                     {isEditing ? (
                       <textarea
                         value={editingCustomerNote}
                         onChange={(e) => setEditingCustomerNote(e.target.value)}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                         rows={3}
-                        placeholder="Customer note..."
+                        placeholder={tl('ملاحظة العميل...', 'Customer note...')}
                       />
                     ) : (
                       <p className="text-gray-900 whitespace-pre-wrap min-h-[3rem]">
-                        {order.customer_note || <span className="text-gray-400 italic">No customer note</span>}
+                        {order.customer_note || <span className="text-gray-400 italic">{tl('لا توجد ملاحظة للعميل', 'No customer note')}</span>}
                       </p>
                     )}
                   </div>
                   <div>
-                    <label className="block text-gray-600 mb-1 font-medium">General Notes:</label>
+                    <label className="block text-gray-600 mb-1 font-medium">{tl('ملاحظات عامة:', 'General Notes:')}</label>
                     {isEditing ? (
                       <textarea
                         value={editingNotes}
                         onChange={(e) => setEditingNotes(e.target.value)}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                         rows={3}
-                        placeholder="General notes..."
+                        placeholder={tl('ملاحظات عامة...', 'General notes...')}
                       />
                     ) : (
                       <p className="text-gray-900 whitespace-pre-wrap min-h-[3rem]">
-                        {order.notes || <span className="text-gray-400 italic">No notes</span>}
+                        {order.notes || <span className="text-gray-400 italic">{tl('لا توجد ملاحظات', 'No notes')}</span>}
                       </p>
                     )}
                   </div>
@@ -2526,7 +2546,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
               {/* Order Tags */}
               {order.order_tags && order.order_tags.length > 0 && (
                 <div className="bg-white border border-gray-200 rounded-lg p-4">
-                  <h3 className="font-semibold text-gray-900 mb-3">Tags</h3>
+                  <h3 className="font-semibold text-gray-900 mb-3">{tl('الوسوم', 'Tags')}</h3>
                   <div className="flex flex-wrap gap-2">
                     {order.order_tags.map((tag, index) => (
                       <span
@@ -2544,12 +2564,12 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
               <div className="bg-white border border-gray-200 rounded-lg p-4">
                 <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
                   <History className="w-5 h-5" />
-                  Order History
+                  {tl('سجل الطلب', 'Order History')}
                 </h3>
                 {loadingHistory ? (
                   <div className="text-center py-4">
                     <div className="w-6 h-6 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto"></div>
-                    <p className="text-xs text-gray-500 mt-2">Loading history...</p>
+                    <p className="text-xs text-gray-500 mt-2">{tl('جارٍ تحميل السجل...', 'Loading history...')}</p>
                   </div>
                 ) : orderHistory.length > 0 ? (
                   <div className="space-y-3">
@@ -2595,7 +2615,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                                 {/* Order Created - Show on first entry */}
                                 {isFirst && (
                                   <div className="mt-1">
-                                    <span className="text-xs font-medium text-gray-600">📦 Order Created</span>
+                                    <span className="text-xs font-medium text-gray-600">{tl('📦 تم إنشاء الطلب', '📦 Order Created')}</span>
                                     <span className="text-xs text-gray-500 ml-2">
                                       {createdDate.toLocaleDateString('en-US', {
                                         year: 'numeric',
@@ -2614,21 +2634,21 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                                     <Truck className="w-3 h-3 text-gray-400" />
                                     {courierChanged && prevEntry ? (
                                       <>
-                                        <span className="text-xs text-gray-600">Reassigned from:</span>
+                                        <span className="text-xs text-gray-600">{tl('أعيد التعيين من:', 'Reassigned from:')}</span>
                                         <span className="text-xs text-gray-500">
-                                          {prevEntry.assigned_courier_name || 'Unassigned'}
+                                          {prevEntry.assigned_courier_name || tl('غير معين', 'Unassigned')}
                                         </span>
                                         <ArrowRight className="w-3 h-3 text-gray-400" />
-                                        <span className="text-xs text-gray-600">to:</span>
+                                        <span className="text-xs text-gray-600">{tl('إلى:', 'to:')}</span>
                                         <span className="text-xs font-medium text-blue-600">
-                                          {entry.assigned_courier_name || 'Unknown Courier'}
+                                          {entry.assigned_courier_name || tl('مندوب غير معروف', 'Unknown Courier')}
                                         </span>
                                       </>
                                     ) : (
                                       <>
-                                        <span className="text-xs text-gray-600">Assigned to:</span>
+                                        <span className="text-xs text-gray-600">{tl('عُيّن إلى:', 'Assigned to:')}</span>
                                         <span className="text-xs font-medium text-blue-600">
-                                          {entry.assigned_courier_name || 'Unknown Courier'}
+                                          {entry.assigned_courier_name || tl('مندوب غير معروف', 'Unknown Courier')}
                                         </span>
                                       </>
                                     )}
@@ -2638,7 +2658,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                                 {/* Status Change - Show every status transition */}
                                 {statusChanged && (
                                   <div className="mt-1 flex items-center gap-2 flex-wrap">
-                                    <span className="text-xs text-gray-600">Status changed:</span>
+                                    <span className="text-xs text-gray-600">{tl('تغيّرت الحالة:', 'Status changed:')}</span>
                                     {prevEntry && (
                                       <>
                                         <span className={`text-xs px-2 py-0.5 rounded ${
@@ -2648,7 +2668,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                                           prevEntry.status === 'partial' ? 'bg-blue-100 text-blue-700' :
                                           'bg-gray-100 text-gray-700'
                                         }`}>
-                                          {prevEntry.status}
+                                          {statusText(prevEntry.status)}
                                         </span>
                                         <ArrowRight className="w-3 h-3 text-gray-400" />
                                       </>
@@ -2661,7 +2681,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                                       entry.status === 'assigned' ? 'bg-purple-100 text-purple-700' :
                                       'bg-gray-100 text-gray-700'
                                     }`}>
-                                      {entry.status}
+                                      {statusText(entry.status)}
                                     </span>
                                   </div>
                                 )}
@@ -2669,7 +2689,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                                 {/* Show if order was updated but no visible change */}
                                 {!statusChanged && !isFirst && !courierChanged && !isCreated && (
                                   <div className="mt-1">
-                                    <span className="text-xs text-gray-500">Order updated</span>
+                                    <span className="text-xs text-gray-500">{tl('تم تحديث الطلب', 'Order updated')}</span>
                                     {entry.status && (
                                       <span className={`text-xs px-2 py-0.5 rounded ml-2 ${
                                         entry.status === 'delivered' ? 'bg-green-100 text-green-700' :
@@ -2678,7 +2698,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                                         entry.status === 'partial' ? 'bg-blue-100 text-blue-700' :
                                         'bg-gray-100 text-gray-700'
                                       }`}>
-                                        {entry.status}
+                                        {statusText(entry.status)}
                                       </span>
                                     )}
                                   </div>
@@ -2687,8 +2707,8 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                                 {/* Current Status Indicator */}
                                 {isLast && (
                                   <div className="mt-2 pt-2 border-t border-gray-100">
-                                    <span className="text-xs font-medium text-gray-700">✓ Current Status: </span>
-                                    <span className="text-xs text-gray-600">{entry.status}</span>
+                                    <span className="text-xs font-medium text-gray-700">{tl('✓ الحالة الحالية: ', '✓ Current Status: ')}</span>
+                                    <span className="text-xs text-gray-600">{statusText(entry.status)}</span>
                                   </div>
                                 )}
                               </div>
@@ -2701,7 +2721,7 @@ const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ order, onClose, onU
                 ) : (
                   <div className="text-center py-4 text-gray-500 text-sm">
                     <History className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-                    <p>No history available</p>
+                    <p>{tl('لا يوجد سجل متاح', 'No history available')}</p>
                   </div>
                 )}
               </div>

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react"
 import * as XLSX from "xlsx"
 import { Download, RefreshCw, FileSpreadsheet } from "lucide-react"
 import { supabase } from "../../lib/supabase"
+import { useLanguage } from "../../contexts/LanguageContext"
 
 // ---------------------------------------------------------------------------
 // Daily courier settlement — one row per courier per day, grouped day by day.
@@ -217,7 +218,7 @@ const localDay = (isoStr?: string | null): string | null => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
 }
 
-const fmt = (n: number) => (n ? Math.round(n).toLocaleString() : "")
+const fmt = (n: number) => (n ? Math.round(n).toLocaleString("en-US") : "")
 
 // Compute the accounting figures for one courier-day's set of orders.
 const computeGroup = (orders: any[]): Omit<Row, "date" | "courierId" | "courierName"> => {
@@ -289,6 +290,21 @@ const computeGroup = (orders: any[]): Omit<Row, "date" | "courierId" | "courierN
 }
 
 const DailySettlement: React.FC = () => {
+  const { language } = useLanguage()
+  const tl = (ar: string, en: string) => (language === "ar" ? ar : en)
+  // Bilingual bucket labels for display only (Excel keeps BUCKET_LABEL as-is).
+  const BUCKET_LABEL_AR: Record<Bucket, string> = {
+    cash: "نقدي",
+    visa: "فيزا",
+    wallet: "محفظة",
+    instapay: "انستاباي",
+    sympl: "سيمبل",
+    paymob: "باي موب",
+    valu: "فاليو",
+    gift_card: "بطاقة هدايا",
+    other: "أخرى",
+  }
+  const bucketLabel = (b: Bucket) => tl(BUCKET_LABEL_AR[b], BUCKET_LABEL[b])
   const today = new Date()
   const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
   const [startDate, setStartDate] = useState(iso(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1)))
@@ -356,7 +372,7 @@ const DailySettlement: React.FC = () => {
       setRows(result)
       setLoaded(true)
     } catch (e: any) {
-      setError(e?.message || "فشل تحميل البيانات")
+      setError(e?.message || tl("فشل تحميل البيانات", "Failed to load data"))
     } finally {
       setLoading(false)
     }
@@ -434,15 +450,15 @@ const DailySettlement: React.FC = () => {
   }
 
   return (
-    <div className="p-4 md:p-6" dir="rtl">
+    <div className="p-4 md:p-6" dir={language === "ar" ? "rtl" : "ltr"}>
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-sm">
             <FileSpreadsheet className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-gray-900">المحاسبة اليومية للمندوبين</h1>
-            <p className="text-sm text-gray-600">كل المندوبين، يوماً بيوم — نفس أرقام لوحة الملخص</p>
+            <h1 className="text-xl font-bold text-gray-900">{tl("المحاسبة اليومية للمندوبين", "Daily Courier Settlement")}</h1>
+            <p className="text-sm text-gray-600">{tl("كل المناديب، يوماً بيوم — نفس أرقام لوحة الملخص", "All couriers, day by day — same figures as the Summary dashboard")}</p>
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -451,11 +467,11 @@ const DailySettlement: React.FC = () => {
           <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
           <button onClick={fetchAndCompute} disabled={loading} className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-50">
             <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-            تحديث
+            {tl("تحديث", "Refresh")}
           </button>
           <button onClick={downloadExcel} disabled={loading || rows.length === 0} className="flex items-center gap-1.5 px-4 py-2 text-sm rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50">
             <Download className="w-4 h-4" />
-            تحميل Excel
+            {tl("تحميل Excel", "Download Excel")}
           </button>
         </div>
       </div>
@@ -463,7 +479,7 @@ const DailySettlement: React.FC = () => {
       {error && <div className="mb-3 p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg">{error}</div>}
 
       {loaded && rows.length === 0 && !loading && (
-        <div className="p-6 text-center text-sm text-gray-500 bg-white rounded-xl border border-gray-200">لا توجد طلبات في هذه الفترة</div>
+        <div className="p-6 text-center text-sm text-gray-500 bg-white rounded-xl border border-gray-200">{tl("لا توجد طلبات في هذه الفترة", "No orders in this period")}</div>
       )}
 
       <div className="space-y-6">
@@ -476,14 +492,14 @@ const DailySettlement: React.FC = () => {
                 <table className="w-full text-xs whitespace-nowrap">
                   <thead>
                     <tr className="bg-gray-50 text-gray-600">
-                      <th className="px-2 py-2 text-right">Name</th>
-                      <th className="px-2 py-2 text-right">Orders</th>
-                      <th className="px-2 py-2 text-right bg-yellow-50">Success</th>
-                      <th className="px-2 py-2 text-right">Un Success</th>
-                      <th className="px-2 py-2 text-right bg-emerald-50">Total</th>
-                      <th className="px-2 py-2 text-right">Balance</th>
+                      <th className="px-2 py-2 text-right">{tl("الاسم", "Name")}</th>
+                      <th className="px-2 py-2 text-right">{tl("الطلبات", "Orders")}</th>
+                      <th className="px-2 py-2 text-right bg-yellow-50">{tl("المحصّل", "Success")}</th>
+                      <th className="px-2 py-2 text-right">{tl("غير المحصّل", "Un Success")}</th>
+                      <th className="px-2 py-2 text-right bg-emerald-50">{tl("الإجمالي", "Total")}</th>
+                      <th className="px-2 py-2 text-right">{tl("الرصيد", "Balance")}</th>
                       {DISPLAY_BUCKETS.map((b) => (
-                        <th key={b} className="px-2 py-2 text-right">{BUCKET_LABEL[b]}</th>
+                        <th key={b} className="px-2 py-2 text-right">{bucketLabel(b)}</th>
                       ))}
                     </tr>
                   </thead>
@@ -504,7 +520,7 @@ const DailySettlement: React.FC = () => {
                       </tr>
                     ))}
                     <tr className="border-t-2 border-gray-300 bg-gray-50 font-bold">
-                      <td className="px-2 py-1.5">TOTAL</td>
+                      <td className="px-2 py-1.5">{tl("الإجمالي", "TOTAL")}</td>
                       <td className="px-2 py-1.5 text-right">{t.orders}</td>
                       <td className="px-2 py-1.5 text-right">{fmt(t.success)}</td>
                       <td className="px-2 py-1.5 text-right">{fmt(t.unsuccess)}</td>

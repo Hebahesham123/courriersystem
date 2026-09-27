@@ -18,9 +18,9 @@ const savedLanguage = localStorage.getItem('language') as 'en' | 'ar' | null
 const language = savedLanguage === 'en' || savedLanguage === 'ar' ? savedLanguage : 'ar'
 localStorage.setItem('language', language)
 
-// Apply language and direction to document root (always LTR - left to right)
+// Apply language and direction to document root (direction follows language)
 document.documentElement.lang = language
-document.documentElement.dir = 'ltr'
+document.documentElement.dir = language === 'ar' ? 'rtl' : 'ltr'
 
 // Add font class based on language
 const rootElement = document.getElementById('root')

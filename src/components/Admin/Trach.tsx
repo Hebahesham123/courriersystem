@@ -93,6 +93,20 @@ const paymentLabels: Record<PaymentKind, string> = {
   other: "Other",
 }
 
+const paymentLabelsAr: Record<PaymentKind, string> = {
+  cash: "نقدي",
+  paymob: "Paymob / بطاقة",
+  valu: "ValU",
+  visa_machine: "ماكينة فيزا",
+  instapay: "InstaPay",
+  wallet: "محفظة",
+  on_hand: "مع المندوب",
+  other: "أخرى",
+}
+
+const payLabel = (kind: PaymentKind, language: string) =>
+  language === "ar" ? paymentLabelsAr[kind] : paymentLabels[kind]
+
 const formatCurrency = (value?: number | string | null) => {
   const numeric = Number(value || 0)
   return new Intl.NumberFormat("en-EG", {
@@ -128,6 +142,7 @@ const buildDateRangeIso = (start: string, end: string) => {
 const Trach: React.FC = () => {
   const { user } = useAuth()
   const { language } = useLanguage()
+  const tl = (ar: string, en: string) => (language === "ar" ? ar : en)
 
   const today = new Date()
   const defaultEnd = today.toISOString().split("T")[0]
@@ -315,23 +330,26 @@ const Trach: React.FC = () => {
   }, [couriers, filteredOrders])
 
   const statusOptions = [
-    { value: "all", label: "All statuses" },
-    { value: "assigned", label: "Assigned" },
-    { value: "delivered", label: "Delivered" },
-    { value: "partial", label: "Partial" },
-    { value: "return", label: "Return" },
-    { value: "canceled", label: "Canceled" },
+    { value: "all", label: tl("كل الحالات", "All statuses") },
+    { value: "assigned", label: tl("مُسند", "Assigned") },
+    { value: "delivered", label: tl("تم التوصيل", "Delivered") },
+    { value: "partial", label: tl("جزئي", "Partial") },
+    { value: "return", label: tl("مرتجع", "Return") },
+    { value: "canceled", label: tl("ملغي", "Canceled") },
   ]
 
   const paymentOptions = [
-    { value: "all", label: "All payments" },
-    ...Object.entries(paymentLabels).map(([value, label]) => ({ value, label })),
+    { value: "all", label: tl("كل طرق الدفع", "All payments") },
+    ...Object.entries(paymentLabels).map(([value]) => ({
+      value,
+      label: payLabel(value as PaymentKind, language),
+    })),
   ]
 
   const formatDate = (value?: string | null) => {
     if (!value) return "N/A"
     try {
-      return new Date(value).toLocaleString(language === "ar" ? "ar-EG" : "en-GB", {
+      return new Date(value).toLocaleString(language === "ar" ? "en-US" : "en-GB", {
         day: "2-digit",
         month: "short",
         hour: "2-digit",
@@ -342,8 +360,8 @@ const Trach: React.FC = () => {
     }
   }
 
-  // Always use LTR layout regardless of language (keep everything on the left)
-  const isRTL = false
+  // Follow the active language direction
+  const isRTL = language === "ar"
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50" dir={isRTL ? "rtl" : "ltr"}>
@@ -353,15 +371,18 @@ const Trach: React.FC = () => {
             <div>
               <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-sm font-semibold border border-emerald-100">
                 <CircleDot className="w-4 h-4 animate-pulse" />
-                Live feed updated
+                {tl("تم تحديث البث المباشر", "Live feed updated")}
                 <span className="text-xs text-emerald-500">{formatDate(new Date(liveTick).toISOString())}</span>
               </div>
               <h1 className="text-3xl font-black text-slate-900 mt-3 flex items-center gap-2">
                 <Monitor className="w-7 h-7 text-blue-600" />
-                Trach – Admin Tracking Board
+                {tl("لوحة تتبع المشرف", "Trach – Admin Tracking Board")}
               </h1>
               <p className="text-slate-600 mt-1">
-                Track every assigned order in real time, see courier performance, and drill into payments instantly.
+                {tl(
+                  "تابع كل طلب مُسند في الوقت الفعلي، واطّلع على أداء المندوبين، وتعمّق في المدفوعات فورًا.",
+                  "Track every assigned order in real time, see courier performance, and drill into payments instantly.",
+                )}
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -370,7 +391,7 @@ const Trach: React.FC = () => {
                 className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 transition"
               >
                 <RefreshCw className="w-4 h-4" />
-                Refresh now
+                {tl("تحديث الآن", "Refresh now")}
               </button>
               <div className="inline-flex items-center gap-2 px-3 py-2 bg-slate-100 text-slate-700 rounded-lg border border-slate-200">
                 <Calendar className="w-4 h-4" />
@@ -384,28 +405,28 @@ const Trach: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
             {[
               {
-                title: "Orders in view",
+                title: tl("الطلبات المعروضة", "Orders in view"),
                 value: totals.total,
                 icon: ClipboardIcon,
                 color: "text-blue-600",
                 bg: "bg-blue-50",
               },
               {
-                title: "Delivered",
+                title: tl("تم التوصيل", "Delivered"),
                 value: totals.delivered,
                 icon: CheckCircle2,
                 color: "text-emerald-600",
                 bg: "bg-emerald-50",
               },
               {
-                title: "Partial / Return",
+                title: tl("جزئي / مرتجع", "Partial / Return"),
                 value: totals.partial + totals.returns,
                 icon: Activity,
                 color: "text-orange-600",
                 bg: "bg-orange-50",
               },
               {
-                title: "Total value",
+                title: tl("إجمالي القيمة", "Total value"),
                 value: formatCurrency(totals.totalValue),
                 icon: Wallet,
                 color: "text-indigo-600",
@@ -431,11 +452,11 @@ const Trach: React.FC = () => {
         <div className="bg-white/90 rounded-2xl border border-slate-100 shadow-sm p-5 space-y-4">
           <div className="flex items-center gap-2 text-slate-700 font-semibold">
             <Filter className="w-4 h-4" />
-            Refine view
+            {tl("تنقية العرض", "Refine view")}
           </div>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-slate-500">Date from</label>
+              <label className="text-xs text-slate-500">{tl("من تاريخ", "Date from")}</label>
               <input
                 type="date"
                 value={filters.start}
@@ -445,7 +466,7 @@ const Trach: React.FC = () => {
               />
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-slate-500">Date to</label>
+              <label className="text-xs text-slate-500">{tl("إلى تاريخ", "Date to")}</label>
               <input
                 type="date"
                 value={filters.end}
@@ -455,7 +476,7 @@ const Trach: React.FC = () => {
               />
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-slate-500">Status</label>
+              <label className="text-xs text-slate-500">{tl("الحالة", "Status")}</label>
               <select
                 value={filters.status}
                 onChange={(e) => setFilters((prev) => ({ ...prev, status: e.target.value }))}
@@ -469,7 +490,7 @@ const Trach: React.FC = () => {
               </select>
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-slate-500">Payment</label>
+              <label className="text-xs text-slate-500">{tl("الدفع", "Payment")}</label>
               <select
                 value={filters.payment}
                 onChange={(e) => setFilters((prev) => ({ ...prev, payment: e.target.value }))}
@@ -483,13 +504,13 @@ const Trach: React.FC = () => {
               </select>
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-slate-500">Courier</label>
+              <label className="text-xs text-slate-500">{tl("المندوب", "Courier")}</label>
               <select
                 value={filters.courier}
                 onChange={(e) => setFilters((prev) => ({ ...prev, courier: e.target.value }))}
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 bg-slate-50 focus:bg-white focus:border-blue-400 outline-none"
               >
-                <option value="all">All couriers</option>
+                <option value="all">{tl("كل المندوبين", "All couriers")}</option>
                 {couriers.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
@@ -498,12 +519,12 @@ const Trach: React.FC = () => {
               </select>
             </div>
             <div className="md:col-span-3">
-              <label className="text-xs text-slate-500">Search</label>
+              <label className="text-xs text-slate-500">{tl("بحث", "Search")}</label>
               <div className="relative">
                 <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
-                  placeholder="Order ID, customer, phone, address, courier..."
+                  placeholder={tl("رقم الطلب، العميل، الهاتف، العنوان، المندوب...", "Order ID, customer, phone, address, courier...")}
                   value={filters.query}
                   onChange={(e) => setFilters((prev) => ({ ...prev, query: e.target.value }))}
                   className="w-full rounded-lg border border-slate-200 pl-9 pr-3 py-2 bg-slate-50 focus:bg-white focus:border-blue-400 outline-none"
@@ -518,12 +539,13 @@ const Trach: React.FC = () => {
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2 text-slate-800 font-semibold">
                 <BarChart3 className="w-4 h-4" />
-                Payment methods
+                {tl("طرق الدفع", "Payment methods")}
               </div>
-              <span className="text-xs text-slate-500">{paymentBreakdown.total} orders</span>
+              <span className="text-xs text-slate-500">{paymentBreakdown.total} {tl("طلب", "orders")}</span>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {Object.entries(paymentLabels).map(([key, label]) => {
+              {Object.entries(paymentLabels).map(([key]) => {
+                const label = payLabel(key as PaymentKind, language)
                 const count = paymentBreakdown.counts[key as PaymentKind] || 0
                 const pct = Math.round((count / paymentBreakdown.total) * 100)
                 const isActive = filters.payment === key
@@ -550,7 +572,7 @@ const Trach: React.FC = () => {
                       </div>
                       <div className="w-12 text-right text-sm font-semibold text-slate-800">{count}</div>
                     </div>
-                    {isActive && <div className="mt-2 text-xs text-blue-600 font-semibold">Showing {label} orders</div>}
+                    {isActive && <div className="mt-2 text-xs text-blue-600 font-semibold">{tl(`عرض طلبات ${label}`, `Showing ${label} orders`)}</div>}
                   </button>
                 )
               })}
@@ -560,7 +582,7 @@ const Trach: React.FC = () => {
           <div className="bg-gradient-to-br from-indigo-50 via-white to-blue-50 rounded-2xl border border-slate-100 shadow-sm p-5 space-y-3">
             <div className="flex items-center gap-2 text-slate-800 font-semibold">
               <TrendingUp className="w-4 h-4" />
-              Performance glance
+              {tl("لمحة عن الأداء", "Performance glance")}
             </div>
             <div className="space-y-3">
               <div className="flex items-center gap-3">
@@ -568,7 +590,7 @@ const Trach: React.FC = () => {
                   <CheckCircle2 className="w-5 h-5 text-emerald-600" />
                 </div>
                 <div>
-                  <p className="text-sm text-slate-600">Delivery success</p>
+                  <p className="text-sm text-slate-600">{tl("نسبة نجاح التوصيل", "Delivery success")}</p>
                   <p className="text-lg font-bold text-slate-900">
                     {totals.total ? Math.round((totals.delivered / totals.total) * 100) : 0}%
                   </p>
@@ -579,7 +601,7 @@ const Trach: React.FC = () => {
                   <Truck className="w-5 h-5 text-orange-600" />
                 </div>
                 <div>
-                  <p className="text-sm text-slate-600">Returns & partial</p>
+                  <p className="text-sm text-slate-600">{tl("المرتجعات والجزئي", "Returns & partial")}</p>
                   <p className="text-lg font-bold text-slate-900">{totals.partial + totals.returns}</p>
                 </div>
               </div>
@@ -588,7 +610,7 @@ const Trach: React.FC = () => {
                   <Wallet className="w-5 h-5 text-blue-600" />
                 </div>
                 <div>
-                  <p className="text-sm text-slate-600">Value in view</p>
+                  <p className="text-sm text-slate-600">{tl("القيمة المعروضة", "Value in view")}</p>
                   <p className="text-lg font-bold text-slate-900">{formatCurrency(totals.totalValue)}</p>
                 </div>
               </div>
@@ -600,14 +622,14 @@ const Trach: React.FC = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-slate-800 font-semibold">
               <Users className="w-4 h-4" />
-              Couriers leaderboard
+              {tl("ترتيب المندوبين", "Couriers leaderboard")}
             </div>
-            <div className="text-xs text-slate-500">Click any card to filter by courier</div>
+            <div className="text-xs text-slate-500">{tl("اضغط على أي بطاقة للتصفية حسب المندوب", "Click any card to filter by courier")}</div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {courierLeaderboard.length === 0 && (
               <div className="col-span-full text-center text-slate-500 py-6 border border-dashed border-slate-200 rounded-xl">
-                No orders in the selected range.
+                {tl("لا توجد طلبات في النطاق المحدد.", "No orders in the selected range.")}
               </div>
             )}
             {courierLeaderboard.map((entry) => (
@@ -623,23 +645,23 @@ const Trach: React.FC = () => {
               >
                 <div className="flex items-center justify-between mb-2">
                   <div>
-                    <p className="text-sm text-slate-500">Courier</p>
+                    <p className="text-sm text-slate-500">{tl("المندوب", "Courier")}</p>
                     <p className="text-lg font-bold text-slate-900">
-                      {entry.courier?.name || "Unassigned"}
+                      {entry.courier?.name || tl("غير مُسند", "Unassigned")}
                     </p>
                     {entry.courier?.email && <p className="text-xs text-slate-500">{entry.courier.email}</p>}
                   </div>
                   <div className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-sm font-semibold">
-                    {entry.count} orders
+                    {entry.count} {tl("طلب", "orders")}
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
                   <div>
-                    <p className="text-xs text-slate-500">Delivered</p>
+                    <p className="text-xs text-slate-500">{tl("تم التوصيل", "Delivered")}</p>
                     <p className="text-base font-semibold text-emerald-700">{entry.delivered}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-slate-500">Value</p>
+                    <p className="text-xs text-slate-500">{tl("القيمة", "Value")}</p>
                     <p className="text-base font-semibold text-slate-800">{formatCurrency(entry.value)}</p>
                   </div>
                 </div>
@@ -652,18 +674,18 @@ const Trach: React.FC = () => {
           <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
             <div className="flex items-center gap-2 text-slate-800 font-semibold">
               <ShoppingBag className="w-4 h-4" />
-              Live orders
+              {tl("الطلبات المباشرة", "Live orders")}
             </div>
             <div className="flex items-center gap-2 text-xs text-slate-500">
               <Clock className="w-4 h-4" />
-              Updated automatically
+              {tl("يتم التحديث تلقائيًا", "Updated automatically")}
             </div>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-100">
               <thead className="bg-slate-50">
                 <tr>
-                  {["Order", "Customer", "Courier", "Payment", "Status", "Value", "Updated", "Action"].map((h) => (
+                  {[tl("الطلب", "Order"), tl("العميل", "Customer"), tl("المندوب", "Courier"), tl("الدفع", "Payment"), tl("الحالة", "Status"), tl("القيمة", "Value"), tl("آخر تحديث", "Updated"), tl("إجراء", "Action")].map((h) => (
                     <th
                       key={h}
                       className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider"
@@ -679,7 +701,7 @@ const Trach: React.FC = () => {
                     <td colSpan={8} className="py-8">
                       <div className="flex items-center justify-center gap-3 text-slate-500">
                         <Loader2 className="w-5 h-5 animate-spin" />
-                        Loading live data...
+                        {tl("جارٍ تحميل البيانات المباشرة...", "Loading live data...")}
                       </div>
                     </td>
                   </tr>
@@ -687,7 +709,7 @@ const Trach: React.FC = () => {
                 {!loading && filteredOrders.length === 0 && (
                   <tr>
                     <td colSpan={8} className="py-8">
-                      <div className="text-center text-slate-500">No orders match the current filters.</div>
+                      <div className="text-center text-slate-500">{tl("لا توجد طلبات تطابق عوامل التصفية الحالية.", "No orders match the current filters.")}</div>
                     </td>
                   </tr>
                 )}
@@ -702,22 +724,22 @@ const Trach: React.FC = () => {
                       >
                         <td className="px-4 py-3 text-sm font-semibold text-slate-900">{order.order_id}</td>
                         <td className="px-4 py-3 text-sm text-slate-700">
-                          <div className="font-medium">{order.customer_name || "Unknown"}</div>
+                          <div className="font-medium">{order.customer_name || tl("غير معروف", "Unknown")}</div>
                           <div className="text-xs text-slate-500 flex items-center gap-1">
                             <MapPin className="w-3 h-3" />
-                            {order.address || "No address"}
+                            {order.address || tl("لا يوجد عنوان", "No address")}
                           </div>
                         </td>
                         <td className="px-4 py-3 text-sm text-slate-700">
-                          {order.courier_name || order.assigned_courier?.name || "Unassigned"}
+                          {order.courier_name || order.assigned_courier?.name || tl("غير مُسند", "Unassigned")}
                         </td>
                         <td className="px-4 py-3 text-sm text-slate-700">
                           <div className="flex items-center gap-2">
                             <CreditCard className="w-4 h-4 text-indigo-500" />
-                            <span>{paymentLabels[payment]}</span>
+                            <span>{payLabel(payment, language)}</span>
                           </div>
                           {order.payment_status && (
-                            <span className="text-xs text-slate-500">Status: {order.payment_status}</span>
+                            <span className="text-xs text-slate-500">{tl("الحالة", "Status")}: {order.payment_status}</span>
                           )}
                         </td>
                         <td className="px-4 py-3">{renderStatusBadge(order.status)}</td>
@@ -733,7 +755,7 @@ const Trach: React.FC = () => {
                               setSelectedOrder({ ...order, courier_name: order.courier_name })
                             }}
                           >
-                            View
+                            {tl("عرض", "View")}
                             <ArrowUpRight className="w-4 h-4" />
                           </button>
                         </td>
@@ -773,6 +795,8 @@ const QuickOrderCard: React.FC<{
   onClose: () => void
   onDetails: (order: Order) => void
 }> = ({ order, onClose, onDetails }) => {
+  const { language } = useLanguage()
+  const tl = (ar: string, en: string) => (language === "ar" ? ar : en)
   if (!order) return null
   const safeCurrency = formatCurrency(order.total_order_fees || order.delivery_fee)
   return (
@@ -780,9 +804,9 @@ const QuickOrderCard: React.FC<{
       <div className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-xs text-slate-500">Order</p>
+            <p className="text-xs text-slate-500">{tl("الطلب", "Order")}</p>
             <p className="text-lg font-bold text-slate-900">#{order.order_id}</p>
-            <p className="text-sm text-slate-600">{order.customer_name || "Customer"}</p>
+            <p className="text-sm text-slate-600">{order.customer_name || tl("العميل", "Customer")}</p>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
             <X className="w-4 h-4" />
@@ -791,18 +815,18 @@ const QuickOrderCard: React.FC<{
         <div className="space-y-2 text-sm text-slate-700">
           <div className="flex items-center gap-2">
             <Truck className="w-4 h-4 text-blue-500" />
-            <span>{order.courier_name || "Unassigned"}</span>
+            <span>{order.courier_name || tl("غير مُسند", "Unassigned")}</span>
           </div>
           <div className="flex items-center gap-2">
             <CreditCard className="w-4 h-4 text-indigo-500" />
-            <span>{paymentLabels[normalizePayment(order.payment_method, order.collected_by, order.payment_sub_type)]}</span>
+            <span>{payLabel(normalizePayment(order.payment_method, order.collected_by, order.payment_sub_type), language)}</span>
           </div>
           <div className="flex items-center gap-2">
             <MapPin className="w-4 h-4 text-slate-500" />
-            <span className="line-clamp-2">{order.address || "No address"}</span>
+            <span className="line-clamp-2">{order.address || tl("لا يوجد عنوان", "No address")}</span>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-500">Updated</span>
+            <span className="text-xs text-slate-500">{tl("آخر تحديث", "Updated")}</span>
             <span className="text-xs font-semibold text-slate-800">
               {order.updated_at ? new Date(order.updated_at).toLocaleString() : "N/A"}
             </span>
@@ -813,7 +837,7 @@ const QuickOrderCard: React.FC<{
             {renderStatusBadge(order.status)}
           </div>
           <div className="text-right">
-            <p className="text-xs text-slate-500">Value</p>
+            <p className="text-xs text-slate-500">{tl("القيمة", "Value")}</p>
             <p className="text-base font-bold text-slate-900">{safeCurrency}</p>
           </div>
         </div>
@@ -822,7 +846,7 @@ const QuickOrderCard: React.FC<{
             className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
             onClick={() => onDetails(order)}
           >
-            Full details
+            {tl("التفاصيل الكاملة", "Full details")}
             <ArrowUpRight className="w-4 h-4" />
           </button>
         </div>

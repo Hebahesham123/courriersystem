@@ -18,6 +18,7 @@ import {
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
 import { useAuth } from "../../contexts/AuthContext"
+import { useLanguage } from "../../contexts/LanguageContext"
 
 interface Courier {
   id: string
@@ -52,18 +53,20 @@ type CategoryId =
   | "receiving_part"
   | "return"
 
-const STATUS_LABELS: Record<CategoryId, { title: string; color: string; icon: React.ComponentType<{ className?: string }> }> = {
-  delivered: { title: "الطلبات المسلمة", color: "text-emerald-700", icon: CheckCircle2 },
-  partial: { title: "الطلبات الجزئية", color: "text-amber-700", icon: Receipt },
-  canceled: { title: "الطلبات الملغاة", color: "text-rose-700", icon: XCircle },
-  assigned: { title: "الطلبات المكلفة", color: "text-blue-700", icon: Clock3 },
-  hand_to_hand: { title: "الطلبات يد بيد", color: "text-purple-700", icon: HandMetal },
-  receiving_part: { title: "طلبات استلام قطعة", color: "text-indigo-700", icon: HandMetal },
-  return: { title: "طلبات مرتجعة", color: "text-gray-700", icon: Clock3 },
+const STATUS_LABELS: Record<CategoryId, { titleAr: string; titleEn: string; color: string; icon: React.ComponentType<{ className?: string }> }> = {
+  delivered: { titleAr: "الطلبات المسلمة", titleEn: "Delivered Orders", color: "text-emerald-700", icon: CheckCircle2 },
+  partial: { titleAr: "الطلبات الجزئية", titleEn: "Partial Orders", color: "text-amber-700", icon: Receipt },
+  canceled: { titleAr: "الطلبات الملغاة", titleEn: "Canceled Orders", color: "text-rose-700", icon: XCircle },
+  assigned: { titleAr: "الطلبات المكلفة", titleEn: "Assigned Orders", color: "text-blue-700", icon: Clock3 },
+  hand_to_hand: { titleAr: "الطلبات يد بيد", titleEn: "Hand-to-Hand Orders", color: "text-purple-700", icon: HandMetal },
+  receiving_part: { titleAr: "طلبات استلام قطعة", titleEn: "Part Receiving Orders", color: "text-indigo-700", icon: HandMetal },
+  return: { titleAr: "طلبات مرتجعة", titleEn: "Returned Orders", color: "text-gray-700", icon: Clock3 },
 }
 
 const CourierTrackingDetail: React.FC = () => {
   const { user } = useAuth()
+  const { language } = useLanguage()
+  const tl = (ar: string, en: string) => (language === 'ar' ? ar : en)
   const { courierId } = useParams<{ courierId: string }>()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -195,22 +198,22 @@ const CourierTrackingDetail: React.FC = () => {
     new Intl.NumberFormat("en-US", { style: "currency", currency: "EGP", minimumFractionDigits: 0 }).format(amount)
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-4 md:p-6 lg:p-8" dir="rtl">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-4 md:p-6 lg:p-8" dir={language === 'ar' ? 'rtl' : 'ltr'}>
       <div className="max-w-7xl mx-auto">
         <div className="bg-white rounded-xl shadow-sm p-4 md:p-5 mb-4 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <button
               onClick={() => navigate(-1)}
               className="p-2 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors"
-              aria-label="عودة"
+              aria-label={tl('عودة', 'Back')}
             >
               <ArrowLeft className="w-5 h-5 text-gray-600" />
             </button>
             <div>
-              <p className="text-xs text-gray-500">المندوب</p>
+              <p className="text-xs text-gray-500">{tl('المندوب', 'Courier')}</p>
               <p className="text-lg font-bold text-gray-800 flex items-center gap-2">
                 <Truck className="w-5 h-5 text-blue-600" />
-                {courier?.name || "غير معروف"}
+                {courier?.name || tl('غير معروف', 'Unknown')}
               </p>
               <p className="text-xs text-gray-500">{courier?.email}</p>
             </div>
@@ -230,7 +233,7 @@ const CourierTrackingDetail: React.FC = () => {
               className="flex items-center gap-1 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 transition-colors"
             >
               <RefreshCw className="w-4 h-4" />
-              تحديث
+              {tl('تحديث', 'Refresh')}
             </button>
           </div>
         </div>
@@ -238,7 +241,7 @@ const CourierTrackingDetail: React.FC = () => {
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <RefreshCw className="w-7 h-7 text-blue-600 animate-spin" />
-            <span className="mr-2 text-gray-600">جاري التحميل...</span>
+            <span className="mr-2 text-gray-600">{tl('جاري التحميل...', 'Loading...')}</span>
           </div>
         ) : (
           <>
@@ -253,16 +256,16 @@ const CourierTrackingDetail: React.FC = () => {
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
                         <Icon className={`w-5 h-5 ${cat.color}`} />
-                        <p className="text-sm font-semibold text-gray-800">{cat.title}</p>
+                        <p className="text-sm font-semibold text-gray-800">{tl(cat.titleAr, cat.titleEn)}</p>
                       </div>
               <span className={`text-lg font-bold ${cat.color}`}>{formatNumber(cat.count)}</span>
                     </div>
                     <div className="text-xs text-gray-500 flex justify-between">
-                      <span>القيمة الأصلية</span>
+                      <span>{tl('القيمة الأصلية', 'Original value')}</span>
                       <span className="font-semibold text-gray-700">{formatCurrency(cat.totalValue)}</span>
                     </div>
                     <div className="text-xs text-gray-500 flex justify-between">
-                      <span>المحصل</span>
+                      <span>{tl('المحصل', 'Collected')}</span>
                       <span className="font-semibold text-gray-700">{formatCurrency(cat.collectedValue)}</span>
                     </div>
                   </div>
@@ -275,8 +278,8 @@ const CourierTrackingDetail: React.FC = () => {
                 <div className="flex items-center gap-2">
                   <Wallet className="w-5 h-5 text-green-600" />
                   <div>
-                    <p className="text-sm font-semibold text-gray-800">إجمالي نقدي محصل</p>
-                    <p className="text-xs text-gray-500">يشمل الطلبات النقدية والمحصل بواسطة المندوب</p>
+                    <p className="text-sm font-semibold text-gray-800">{tl('إجمالي نقدي محصل', 'Total cash collected')}</p>
+                    <p className="text-xs text-gray-500">{tl('يشمل الطلبات النقدية والمحصل بواسطة المندوب', 'Includes cash orders and amounts collected by the courier')}</p>
                   </div>
                 </div>
                 <span className="text-lg font-bold text-green-700">{formatCurrency(paymentSummary.cash)}</span>
@@ -285,8 +288,8 @@ const CourierTrackingDetail: React.FC = () => {
                 <div className="flex items-center gap-2">
                   <CreditCard className="w-5 h-5 text-blue-600" />
                   <div>
-                    <p className="text-sm font-semibold text-gray-800">تحصيل غير نقدي</p>
-                    <p className="text-xs text-gray-500">بطاقات / تحويل / طرق أخرى</p>
+                    <p className="text-sm font-semibold text-gray-800">{tl('تحصيل غير نقدي', 'Non-cash collection')}</p>
+                    <p className="text-xs text-gray-500">{tl('بطاقات / تحويل / طرق أخرى', 'Cards / transfer / other methods')}</p>
                   </div>
                 </div>
                 <span className="text-lg font-bold text-blue-700">{formatCurrency(paymentSummary.nonCash)}</span>
@@ -296,16 +299,16 @@ const CourierTrackingDetail: React.FC = () => {
             <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
               <div className="flex items-center justify-between mb-3">
                 <div>
-                  <p className="text-sm font-semibold text-gray-800">تفاصيل الطلبات</p>
-                  <p className="text-xs text-gray-500">قابلة للضغط لإظهار تفاصيل الدفع والعنوان</p>
+                  <p className="text-sm font-semibold text-gray-800">{tl('تفاصيل الطلبات', 'Order Details')}</p>
+                  <p className="text-xs text-gray-500">{tl('قابلة للضغط لإظهار تفاصيل الدفع والعنوان', 'Clickable to show payment and address details')}</p>
                 </div>
                 <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-700">
-                  {formatNumber(orders.length)} طلب
+                  {formatNumber(orders.length)} {tl('طلب', 'orders')}
                 </span>
               </div>
 
               {orders.length === 0 ? (
-                <div className="text-center text-gray-500 py-8 text-sm">لا توجد طلبات في هذا اليوم.</div>
+                <div className="text-center text-gray-500 py-8 text-sm">{tl('لا توجد طلبات في هذا اليوم.', 'No orders on this day.')}</div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                   {orders.map((order) => {
@@ -321,22 +324,22 @@ const CourierTrackingDetail: React.FC = () => {
                             {order.order_id}
                           </span>
                           <span className={`text-xs font-semibold px-2 py-1 bg-gray-200 rounded ${catColor}`}>
-                            {order.status || "غير محدد"}
+                            {order.status || tl('غير محدد', 'Unspecified')}
                           </span>
                         </div>
-                        <p className="text-gray-800 font-semibold mb-1">{order.customer_name || "عميل غير معروف"}</p>
-                        {order.address && <p className="text-xs text-gray-500 mb-1 truncate">العنوان: {order.address}</p>}
-                        {order.mobile_number && <p className="text-xs text-gray-500 mb-1">الهاتف: {order.mobile_number}</p>}
+                        <p className="text-gray-800 font-semibold mb-1">{order.customer_name || tl('عميل غير معروف', 'Unknown customer')}</p>
+                        {order.address && <p className="text-xs text-gray-500 mb-1 truncate">{tl('العنوان', 'Address')}: {order.address}</p>}
+                        {order.mobile_number && <p className="text-xs text-gray-500 mb-1">{tl('الهاتف', 'Phone')}: {order.mobile_number}</p>}
                         <div className="flex items-center justify-between text-xs text-gray-600 mt-2">
-                          <span>القيمة: {formatCurrency(Number(order.total_order_fees) || 0)}</span>
-                          <span>المحصل: {formatCurrency(collected)}</span>
+                          <span>{tl('القيمة', 'Value')}: {formatCurrency(Number(order.total_order_fees) || 0)}</span>
+                          <span>{tl('المحصل', 'Collected')}: {formatCurrency(collected)}</span>
                         </div>
                         <div className="flex items-center justify-between text-xs text-gray-600 mt-1">
-                          <span>الدفع: {order.payment_method || "غير محدد"}</span>
-                          {order.payment_status && <span>حالة الدفع: {order.payment_status}</span>}
+                          <span>{tl('الدفع', 'Payment')}: {order.payment_method || tl('غير محدد', 'Unspecified')}</span>
+                          {order.payment_status && <span>{tl('حالة الدفع', 'Payment status')}: {order.payment_status}</span>}
                         </div>
                         <div className="text-[11px] text-gray-500 mt-1">
-                          {isCashCollected(order) ? "نقدي / محصل بواسطة المندوب" : "غير نقدي"}
+                          {isCashCollected(order) ? tl('نقدي / محصل بواسطة المندوب', 'Cash / collected by courier') : tl('غير نقدي', 'Non-cash')}
                           {order.payment_sub_type && ` • ${order.payment_sub_type}`}
                         </div>
                       </div>

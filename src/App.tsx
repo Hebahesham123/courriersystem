@@ -94,10 +94,9 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles?: strin
 const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { language } = useLanguage()
   return (
-    // Container is hard-coded RTL so the sidebar (first child) is ALWAYS on the
-    // right, independent of the app language or a per-page document-direction
-    // change. The content area follows the selected language for its own text.
-    <div dir="rtl" className="flex min-h-screen bg-gray-50 w-full overflow-x-hidden">
+    // Direction follows the selected language: Arabic => RTL (sidebar, the first
+    // child, sits on the RIGHT); English => LTR (sidebar sits on the LEFT).
+    <div dir={language === "ar" ? "rtl" : "ltr"} className="flex min-h-screen bg-gray-50 w-full overflow-x-hidden">
       <Sidebar />
       <div dir={language === "ar" ? "rtl" : "ltr"} className="flex-1 flex flex-col min-w-0 w-full">
         <Header />
@@ -408,8 +407,8 @@ const AppWrapper = () => {
   const { language } = useLanguage()
 
   useEffect(() => {
-    // Always use LTR direction regardless of language (keep everything on the left)
-    document.documentElement.setAttribute("dir", "ltr")
+    // Direction follows the language: Arabic => RTL, English => LTR.
+    document.documentElement.setAttribute("dir", language === "ar" ? "rtl" : "ltr")
     document.documentElement.lang = language
   }, [language])
 
