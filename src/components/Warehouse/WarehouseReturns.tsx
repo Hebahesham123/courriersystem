@@ -78,6 +78,7 @@ interface Order {
   assigned_at?: string | null
   receive_piece_or_exchange?: string | null
   admin_prepaid_amount?: number | null
+  partial_paid_amount?: number | null
   line_items?: any
   product_images?: any
   notes?: string | null
@@ -143,7 +144,7 @@ const WarehouseReturns: React.FC = () => {
       const { data, error: err } = await supabase
         .from("orders")
         .select(
-          "id, order_id, shopify_order_name, customer_name, customer_phone, mobile_number, address, shipping_address, total_order_fees, status, assigned_courier_id, assigned_at, receive_piece_or_exchange, admin_prepaid_amount, notes, order_note, warehouse_received, warehouse_received_at, warehouse_received_by, warehouse_received_comment, created_at",
+          "id, order_id, shopify_order_name, customer_name, customer_phone, mobile_number, address, shipping_address, total_order_fees, partial_paid_amount, status, assigned_courier_id, assigned_at, receive_piece_or_exchange, admin_prepaid_amount, notes, order_note, warehouse_received, warehouse_received_at, warehouse_received_by, warehouse_received_comment, created_at",
         )
         .or(
           "status.in.(partial,canceled,hand_to_hand,receiving_part),receive_piece_or_exchange.in.(receive_piece,exchange)",
@@ -176,7 +177,18 @@ const WarehouseReturns: React.FC = () => {
   const matchesFilters = (o: Order): boolean => {
     const cat = categoryOf(o)
     if (cat === "other") return false
-    if (catFilter !== "all" && cat !== catFilter) return false
+    // "جزئي" matches ANY order that has a partial amount (status partial OR a
+    // partial_paid_amount), independent of its primary category — so an order
+    // that is e.g. hand-to-hand + partial still shows here. Other categories use
+    // the primary category.
+    const hasPartial = o.status === "partial" || (Number(o.partial_paid_amount) || 0) > 0
+    if (catFilter !== "all") {
+      if (catFilter === "partial") {
+        if (!hasPartial) return false
+      } else if (cat !== catFilter) {
+        return false
+      }
+    }
     if (receivedFilter === "received" && !o.warehouse_received) return false
     if (receivedFilter === "pending" && o.warehouse_received) return false
     const hasDeposit = (Number(o.admin_prepaid_amount) || 0) > 0
