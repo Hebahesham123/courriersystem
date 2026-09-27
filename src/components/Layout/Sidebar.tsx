@@ -285,9 +285,9 @@ const Sidebar: React.FC = () => {
 
   return (
     <>
-      {/* Mobile Menu Toggle Button - Always on the left */}
+      {/* Mobile Menu Toggle Button - on the right (sidebar side) */}
       <button
-        className="fixed top-4 left-4 z-50 p-3 bg-gray-900 hover:bg-gray-800 text-white rounded-xl shadow-lg transition-all duration-200 lg:hidden"
+        className="fixed top-4 right-4 z-50 p-3 bg-gray-900 hover:bg-gray-800 text-white rounded-xl shadow-lg transition-all duration-200 lg:hidden"
         onClick={toggleSidebar}
         aria-label="فتح القائمة الجانبية"
       >
@@ -303,12 +303,12 @@ const Sidebar: React.FC = () => {
         />
       )}
 
-      {/* Sidebar Container - Always on the left side, always visible on desktop */}
+      {/* Sidebar Container - Always on the RIGHT side, always visible on desktop */}
       <aside
-        className={`fixed top-0 left-0 z-50 h-full bg-gradient-to-b from-gray-900 via-gray-800 to-gray-900 text-white shadow-2xl transition-all duration-300 ease-in-out ${
+        className={`fixed top-0 right-0 z-50 h-full bg-gradient-to-b from-gray-900 via-gray-800 to-gray-900 text-white shadow-2xl transition-all duration-300 ease-in-out ${
           isCollapsed ? "w-20" : "w-72 sm:w-80"
         } ${
-          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+          sidebarOpen ? "translate-x-0" : "translate-x-full"
         } lg:translate-x-0 lg:static lg:block`}
         dir="ltr"
         role="navigation"
@@ -319,7 +319,7 @@ const Sidebar: React.FC = () => {
           {/* Collapse Button */}
           <button
             onClick={toggleCollapse}
-            className="absolute -right-4 top-8 bg-gray-800 hover:bg-gray-700 text-white rounded-full p-2 shadow-lg border border-gray-600 z-10 transition-all duration-200 hidden lg:flex items-center justify-center"
+            className="absolute -left-4 top-8 bg-gray-800 hover:bg-gray-700 text-white rounded-full p-2 shadow-lg border border-gray-600 z-10 transition-all duration-200 hidden lg:flex items-center justify-center"
             aria-label={isCollapsed ? "توسيع القائمة" : "طي القائمة"}
           >
             {isCollapsed ? (
