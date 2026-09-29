@@ -82,6 +82,35 @@ const RepairManagement: React.FC = () => {
 
   const userName = user?.name || user?.email || "admin"
 
+  // Look up the customer request matching an order id and snapshot its
+  // comment / photos / video / notes, so the repair user sees the context —
+  // regardless of which screen the admin assigned from.
+  const stripHash = (s: any) => String(s || "").replace(/^#/, "").trim()
+  const fetchRequestSnapshot = async (orderId: string | null): Promise<any> => {
+    const raw = stripHash(orderId)
+    if (!raw) return null
+    const { data: reqs } = await supabase
+      .from("requests")
+      .select("id, order_id, comment, image_url, video_url, created_at")
+      .ilike("order_id", `%${raw}%`)
+      .order("created_at", { ascending: false })
+      .limit(20)
+    const matches = (reqs || []).filter((r: any) => stripHash(r.order_id) === raw)
+    if (matches.length === 0) return null
+    const req = matches.find((r: any) => r.comment || r.image_url || r.video_url) || matches[0]
+    const { data: notes } = await supabase
+      .from("request_notes")
+      .select("note, image_url, author, created_at")
+      .eq("request_id", req.id)
+      .order("created_at", { ascending: true })
+    return {
+      comment: req.comment || null,
+      image_url: req.image_url || null,
+      video_url: req.video_url || null,
+      notes: (notes || []).map((n: any) => ({ note: n.note || null, image_url: n.image_url || null, author: n.author || null })),
+    }
+  }
+
   // ---- load repair users ----------------------------------------------------
   useEffect(() => {
     ;(async () => {
@@ -147,6 +176,7 @@ const RepairManagement: React.FC = () => {
         }
       }
     }
+    const repairRequest = await fetchRequestSnapshot(row.order_id)
     const { error } = await supabase
       .from("orders")
       .update({
@@ -155,7 +185,7 @@ const RepairManagement: React.FC = () => {
         repair_assigned_at: new Date().toISOString(),
         repair_assigned_by: userName,
         repair_item: repairItem,
-        repair_request: null,
+        repair_request: repairRequest,
         repair_admin_received: false,
         repair_admin_received_at: null,
         repair_admin_received_by: null,
