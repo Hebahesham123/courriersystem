@@ -32,11 +32,19 @@ import ActivityLogs from "./components/Admin/ActivityLogs"
 import DailySettlement from "./components/Admin/DailySettlement"
 import WarehouseReturns from "./components/Warehouse/WarehouseReturns"
 import WarehouseTracking from "./components/Admin/WarehouseTracking"
+import RepairOrders from "./components/Repair/RepairOrders"
+import RepairManagement from "./components/Admin/RepairManagement"
 import { activateDueScheduledOrders } from "./lib/scheduling"
 
 // Landing route for a given role.
 const homeFor = (role?: string): string =>
-  role === "admin" ? "/admin" : role === "warehouse" ? "/warehouse/returns" : "/courier"
+  role === "admin"
+    ? "/admin"
+    : role === "warehouse"
+    ? "/warehouse/returns"
+    : role === "repair"
+    ? "/repair"
+    : "/courier"
 
 // Shown when the user is authenticated but their role could not be loaded yet
 // (e.g. a transient token/profile failure). Avoids an infinite redirect loop and
@@ -392,6 +400,26 @@ const AppRoutes: React.FC = () => {
               <ProtectedRoute allowedRoles={["admin"]}>
                 <AppLayout>
                   <WarehouseTracking />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/repair"
+            element={
+              <ProtectedRoute allowedRoles={["repair", "admin"]}>
+                <AppLayout>
+                  <RepairOrders />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/repair"
+            element={
+              <ProtectedRoute allowedRoles={["admin"]}>
+                <AppLayout>
+                  <RepairManagement />
                 </AppLayout>
               </ProtectedRoute>
             }

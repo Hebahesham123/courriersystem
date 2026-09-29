@@ -28,6 +28,7 @@ import {
   Calendar,
   Map as MapIcon,
   Warehouse,
+  Wrench,
 } from "lucide-react"
 import { useAuth } from "../../contexts/AuthContext"
 import { useLanguage } from "../../contexts/LanguageContext"
@@ -165,6 +166,13 @@ const Sidebar: React.FC = () => {
       description: tl("تتبع استلام موظفي المخزن للمرتجعات", "Warehouse staff receipt tracking"),
     },
     {
+      path: "/admin/repair",
+      icon: Wrench,
+      label: tl("التصليح", "Repair"),
+      color: "text-purple-400",
+      description: tl("إسناد الطلبات للتصليح ومتابعتها", "Assign & track repair orders"),
+    },
+    {
       path: "/admin/analytics",
       icon: BarChart3,
       label: tl("التحليلات", "Analytics"),
@@ -256,8 +264,24 @@ const Sidebar: React.FC = () => {
     },
   ]
 
+  const repairMenuItems: MenuItem[] = [
+    {
+      path: "/repair",
+      icon: Wrench,
+      label: tl("طلبات التصليح", "Repair Orders"),
+      color: "text-purple-400",
+      description: tl("الطلبات المُسندة إليك للتصليح", "Orders assigned to you for repair"),
+    },
+  ]
+
   const menuItems =
-    user?.role === "admin" ? adminMenuItems : user?.role === "warehouse" ? warehouseMenuItems : courierMenuItems
+    user?.role === "admin"
+      ? adminMenuItems
+      : user?.role === "warehouse"
+      ? warehouseMenuItems
+      : user?.role === "repair"
+      ? repairMenuItems
+      : courierMenuItems
 
   const getUserInitials = (name?: string): string => {
     if (!name) return "U"
@@ -274,6 +298,7 @@ const Sidebar: React.FC = () => {
       admin: { ar: "مدير النظام", en: "System Admin" },
       courier: { ar: "مندوب توصيل", en: "Delivery Courier" },
       warehouse: { ar: "المخزن", en: "Warehouse" },
+      repair: { ar: "التصليح", en: "Repair" },
     }
     const r = roleTranslations[user?.role as string]
     return r ? (language === "ar" ? r.ar : r.en) : user?.role || (language === "ar" ? "مستخدم" : "User")

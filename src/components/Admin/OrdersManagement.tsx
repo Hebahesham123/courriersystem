@@ -15,6 +15,7 @@ import {
   Package,
   Phone,
   CreditCard,
+  Wrench,
   Hash,
   User,
   FileText,
@@ -308,6 +309,8 @@ const OrdersManagement: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [selectedOrders, setSelectedOrders] = useState<string[]>([])
   const [selectedCourier, setSelectedCourier] = useState("")
+  const [repairUserId, setRepairUserId] = useState("")
+  const [repairLoading, setRepairLoading] = useState(false)
   const [assignLoading, setAssignLoading] = useState(false)
   // Optional assignment date — when set, assigned_at uses this date instead of "now"
   const [assignDate, setAssignDate] = useState<string>("") // YYYY-MM-DD
@@ -977,6 +980,8 @@ const OrdersManagement: React.FC = () => {
 
       const courierUsers = allUsers?.filter((user: any) => user.role?.toLowerCase() === "courier") || []
       setCouriers(courierUsers)
+      const repairUser = allUsers?.find((u: any) => u.role?.toLowerCase() === "repair")
+      setRepairUserId(repairUser?.id || "")
     } catch (error: any) {
       setError("Failed to fetch couriers / فشل تحميل المندوبين: " + error.message)
     }
@@ -2026,6 +2031,42 @@ const OrdersManagement: React.FC = () => {
       setError("Failed to assign orders / فشل تعيين الطلبات: " + error.message)
     } finally {
       setAssignLoading(false)
+    }
+  }
+
+  // Send the selected orders to the repair user (Karim). Kept fully separate
+  // from courier assignment / order status so it never affects delivery.
+  const handleSendToRepair = async () => {
+    if (selectedOrders.length === 0) {
+      setError("Please select orders / يرجى اختيار طلبات")
+      return
+    }
+    if (!repairUserId) {
+      setError("No repair user found. Create Karim's account first / لا يوجد مستخدم تصليح. أنشئ حساب كريم أولاً")
+      return
+    }
+    setRepairLoading(true)
+    try {
+      const { error } = await supabase
+        .from("orders")
+        .update({
+          repair_assigned_to: repairUserId,
+          repair_status: "assigned",
+          repair_assigned_at: new Date().toISOString(),
+          repair_assigned_by: user?.name || user?.email || "admin",
+          repair_admin_received: false,
+          repair_admin_received_at: null,
+          repair_admin_received_by: null,
+        })
+        .in("id", selectedOrders)
+      if (error) throw error
+      const n = selectedOrders.length
+      setSelectedOrders([])
+      setSuccessMessage(`Sent ${n} order(s) to repair / تم إرسال ${n} طلب للتصليح`)
+    } catch (error: any) {
+      setError("Failed to send to repair / فشل الإرسال للتصليح: " + error.message)
+    } finally {
+      setRepairLoading(false)
     }
   }
 
@@ -4210,6 +4251,19 @@ const OrdersManagement: React.FC = () => {
                     >
                       <CreditCard className="w-4 h-4" />
                       دفع مسبق للمحدد
+                    </button>
+                    <button
+                      onClick={handleSendToRepair}
+                      disabled={repairLoading}
+                      title="إرسال المحدد للتصليح (كريم) / Send selected to repair (Karim)"
+                      className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {repairLoading ? (
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      ) : (
+                        <Wrench className="w-4 h-4" />
+                      )}
+                      إرسال للتصليح
                     </button>
                     <button
                       onClick={() => setShowArchiveConfirm(true)}
