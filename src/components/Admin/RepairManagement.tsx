@@ -9,6 +9,25 @@ import { Wrench, Search, RefreshCw, CheckCircle, Clock, PlayCircle, CornerUpLeft
 
 type RepairStatus = "assigned" | "received" | "in_process" | "returned"
 
+// line_items may arrive as a JSON string or an array.
+const parseItems = (raw: any): any[] => {
+  if (!raw) return []
+  try {
+    const v = typeof raw === "string" ? JSON.parse(raw) : raw
+    return Array.isArray(v) ? v : []
+  } catch {
+    return []
+  }
+}
+
+const itemQty = (it: any): number => Number(it?.quantity ?? it?.current_quantity ?? it?.qty ?? 1) || 1
+const itemVariant = (it: any): string | null =>
+  it?.variant_title && it.variant_title !== "Default Title" ? it.variant_title : null
+const itemLabel = (it: any): string => {
+  const v = itemVariant(it)
+  return `${it?.title || it?.name || "Product"}${v ? ` - ${v}` : ""} × ${itemQty(it)}`
+}
+
 interface RepairUser {
   id: string
   name: string | null
@@ -22,8 +41,10 @@ interface SearchRow {
   customer_name: string | null
   customer_phone: string | null
   mobile_number: string | null
+  line_items: any
   repair_assigned_to: string | null
   repair_status: RepairStatus | null
+  repair_item: any
 }
 
 interface TrackRow {
@@ -37,6 +58,7 @@ interface TrackRow {
   repair_assigned_at: string | null
   repair_status: RepairStatus | null
   repair_note: string | null
+  repair_item: any
   repair_admin_received: boolean | null
   repair_admin_received_at: string | null
   repair_admin_received_by: string | null
@@ -82,6 +104,8 @@ const RepairManagement: React.FC = () => {
   const [results, setResults] = useState<SearchRow[]>([])
   const [searching, setSearching] = useState(false)
   const [searched, setSearched] = useState(false)
+  // Per-result item choice: "" = whole order, otherwise the item index (as string).
+  const [itemChoice, setItemChoice] = useState<Record<string, string>>({})
 
   const runSearch = async () => {
     const q = query.trim()
@@ -90,7 +114,9 @@ const RepairManagement: React.FC = () => {
     setSearched(true)
     const { data, error } = await supabase
       .from("orders")
-      .select("id, order_id, shopify_order_name, customer_name, customer_phone, mobile_number, repair_assigned_to, repair_status")
+      .select(
+        "id, order_id, shopify_order_name, customer_name, customer_phone, mobile_number, line_items, repair_assigned_to, repair_status, repair_item",
+      )
       .or(`order_id.ilike.%${q}%,shopify_order_name.ilike.%${q}%,customer_name.ilike.%${q}%`)
       .order("created_at", { ascending: false })
       .limit(50)
@@ -103,6 +129,24 @@ const RepairManagement: React.FC = () => {
       alert(tl("لا يوجد مستخدم تصليح. أنشئ حساب كريم أولاً.", "No repair user. Create Karim's account first."))
       return
     }
+    // Build the chosen-item payload ("" => whole order).
+    const items = parseItems(row.line_items)
+    const choice = itemChoice[row.id] ?? ""
+    let repairItem: any = null
+    if (choice !== "") {
+      const idx = Number(choice)
+      const it = items[idx]
+      if (it) {
+        repairItem = {
+          index: idx,
+          title: it.title || it.name || null,
+          variant_title: itemVariant(it),
+          sku: it.sku || null,
+          quantity: itemQty(it),
+          product_id: it.product_id ?? null,
+        }
+      }
+    }
     const { error } = await supabase
       .from("orders")
       .update({
@@ -110,6 +154,7 @@ const RepairManagement: React.FC = () => {
         repair_status: "assigned",
         repair_assigned_at: new Date().toISOString(),
         repair_assigned_by: userName,
+        repair_item: repairItem,
         repair_admin_received: false,
         repair_admin_received_at: null,
         repair_admin_received_by: null,
@@ -120,20 +165,24 @@ const RepairManagement: React.FC = () => {
       return
     }
     setResults((list) =>
-      list.map((r) => (r.id === row.id ? { ...r, repair_assigned_to: targetUser, repair_status: "assigned" } : r)),
+      list.map((r) =>
+        r.id === row.id ? { ...r, repair_assigned_to: targetUser, repair_status: "assigned", repair_item: repairItem } : r,
+      ),
     )
   }
 
   const unassign = async (row: SearchRow) => {
     const { error } = await supabase
       .from("orders")
-      .update({ repair_assigned_to: null, repair_status: null })
+      .update({ repair_assigned_to: null, repair_status: null, repair_item: null })
       .eq("id", row.id)
     if (error) {
       alert(tl("فشل الإلغاء", "Failed to unassign"))
       return
     }
-    setResults((list) => list.map((r) => (r.id === row.id ? { ...r, repair_assigned_to: null, repair_status: null } : r)))
+    setResults((list) =>
+      list.map((r) => (r.id === row.id ? { ...r, repair_assigned_to: null, repair_status: null, repair_item: null } : r)),
+    )
   }
 
   // ---- TRACKING tab ---------------------------------------------------------
@@ -146,7 +195,7 @@ const RepairManagement: React.FC = () => {
     const { data } = await supabase
       .from("orders")
       .select(
-        "id, order_id, shopify_order_name, customer_name, customer_phone, mobile_number, repair_assigned_to, repair_assigned_at, repair_status, repair_note, repair_admin_received, repair_admin_received_at, repair_admin_received_by",
+        "id, order_id, shopify_order_name, customer_name, customer_phone, mobile_number, repair_assigned_to, repair_assigned_at, repair_status, repair_note, repair_item, repair_admin_received, repair_admin_received_at, repair_admin_received_by",
       )
       .not("repair_assigned_to", "is", null)
       .order("repair_assigned_at", { ascending: false })
@@ -293,46 +342,74 @@ const RepairManagement: React.FC = () => {
                 <div className="py-10 text-center text-gray-500">{tl("لا توجد نتائج", "No results")}</div>
               ) : (
                 <div className="space-y-2">
-                  {results.map((r) => (
-                    <div key={r.id} className="flex flex-wrap items-center gap-3 border border-gray-100 rounded-lg px-3 py-2">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-mono text-sm text-purple-700">
-                            #{r.order_id || r.shopify_order_name || r.id.slice(0, 8)}
-                          </span>
-                          {r.repair_assigned_to && r.repair_status && (
-                            <span className={`text-xs px-2 py-0.5 rounded-full border ${statusMeta[r.repair_status].color}`}>
-                              {statusMeta[r.repair_status].label} · {userLabel(r.repair_assigned_to)}
+                  {results.map((r) => {
+                    const items = parseItems(r.line_items)
+                    return (
+                      <div key={r.id} className="flex flex-wrap items-center gap-3 border border-gray-100 rounded-lg px-3 py-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-mono text-sm text-purple-700">
+                              #{r.order_id || r.shopify_order_name || r.id.slice(0, 8)}
                             </span>
+                            {items.length > 0 && (
+                              <span className="text-xs text-gray-400">
+                                {items.length} {tl("منتج", "items")}
+                              </span>
+                            )}
+                            {r.repair_assigned_to && r.repair_status && (
+                              <span className={`text-xs px-2 py-0.5 rounded-full border ${statusMeta[r.repair_status].color}`}>
+                                {statusMeta[r.repair_status].label} · {userLabel(r.repair_assigned_to)}
+                              </span>
+                            )}
+                            {r.repair_assigned_to && (
+                              <span className="text-xs px-2 py-0.5 rounded-full border bg-purple-50 text-purple-700 border-purple-200">
+                                {r.repair_item ? `${tl("منتج:", "Item:")} ${r.repair_item.title || "-"}` : tl("الطلب كامل", "Whole order")}
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-sm text-gray-900 truncate">
+                            {r.customer_name || tl("عميل غير معروف", "Unknown customer")}
+                            {(r.customer_phone || r.mobile_number) && (
+                              <span className="text-xs text-gray-500 ml-2" dir="ltr">
+                                {r.customer_phone || r.mobile_number}
+                              </span>
+                            )}
+                          </div>
+                          {/* Pick which item to send when the order has more than one */}
+                          {!r.repair_assigned_to && items.length > 1 && (
+                            <select
+                              value={itemChoice[r.id] ?? ""}
+                              onChange={(e) => setItemChoice((m) => ({ ...m, [r.id]: e.target.value }))}
+                              className="mt-1.5 w-full max-w-md px-2 py-1 border border-gray-200 rounded-lg text-xs"
+                            >
+                              <option value="">{tl("الطلب كامل (كل المنتجات)", "Whole order (all items)")}</option>
+                              {items.map((it, i) => (
+                                <option key={i} value={String(i)}>
+                                  {itemLabel(it)}
+                                </option>
+                              ))}
+                            </select>
                           )}
                         </div>
-                        <div className="text-sm text-gray-900 truncate">
-                          {r.customer_name || tl("عميل غير معروف", "Unknown customer")}
-                          {(r.customer_phone || r.mobile_number) && (
-                            <span className="text-xs text-gray-500 ml-2" dir="ltr">
-                              {r.customer_phone || r.mobile_number}
-                            </span>
-                          )}
-                        </div>
+                        {r.repair_assigned_to ? (
+                          <button
+                            onClick={() => unassign(r)}
+                            className="px-3 py-1.5 rounded-lg text-sm border border-gray-200 text-gray-700 hover:bg-gray-50"
+                          >
+                            {tl("إلغاء الإسناد", "Unassign")}
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => assign(r)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm bg-purple-600 text-white hover:bg-purple-700"
+                          >
+                            <UserPlus className="w-4 h-4" />
+                            {tl("إسناد للتصليح", "Send to repair")}
+                          </button>
+                        )}
                       </div>
-                      {r.repair_assigned_to ? (
-                        <button
-                          onClick={() => unassign(r)}
-                          className="px-3 py-1.5 rounded-lg text-sm border border-gray-200 text-gray-700 hover:bg-gray-50"
-                        >
-                          {tl("إلغاء الإسناد", "Unassign")}
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => assign(r)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm bg-purple-600 text-white hover:bg-purple-700"
-                        >
-                          <UserPlus className="w-4 h-4" />
-                          {tl("إسناد للتصليح", "Send to repair")}
-                        </button>
-                      )}
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </div>
@@ -392,6 +469,9 @@ const RepairManagement: React.FC = () => {
                                   #{r.order_id || r.shopify_order_name || r.id.slice(0, 8)}
                                 </span>
                                 <span className={`text-xs px-2 py-0.5 rounded-full border ${M.color}`}>{M.label}</span>
+                                <span className="text-xs px-2 py-0.5 rounded-full border bg-purple-50 text-purple-700 border-purple-200">
+                                  {r.repair_item ? `${tl("منتج:", "Item:")} ${r.repair_item.title || "-"}` : tl("الطلب كامل", "Whole order")}
+                                </span>
                                 {r.repair_admin_received && (
                                   <span className="text-xs px-2 py-0.5 rounded-full border bg-emerald-100 text-emerald-700 border-emerald-200">
                                     {tl("تم الاستلام من الأدمن", "Received back")}

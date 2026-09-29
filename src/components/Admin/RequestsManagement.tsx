@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useLanguage } from '../../contexts/LanguageContext'
+import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
 import {
   MessageSquare,
@@ -27,6 +28,7 @@ import {
   X,
   BarChart3,
   Hash,
+  Wrench,
 } from 'lucide-react'
 
 interface Request {
@@ -56,8 +58,11 @@ interface RequestNote {
 
 const RequestsManagement: React.FC = () => {
   const { language } = useLanguage()
+  const { user } = useAuth()
   const [requests, setRequests] = useState<Request[]>([])
   const [notes, setNotes] = useState<RequestNote[]>([])
+  const [repairUserId, setRepairUserId] = useState('')
+  const [repairBusyId, setRepairBusyId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [selectedRequest, setSelectedRequest] = useState<Request | null>(null)
   const [showDetailModal, setShowDetailModal] = useState(false)
@@ -120,6 +125,69 @@ const RequestsManagement: React.FC = () => {
     fetchRequests()
     fetchNotes()
   }, [])
+
+  // Load the repair user (Karim) so a request's order can be sent to repair.
+  useEffect(() => {
+    supabase
+      .from('users')
+      .select('id')
+      .eq('role', 'repair')
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => setRepairUserId((data as any)?.id || ''))
+  }, [])
+
+  // Send the order referenced by a customer request to the repair user (Karim).
+  const sendRequestToRepair = async (request: Request) => {
+    const raw = (request.order_id || '').replace('#', '').trim()
+    if (!raw) {
+      alert(tl('لا يوجد رقم طلب لهذا الطلب', 'This request has no order ID'))
+      return
+    }
+    if (!repairUserId) {
+      alert(tl('لا يوجد مستخدم تصليح. أنشئ حساب كريم أولاً.', 'No repair user. Create Karim first.'))
+      return
+    }
+    setRepairBusyId(request.id)
+    try {
+      // Prefer an exact order_id match; fall back to date-suffixed / shopify name.
+      let found = (await supabase.from('orders').select('id').eq('order_id', raw).limit(5)).data as any[] | null
+      if (!found || found.length === 0) {
+        found = (
+          await supabase
+            .from('orders')
+            .select('id')
+            .or(`order_id.ilike.${raw}-%,shopify_order_name.ilike.%${raw}%`)
+            .order('created_at', { ascending: false })
+            .limit(5)
+        ).data as any[] | null
+      }
+      if (!found || found.length === 0) {
+        alert(tl(`لا يوجد طلب بالرقم ${raw}`, `No order found for ${raw}`))
+        return
+      }
+      const ids = found.map((f) => f.id)
+      const { error } = await supabase
+        .from('orders')
+        .update({
+          repair_assigned_to: repairUserId,
+          repair_status: 'assigned',
+          repair_assigned_at: new Date().toISOString(),
+          repair_assigned_by: user?.name || user?.email || 'admin',
+          repair_item: null,
+          repair_admin_received: false,
+          repair_admin_received_at: null,
+          repair_admin_received_by: null,
+        })
+        .in('id', ids)
+      if (error) throw error
+      alert(tl(`تم إرسال الطلب ${raw} للتصليح`, `Order ${raw} sent to repair`))
+    } catch (e: any) {
+      alert(tl('فشل الإرسال للتصليح', 'Failed to send to repair') + ': ' + (e?.message || ''))
+    } finally {
+      setRepairBusyId(null)
+    }
+  }
 
   // Handle ESC key to close media modal
   useEffect(() => {
@@ -1143,6 +1211,14 @@ const RequestsManagement: React.FC = () => {
                            title={tl('إضافة ملاحظة', 'Add Note')}
                          >
                            <FileText className="w-4 h-4" />
+                         </button>
+                         <button
+                           onClick={() => sendRequestToRepair(request)}
+                           disabled={!request.order_id || repairBusyId === request.id}
+                           className="text-purple-600 hover:text-purple-900 p-1 disabled:opacity-40 disabled:cursor-not-allowed"
+                           title={tl('إرسال الطلب للتصليح (كريم)', 'Send order to repair (Karim)')}
+                         >
+                           <Wrench className="w-4 h-4" />
                          </button>
                          <button
                            onClick={() => deleteRequest(request.id)}

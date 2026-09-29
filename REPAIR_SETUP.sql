@@ -30,6 +30,10 @@ ALTER TABLE orders ADD COLUMN IF NOT EXISTS repair_note               text;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS repair_admin_received     boolean DEFAULT false;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS repair_admin_received_at  timestamptz;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS repair_admin_received_by  text;
+-- Which item of a multi-item order is being repaired.
+-- NULL  => the whole order is under repair.
+-- object => a single line item: { index, title, variant_title, sku, quantity, product_id }
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS repair_item               jsonb;
 
 CREATE INDEX IF NOT EXISTS idx_orders_repair_assigned_to ON orders(repair_assigned_to);
 CREATE INDEX IF NOT EXISTS idx_orders_repair_status      ON orders(repair_status);
