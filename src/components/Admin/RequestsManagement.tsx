@@ -205,19 +205,20 @@ const RequestsManagement: React.FC = () => {
     }
     setRepairBusyId(request.id)
     try {
-      // Prefer an exact order_id match; fall back to date-suffixed / shopify name.
-      let found = (await supabase.from('orders').select('id, order_id, line_items').eq('order_id', raw).order('created_at', { ascending: false }).limit(10))
-        .data as any[] | null
-      if (!found || found.length === 0) {
-        found = (
-          await supabase
-            .from('orders')
-            .select('id, order_id, line_items')
-            .or(`order_id.ilike.${raw}-%,shopify_order_name.ilike.%${raw}%`)
-            .order('created_at', { ascending: false })
-            .limit(10)
-        ).data as any[] | null
-      }
+      // Order IDs may be stored with a leading '#' and/or a date suffix
+      // (e.g. "#51420", "51420-29"). Pull candidates that CONTAIN the number,
+      // then narrow to the best match in JS so we don't miss or over-match.
+      const stripHash = (s: any) => String(s || '').replace(/^#/, '').trim()
+      const { data: candidates } = await supabase
+        .from('orders')
+        .select('id, order_id, shopify_order_name, line_items')
+        .or(`order_id.ilike.%${raw}%,shopify_order_name.ilike.%${raw}%`)
+        .order('created_at', { ascending: false })
+        .limit(50)
+      const cands = (candidates || []) as any[]
+      const exact = cands.filter((c) => stripHash(c.order_id) === raw)
+      const suffixed = cands.filter((c) => stripHash(c.order_id).startsWith(raw + '-'))
+      let found: any[] = exact.length ? exact : suffixed.length ? suffixed : cands.slice(0, 1)
       if (!found || found.length === 0) {
         alert(tl(`لا يوجد طلب بالرقم ${raw}`, `No order found for ${raw}`))
         return
