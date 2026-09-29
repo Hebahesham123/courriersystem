@@ -2055,6 +2055,7 @@ const OrdersManagement: React.FC = () => {
           repair_assigned_at: new Date().toISOString(),
           repair_assigned_by: user?.name || user?.email || "admin",
           repair_item: null,
+          repair_request: null,
           repair_admin_received: false,
           repair_admin_received_at: null,
           repair_admin_received_by: null,

@@ -82,7 +82,7 @@ const RequestsManagement: React.FC = () => {
   const [repairUserId, setRepairUserId] = useState('')
   const [repairBusyId, setRepairBusyId] = useState<string | null>(null)
   // Item picker when a request's order has more than one item.
-  const [repairModal, setRepairModal] = useState<null | { orderIds: string[]; primaryId: string; items: any[]; label: string }>(null)
+  const [repairModal, setRepairModal] = useState<null | { orderIds: string[]; primaryId: string; items: any[]; label: string; request: any }>(null)
   const [repairItemChoice, setRepairItemChoice] = useState<string>('')
   const [repairSaving, setRepairSaving] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -159,8 +159,21 @@ const RequestsManagement: React.FC = () => {
       .then(({ data }) => setRepairUserId((data as any)?.id || ''))
   }, [])
 
+  // Snapshot the customer request (comment / photos / video / notes) so the
+  // repair user sees the customer's context on the repair order.
+  const buildRepairRequest = (request: Request): any => ({
+    comment: request.comment || null,
+    image_url: request.image_url || null,
+    video_url: request.video_url || null,
+    notes: getRequestNotes(request.id).map((n) => ({
+      note: n.note || null,
+      image_url: n.image_url || null,
+      author: n.author || null,
+    })),
+  })
+
   // Low-level: assign a set of order rows to the repair user.
-  const assignOrdersToRepair = async (ids: string[], repairItem: any) => {
+  const assignOrdersToRepair = async (ids: string[], repairItem: any, repairRequest: any) => {
     const { error } = await supabase
       .from('orders')
       .update({
@@ -169,6 +182,7 @@ const RequestsManagement: React.FC = () => {
         repair_assigned_at: new Date().toISOString(),
         repair_assigned_by: user?.name || user?.email || 'admin',
         repair_item: repairItem,
+        repair_request: repairRequest,
         repair_admin_received: false,
         repair_admin_received_at: null,
         repair_admin_received_by: null,
@@ -210,6 +224,7 @@ const RequestsManagement: React.FC = () => {
       }
       const primary = found[0]
       const items = parseItems(primary.line_items)
+      const repairRequest = buildRepairRequest(request)
       if (items.length > 1) {
         // Let the admin choose which item (or the whole order).
         setRepairItemChoice('')
@@ -218,11 +233,12 @@ const RequestsManagement: React.FC = () => {
           primaryId: primary.id,
           items,
           label: `#${primary.order_id || raw}`,
+          request: repairRequest,
         })
         return
       }
       // Single-item (or no items) order → assign the whole order directly.
-      await assignOrdersToRepair(found.map((f) => f.id), null)
+      await assignOrdersToRepair(found.map((f) => f.id), null, repairRequest)
       alert(tl(`تم إرسال الطلب ${raw} للتصليح`, `Order ${raw} sent to repair`))
     } catch (e: any) {
       alert(tl('فشل الإرسال للتصليح', 'Failed to send to repair') + ': ' + (e?.message || ''))
@@ -238,7 +254,7 @@ const RequestsManagement: React.FC = () => {
     try {
       if (repairItemChoice === '') {
         // Whole order → all matched rows.
-        await assignOrdersToRepair(repairModal.orderIds, null)
+        await assignOrdersToRepair(repairModal.orderIds, null, repairModal.request)
       } else {
         const idx = Number(repairItemChoice)
         const it = repairModal.items[idx]
@@ -253,7 +269,7 @@ const RequestsManagement: React.FC = () => {
             }
           : null
         // A specific item applies to the single primary order row.
-        await assignOrdersToRepair([repairModal.primaryId], repairItem)
+        await assignOrdersToRepair([repairModal.primaryId], repairItem, repairModal.request)
       }
       alert(tl('تم الإرسال للتصليح', 'Sent to repair'))
       setRepairModal(null)

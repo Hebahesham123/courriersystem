@@ -17,6 +17,9 @@ import {
   CornerUpLeft,
   ChevronDown,
   ChevronUp,
+  Paperclip,
+  MessageSquare,
+  Play,
 } from "lucide-react"
 
 type RepairStatus = "assigned" | "received" | "in_process" | "returned"
@@ -36,6 +39,7 @@ interface RepairOrder {
   repair_status: RepairStatus | null
   repair_note: string | null
   repair_item: any
+  repair_request: any
   repair_assigned_at: string | null
   repair_admin_received: boolean | null
   notes: string | null
@@ -109,7 +113,7 @@ const RepairOrders: React.FC = () => {
     const { data, error } = await supabase
       .from("orders")
       .select(
-        "id, order_id, shopify_order_name, customer_name, customer_phone, mobile_number, address, shipping_address, total_order_fees, line_items, product_images, repair_status, repair_note, repair_item, repair_assigned_at, repair_admin_received, notes, order_note",
+        "id, order_id, shopify_order_name, customer_name, customer_phone, mobile_number, address, shipping_address, total_order_fees, line_items, product_images, repair_status, repair_note, repair_item, repair_request, repair_assigned_at, repair_admin_received, notes, order_note",
       )
       .eq("repair_assigned_to", user.id)
       .order("repair_assigned_at", { ascending: false })
@@ -274,6 +278,9 @@ const RepairOrders: React.FC = () => {
               }
               const looseImgs = images.map(imgSrc).filter(Boolean) as string[]
               const repItem = o.repair_item || null
+              const repReq = o.repair_request || null
+              const reqNotes: any[] = Array.isArray(repReq?.notes) ? repReq.notes : []
+              const hasReqMedia = !!(repReq && (repReq.comment || repReq.image_url || repReq.video_url || reqNotes.length > 0))
               const isOpen = expanded.has(o.id)
               const addr =
                 o.address ||
@@ -295,6 +302,12 @@ const RepairOrders: React.FC = () => {
                           <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border bg-emerald-100 text-emerald-700 border-emerald-200">
                             <CheckCircle className="w-3.5 h-3.5" />
                             {tl("استلمه الأدمن", "Admin received")}
+                          </span>
+                        )}
+                        {hasReqMedia && (
+                          <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border bg-amber-50 text-amber-700 border-amber-200">
+                            <Paperclip className="w-3.5 h-3.5" />
+                            {tl("ملاحظة/مرفقات العميل", "Customer note / media")}
                           </span>
                         )}
                       </div>
@@ -363,6 +376,63 @@ const RepairOrders: React.FC = () => {
                       {(o.notes || o.order_note) && (
                         <div className="text-sm text-gray-600">
                           <span className="font-medium text-gray-700">{tl("ملاحظات الطلب:", "Order notes:")}</span> {o.notes || o.order_note}
+                        </div>
+                      )}
+
+                      {/* Customer request (note / photos / video) */}
+                      {hasReqMedia && (
+                        <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-3">
+                          <div className="flex items-center gap-2 text-amber-800 font-semibold mb-2 text-sm">
+                            <MessageSquare className="w-4 h-4" /> {tl("طلب العميل", "Customer request")}
+                          </div>
+                          {repReq.comment && <div className="text-sm text-gray-800 whitespace-pre-wrap mb-2">{repReq.comment}</div>}
+                          {(repReq.image_url || repReq.video_url) && (
+                            <div className="flex flex-wrap gap-2 mb-2">
+                              {repReq.image_url && (
+                                <a href={repReq.image_url} target="_blank" rel="noreferrer" className="block">
+                                  <img
+                                    src={repReq.image_url}
+                                    alt=""
+                                    className="w-24 h-24 object-cover rounded border hover:brightness-95 cursor-zoom-in"
+                                    onError={(e) => (e.currentTarget.style.display = "none")}
+                                  />
+                                </a>
+                              )}
+                              {repReq.video_url && (
+                                <a
+                                  href={repReq.video_url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="w-24 h-24 rounded border bg-gray-900/80 text-white flex flex-col items-center justify-center gap-1 hover:bg-gray-900"
+                                >
+                                  <Play className="w-6 h-6" />
+                                  <span className="text-[10px]">{tl("فيديو", "Video")}</span>
+                                </a>
+                              )}
+                            </div>
+                          )}
+                          {reqNotes.length > 0 && (
+                            <div className="space-y-1.5">
+                              {reqNotes.map((n: any, i: number) => (
+                                <div key={i} className="flex items-start gap-2 text-xs bg-white rounded border border-amber-100 px-2 py-1.5">
+                                  {n.image_url && (
+                                    <a href={n.image_url} target="_blank" rel="noreferrer" className="flex-shrink-0">
+                                      <img
+                                        src={n.image_url}
+                                        alt=""
+                                        className="w-10 h-10 object-cover rounded border hover:brightness-95 cursor-zoom-in"
+                                        onError={(e) => (e.currentTarget.style.display = "none")}
+                                      />
+                                    </a>
+                                  )}
+                                  <div className="min-w-0">
+                                    {n.note && <div className="text-gray-800">{n.note}</div>}
+                                    {n.author && <div className="text-[10px] text-gray-400">{tl("بواسطة:", "By:")} {n.author}</div>}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )}
 

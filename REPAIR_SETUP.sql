@@ -34,6 +34,9 @@ ALTER TABLE orders ADD COLUMN IF NOT EXISTS repair_admin_received_by  text;
 -- NULL  => the whole order is under repair.
 -- object => a single line item: { index, title, variant_title, sku, quantity, product_id }
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS repair_item               jsonb;
+-- Snapshot of the customer request this repair came from (comment / photos /
+-- video / notes) so the repair user can see the customer's context.
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS repair_request            jsonb;
 
 CREATE INDEX IF NOT EXISTS idx_orders_repair_assigned_to ON orders(repair_assigned_to);
 CREATE INDEX IF NOT EXISTS idx_orders_repair_status      ON orders(repair_status);

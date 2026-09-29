@@ -155,6 +155,7 @@ const RepairManagement: React.FC = () => {
         repair_assigned_at: new Date().toISOString(),
         repair_assigned_by: userName,
         repair_item: repairItem,
+        repair_request: null,
         repair_admin_received: false,
         repair_admin_received_at: null,
         repair_admin_received_by: null,
@@ -174,7 +175,7 @@ const RepairManagement: React.FC = () => {
   const unassign = async (row: SearchRow) => {
     const { error } = await supabase
       .from("orders")
-      .update({ repair_assigned_to: null, repair_status: null, repair_item: null })
+      .update({ repair_assigned_to: null, repair_status: null, repair_item: null, repair_request: null })
       .eq("id", row.id)
     if (error) {
       alert(tl("فشل الإلغاء", "Failed to unassign"))
