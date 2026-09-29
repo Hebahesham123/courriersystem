@@ -56,6 +56,24 @@ interface RequestNote {
   created_at: string
 }
 
+// line_items may arrive as a JSON string or an array.
+const parseItems = (raw: any): any[] => {
+  if (!raw) return []
+  try {
+    const v = typeof raw === 'string' ? JSON.parse(raw) : raw
+    return Array.isArray(v) ? v : []
+  } catch {
+    return []
+  }
+}
+const itemQty = (it: any): number => Number(it?.quantity ?? it?.current_quantity ?? it?.qty ?? 1) || 1
+const itemVariant = (it: any): string | null =>
+  it?.variant_title && it.variant_title !== 'Default Title' ? it.variant_title : null
+const itemLabel = (it: any): string => {
+  const v = itemVariant(it)
+  return `${it?.title || it?.name || 'Product'}${v ? ` - ${v}` : ''} × ${itemQty(it)}`
+}
+
 const RequestsManagement: React.FC = () => {
   const { language } = useLanguage()
   const { user } = useAuth()
@@ -63,6 +81,10 @@ const RequestsManagement: React.FC = () => {
   const [notes, setNotes] = useState<RequestNote[]>([])
   const [repairUserId, setRepairUserId] = useState('')
   const [repairBusyId, setRepairBusyId] = useState<string | null>(null)
+  // Item picker when a request's order has more than one item.
+  const [repairModal, setRepairModal] = useState<null | { orderIds: string[]; primaryId: string; items: any[]; label: string }>(null)
+  const [repairItemChoice, setRepairItemChoice] = useState<string>('')
+  const [repairSaving, setRepairSaving] = useState(false)
   const [loading, setLoading] = useState(true)
   const [selectedRequest, setSelectedRequest] = useState<Request | null>(null)
   const [showDetailModal, setShowDetailModal] = useState(false)
@@ -137,7 +159,26 @@ const RequestsManagement: React.FC = () => {
       .then(({ data }) => setRepairUserId((data as any)?.id || ''))
   }, [])
 
+  // Low-level: assign a set of order rows to the repair user.
+  const assignOrdersToRepair = async (ids: string[], repairItem: any) => {
+    const { error } = await supabase
+      .from('orders')
+      .update({
+        repair_assigned_to: repairUserId,
+        repair_status: 'assigned',
+        repair_assigned_at: new Date().toISOString(),
+        repair_assigned_by: user?.name || user?.email || 'admin',
+        repair_item: repairItem,
+        repair_admin_received: false,
+        repair_admin_received_at: null,
+        repair_admin_received_by: null,
+      })
+      .in('id', ids)
+    if (error) throw error
+  }
+
   // Send the order referenced by a customer request to the repair user (Karim).
+  // If the order has more than one item, open a picker to choose which item.
   const sendRequestToRepair = async (request: Request) => {
     const raw = (request.order_id || '').replace('#', '').trim()
     if (!raw) {
@@ -151,41 +192,75 @@ const RequestsManagement: React.FC = () => {
     setRepairBusyId(request.id)
     try {
       // Prefer an exact order_id match; fall back to date-suffixed / shopify name.
-      let found = (await supabase.from('orders').select('id').eq('order_id', raw).limit(5)).data as any[] | null
+      let found = (await supabase.from('orders').select('id, order_id, line_items').eq('order_id', raw).order('created_at', { ascending: false }).limit(10))
+        .data as any[] | null
       if (!found || found.length === 0) {
         found = (
           await supabase
             .from('orders')
-            .select('id')
+            .select('id, order_id, line_items')
             .or(`order_id.ilike.${raw}-%,shopify_order_name.ilike.%${raw}%`)
             .order('created_at', { ascending: false })
-            .limit(5)
+            .limit(10)
         ).data as any[] | null
       }
       if (!found || found.length === 0) {
         alert(tl(`لا يوجد طلب بالرقم ${raw}`, `No order found for ${raw}`))
         return
       }
-      const ids = found.map((f) => f.id)
-      const { error } = await supabase
-        .from('orders')
-        .update({
-          repair_assigned_to: repairUserId,
-          repair_status: 'assigned',
-          repair_assigned_at: new Date().toISOString(),
-          repair_assigned_by: user?.name || user?.email || 'admin',
-          repair_item: null,
-          repair_admin_received: false,
-          repair_admin_received_at: null,
-          repair_admin_received_by: null,
+      const primary = found[0]
+      const items = parseItems(primary.line_items)
+      if (items.length > 1) {
+        // Let the admin choose which item (or the whole order).
+        setRepairItemChoice('')
+        setRepairModal({
+          orderIds: found.map((f) => f.id),
+          primaryId: primary.id,
+          items,
+          label: `#${primary.order_id || raw}`,
         })
-        .in('id', ids)
-      if (error) throw error
+        return
+      }
+      // Single-item (or no items) order → assign the whole order directly.
+      await assignOrdersToRepair(found.map((f) => f.id), null)
       alert(tl(`تم إرسال الطلب ${raw} للتصليح`, `Order ${raw} sent to repair`))
     } catch (e: any) {
       alert(tl('فشل الإرسال للتصليح', 'Failed to send to repair') + ': ' + (e?.message || ''))
     } finally {
       setRepairBusyId(null)
+    }
+  }
+
+  // Confirm the item picker modal.
+  const confirmRepairModal = async () => {
+    if (!repairModal) return
+    setRepairSaving(true)
+    try {
+      if (repairItemChoice === '') {
+        // Whole order → all matched rows.
+        await assignOrdersToRepair(repairModal.orderIds, null)
+      } else {
+        const idx = Number(repairItemChoice)
+        const it = repairModal.items[idx]
+        const repairItem = it
+          ? {
+              index: idx,
+              title: it.title || it.name || null,
+              variant_title: itemVariant(it),
+              sku: it.sku || null,
+              quantity: itemQty(it),
+              product_id: it.product_id ?? null,
+            }
+          : null
+        // A specific item applies to the single primary order row.
+        await assignOrdersToRepair([repairModal.primaryId], repairItem)
+      }
+      alert(tl('تم الإرسال للتصليح', 'Sent to repair'))
+      setRepairModal(null)
+    } catch (e: any) {
+      alert(tl('فشل الإرسال للتصليح', 'Failed to send to repair') + ': ' + (e?.message || ''))
+    } finally {
+      setRepairSaving(false)
     }
   }
 
@@ -2100,10 +2175,74 @@ const RequestsManagement: React.FC = () => {
               </div>
             </div>
             {/* Click outside to close */}
-            <div 
-              className="absolute inset-0 -z-10" 
+            <div
+              className="absolute inset-0 -z-10"
               onClick={() => setShowMediaModal(false)}
             />
+          </div>,
+          document.body
+        )}
+
+        {/* Repair item picker (order has more than one item) */}
+        {repairModal && typeof document !== 'undefined' && createPortal(
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4" onClick={() => !repairSaving && setRepairModal(null)}>
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+              <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Wrench className="w-5 h-5 text-purple-600" />
+                  <h3 className="font-bold text-gray-900">{tl('اختر المنتج للتصليح', 'Choose item to repair')}</h3>
+                </div>
+                <button onClick={() => !repairSaving && setRepairModal(null)} className="text-gray-400 hover:text-gray-600">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-5">
+                <div className="text-sm text-gray-500 mb-3">
+                  {tl('الطلب', 'Order')} <span className="font-mono text-purple-700">{repairModal.label}</span>
+                </div>
+                <div className="space-y-2 max-h-72 overflow-y-auto">
+                  <label className="flex items-center gap-2.5 p-2.5 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50">
+                    <input
+                      type="radio"
+                      name="repair-item"
+                      checked={repairItemChoice === ''}
+                      onChange={() => setRepairItemChoice('')}
+                      className="text-purple-600 focus:ring-purple-500"
+                    />
+                    <span className="text-sm font-medium text-gray-900">{tl('الطلب كامل (كل المنتجات)', 'Whole order (all items)')}</span>
+                  </label>
+                  {repairModal.items.map((it: any, i: number) => (
+                    <label key={i} className="flex items-center gap-2.5 p-2.5 rounded-lg border border-gray-200 cursor-pointer hover:bg-purple-50">
+                      <input
+                        type="radio"
+                        name="repair-item"
+                        checked={repairItemChoice === String(i)}
+                        onChange={() => setRepairItemChoice(String(i))}
+                        className="text-purple-600 focus:ring-purple-500"
+                      />
+                      <span className="text-sm text-gray-800">{itemLabel(it)}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="px-5 py-4 border-t border-gray-200 flex justify-end gap-2">
+                <button
+                  onClick={() => setRepairModal(null)}
+                  disabled={repairSaving}
+                  className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm disabled:opacity-50"
+                >
+                  {tl('إلغاء', 'Cancel')}
+                </button>
+                <button
+                  onClick={confirmRepairModal}
+                  disabled={repairSaving}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-purple-600 text-white hover:bg-purple-700 text-sm disabled:opacity-50"
+                >
+                  <Wrench className="w-4 h-4" />
+                  {repairSaving ? tl('جارٍ الإرسال...', 'Sending...') : tl('إرسال للتصليح', 'Send to repair')}
+                </button>
+              </div>
+            </div>
           </div>,
           document.body
         )}
